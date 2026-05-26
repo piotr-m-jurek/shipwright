@@ -1,0 +1,97 @@
+Discovery Call — Leave Management System
+Date: 2024-11-08
+Attendees: Sarah Chen (Product), Marcus Webb (CTO), Joanna Kowalski (HR Director),
+           Tom Adeyemi (Engineering Lead), Priya Sharma (HR Manager)
+
+---
+
+[Recording starts mid-conversation]
+
+MARCUS: ...right, so the spreadsheet thing has been a disaster. We had three people
+show up to work on the same day last month because nobody could see the approved
+leave properly. It's embarrassing at our size.
+
+SARAH: That's exactly the kind of thing we're trying to fix. So let's go through
+the main flows. Joanna, from HR's perspective, what's the single most painful part
+of the current process?
+
+JOANNA: Honestly? The delegation problem. When a manager goes on leave, their
+reports have no one to approve their requests. We had a situation in August where
+someone needed emergency leave approved and their manager was on holiday in Greece,
+completely unreachable. The person had to escalate to me personally. That needs
+to be solved properly — when a manager is going to be away, they should be able
+to designate someone to act in their place. And that delegate should get all the
+pending approvals automatically reassigned. It's a core workflow, not a nice-to-have.
+
+TOM: Agreed. That's something we'll definitely need to build. We should make sure
+the acceptance criteria for that are really detailed before development starts —
+who can be a delegate, does the delegate need to be from the same team, does the
+delegation apply to requests submitted before or after the delegation was set up,
+what happens when the delegate is also on leave...
+
+SARAH: Good point, we haven't written those up yet. Let me add that to the open
+questions.
+
+PRIYA: Can I raise something? A lot of our employees are not at their desks all day.
+The warehouse staff in Berlin especially — they're on the floor, they check their
+phones, not laptops. The current spreadsheet actually kind of works for them because
+they can open it on mobile. If we build a web-only tool, we're going to lose that.
+
+MARCUS: Yeah, I was going to bring this up. I actually spoke to the CEO about this
+last week and she was very clear — she wants a mobile app. She said, and I'm quoting
+here, "I'm not approving a system our warehouse staff can't use from their phones."
+That's a hard requirement from the top.
+
+TOM: That's going to affect the timeline significantly. A proper mobile app is a
+different scope.
+
+MARCUS: I know, but it's not optional. We might need to revisit the timeline. Sarah,
+the PRD currently says mobile is out of scope for V1 — that needs to change.
+
+SARAH: [pause] Okay. I'll update that. Mobile is in scope.
+
+TOM: We should decide — native app or responsive web? Because responsive web
+is a lot faster to ship.
+
+MARCUS: Responsive web is fine to start. It doesn't have to be a native app.
+Just has to work on a phone.
+
+PRIYA: While we're talking about things people need to know — notifications. We
+need the system to send notifications. People miss emails all the time. Some of
+our managers prefer Slack. Can we do both?
+
+TOM: That's something we'd need to specify. Are we talking email, Slack, in-app,
+all three? Because each one is different engineering work.
+
+SARAH: Let's put that down as something to decide. The PRD just says "notifications"
+right now without specifying the channel. We need to pin that down.
+
+JOANNA: From HR's perspective — email at minimum. If Slack is easy to add, great,
+but email is non-negotiable.
+
+TOM: Email is straightforward. Slack would need a Slack app, that's more work.
+In-app notifications are easy if we're already building the web app.
+
+MARCUS: Let's say email plus in-app for V1, and we can revisit Slack later.
+
+SARAH: Agreed. I'll update the PRD.
+
+[Discussion continues about BambooHR API details, redacted for brevity]
+
+TOM: One last thing — where are we hosting this? We've been using AWS us-east-1
+for most of our internal tools but I know there were some questions about data
+residency given we're dealing with employee health data in sick leave records.
+
+JOANNA: That's actually covered in the RFP. Everything has to stay in the EU.
+AWS eu-central-1 or eu-west-1. Tom, make sure engineering knows that before
+anyone starts spinning up infrastructure.
+
+TOM: Got it. I'll flag that with the team.
+
+MARCUS: Alright, I think we have enough to move forward. Sarah, can you update
+the PRD with what we agreed today?
+
+SARAH: Will do. Main updates: mobile in scope, delegation workflow needs detailed
+acceptance criteria, notifications are email plus in-app for V1.
+
+[Recording ends]

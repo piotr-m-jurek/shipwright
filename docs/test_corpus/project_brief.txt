@@ -1,0 +1,8 @@
+We need an internal leave request management system to replace our current
+spreadsheet-based process. Employees should be able to submit leave requests
+(annual leave, sick leave, parental leave) which their line managers approve
+or reject. HR should have full visibility across the organisation — team
+calendars, pending requests, approval history. The system needs to integrate
+with our existing HRIS (BambooHR) and our payroll system. We want this live
+within four months. The primary users are our 340 employees across three
+offices (Warsaw, London, Berlin).
