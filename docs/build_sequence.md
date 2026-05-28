@@ -61,6 +61,25 @@ type boundaries are established and won't need to change.
 - Store raw files via `StorageAdapter` (garage locally, Supabase Storage in prod)
 - Store `tokenCount` on `documents` table (needed for Phase 2 threshold guard)
 
+**Zod schemas to define in `src/shared/schemas/documents.ts`:**
+```ts
+const DocumentTypeSchema = z.enum(['transcript', 'prd_draft', 'rfp', 'notes', 'other'])
+
+const UploadRequestSchema = z.object({
+  documentType: DocumentTypeSchema,
+})
+
+const ChunkMetaSchema = z.object({
+  sourceDocument: z.string(),
+  documentType: DocumentTypeSchema,
+  chunkIndex: z.number().int().nonnegative(),
+  sessionId: z.string().uuid(),
+})
+```
+Validate the upload endpoint body with `@hono/zod-validator` using `UploadRequestSchema`.
+Parse chunk metadata through `ChunkMetaSchema` before insertion — catches missing
+fields before they silently enter the vector store.
+
 **End state:** upload a PDF, query semantically related chunks back out.
 
 ---
@@ -99,6 +118,42 @@ sessionId, documents[], questions[], answers[], round,
 inputMode (context | retrieval), agentAnalysis, outputs{}
 ```
 
+**Define the context shape as a Zod schema in `src/shared/schemas/machine.ts`:**
+```ts
+const MachineContextSchema = z.object({
+  sessionId: z.string().uuid(),
+  documents: z.array(z.object({
+    id: z.string().uuid(),
+    filename: z.string(),
+    documentType: DocumentTypeSchema,
+    tokenCount: z.number().int().positive(),
+  })),
+  questions: z.array(z.object({
+    id: z.string().uuid(),
+    text: z.string(),
+    rationale: z.string(),
+    sourceDocuments: z.array(z.string()),
+  })),
+  answers: z.array(z.object({
+    questionId: z.string().uuid(),
+    text: z.string(),
+    round: z.number().int(),
+  })),
+  round: z.number().int().min(0).max(2),
+  inputMode: z.enum(['context', 'retrieval']),
+  agentAnalysis: z.unknown().nullable(),
+  outputs: z.object({
+    projectBrief: z.string().optional(),
+    implementationPrd: z.string().optional(),
+  }),
+})
+
+export type MachineContext = z.infer<typeof MachineContextSchema>
+```
+This schema does two things: it is the TypeScript type source of truth for the
+machine context, and it validates the `xstateSnapshot` when rehydrating from
+Postgres — catching snapshot corruption before it causes a silent bad state.
+
 **End state:** a diagram you can walk a colleague through. The XState
 implementation in Phase 4 is just translating this diagram into code.
 
@@ -107,13 +162,49 @@ implementation in Phase 4 is just translating this diagram into code.
 ## Phase 3 — Single Agent Pass (~2 days)
 
 - Wire Vercel AI SDK + Claude 3.7 Sonnet via Anthropic provider
-- Implement **Extractor pass**: `generateObject` + Zod `DocumentAnalysis` schema
-  - Schema requires `sourceDocument` on every requirement (anti-hallucination)
-- Run against a real (or synthetic) document bundle
-- Verify citation grounding and output quality before proceeding
-- Implement **Challenger pass**: `generateObject` + Zod `GapReport` schema
-  - Surfaces conflicts, gaps, underspecified requirements
+- Implement **Extractor pass** with `generateObject` + `DocumentAnalysisSchema`
+- Implement **Challenger pass** with `generateObject` + `GapReportSchema`
 - Tune prompts until output is reliable on the test bundle
+
+**Zod schemas to define in `src/shared/schemas/agent.ts`:**
+```ts
+const RequirementSchema = z.object({
+  text: z.string(),
+  sourceDocument: z.string(),      // required — never optional
+  confidence: z.enum(['high', 'medium', 'low']),
+})
+
+const DocumentAnalysisSchema = z.object({
+  requirements: z.array(RequirementSchema),
+  constraints: z.array(RequirementSchema),
+  assumptions: z.array(RequirementSchema),
+})
+
+const ConflictSchema = z.object({
+  description: z.string(),
+  documentA: z.string(),           // filename of first source
+  documentB: z.string(),           // filename of second source
+})
+
+const GapReportSchema = z.object({
+  conflicts: z.array(ConflictSchema),
+  gaps: z.array(z.object({
+    description: z.string(),
+    affectedArea: z.string(),
+  })),
+  ambiguities: z.array(z.object({
+    description: z.string(),
+    sourceDocument: z.string(),
+  })),
+})
+
+export type DocumentAnalysis = z.infer<typeof DocumentAnalysisSchema>
+export type GapReport = z.infer<typeof GapReportSchema>
+```
+
+Run against the test corpus. Verify:
+- Zero requirements without `sourceDocument` in Extractor output
+- Challenger surfaces the planted contradiction (`documentA` and `documentB` both populated)
 
 **Do not proceed to Phase 4 until the Extractor and Challenger
 outputs are trustworthy. Everything downstream depends on them.**
@@ -122,7 +213,7 @@ outputs are trustworthy. Everything downstream depends on them.**
 
 ## Phase 4 — The Clarifying Loop (~3 days)
 
-- Implement **Question generation pass**: rank gaps by impact, select 3–7
+- Implement **Question generation pass** with `generateObject` + `ClarifyingQuestionsSchema`
 - Wire XState machine: machine suspends on `awaiting_answers` state
 - Hono route accepts user answers → fires `USER_ANSWERED` event → machine resumes
 - Stop condition guards: `ANSWERS_SUFFICIENT` proceeds to generating,
@@ -131,8 +222,37 @@ outputs are trustworthy. Everything downstream depends on them.**
 - Persist `xstateSnapshot` to `sessions` table on every transition
   (enables server restart recovery)
 
+**Zod schemas to add to `src/shared/schemas/agent.ts`:**
+```ts
+const ClarifyingQuestionSchema = z.object({
+  text: z.string(),
+  rationale: z.string(),           // why this question matters
+  sourceDocuments: z.array(z.string()), // which docs surface this gap
+  priority: z.enum(['high', 'medium', 'low']),
+})
+
+const ClarifyingQuestionsSchema = z.object({
+  questions: z.array(ClarifyingQuestionSchema).min(3).max(7),
+  stopReason: z.enum(['sufficient_gaps', 'round_limit']).optional(),
+})
+
+export type ClarifyingQuestions = z.infer<typeof ClarifyingQuestionsSchema>
+```
+
+**Zod schema for the answers payload in `src/shared/schemas/api.ts`:**
+```ts
+const SubmitAnswersSchema = z.object({
+  answers: z.array(z.object({
+    questionId: z.string().uuid(),
+    text: z.string().min(1),
+  })).min(1),
+})
+```
+Validate `POST /api/sessions/:id/answers` with `@hono/zod-validator` using
+`SubmitAnswersSchema` — rejects empty answer submissions before they reach XState.
+
 **This is the core of the project. Expect iteration on the stop
-condition logic — it's the hardest design problem in the codebase.**
+condition logic — it’s the hardest design problem in the codebase.**
 
 ---
 
@@ -154,10 +274,40 @@ condition logic — it's the hardest design problem in the codebase.**
 
 - Wire XState machine to all session routes
 - Streaming routes return `toDataStreamResponse()` directly — no custom SSE
-- Session rehydration: on request, load `xstateSnapshot` from Postgres and
-  restore the XState machine — no lost state on server restart
+- Session rehydration: on request, load `xstateSnapshot` from Postgres, validate
+  through `MachineContextSchema`, restore the XState machine
 - CORS middleware (`hono/cors`) for SPA origin
 - Hono RPC types fully exported — `hc<typeof app>` client ready for consumers
+
+**Zod + `@hono/zod-validator` on every route that accepts a body:**
+```ts
+// src/shared/schemas/api.ts
+const CreateSessionSchema = z.object({
+  // multipart — validated after parsing
+  documentType: DocumentTypeSchema,
+})
+
+const SessionIdParamSchema = z.object({
+  id: z.string().uuid(),
+})
+
+// SubmitAnswersSchema already defined in Phase 4
+```
+```ts
+// src/api/routes/sessions.ts
+app.post('/api/sessions',
+  zValidator('form', CreateSessionSchema),
+  async (c) => { ... }
+)
+
+app.post('/api/sessions/:id/answers',
+  zValidator('param', SessionIdParamSchema),
+  zValidator('json', SubmitAnswersSchema),
+  async (c) => { ... }
+)
+```
+Routes without a validated body still validate the `:id` param. A malformed UUID
+never reaches the DB or the XState machine.
 
 **End state:** a fully functional HTTP API. CLI and React SPA are
 both just clients on top of this.
@@ -193,6 +343,32 @@ This is the integration test.**
 - Run **conflict detection eval**: contradiction between transcript and PRD
   is correctly surfaced (deterministic check)
 - Verify clarifying loop stop condition fires at the right time
+
+**Zod schema for LLM-as-judge responses in `src/shared/schemas/evals.ts`:**
+```ts
+const EvalResultSchema = z.object({
+  score: z.number().min(0).max(1),
+  reasoning: z.string(),
+  pass: z.boolean(),
+  citations: z.array(z.string()).optional(), // which parts of source supported score
+})
+
+const FaithfulnessEvalSchema = z.object({
+  hallucinatedRequirements: z.array(z.object({
+    text: z.string(),
+    reason: z.string(),           // why this was deemed hallucinated
+  })),
+  result: EvalResultSchema,
+})
+
+const ConflictDetectionEvalSchema = z.object({
+  conflictsSurfaced: z.array(z.string()),   // descriptions of found conflicts
+  plantedConflictFound: z.boolean(),        // deterministic check
+  result: EvalResultSchema,
+})
+```
+Parse every LLM-as-judge response through these schemas. An unparseable judge
+response is a failed eval, not a passing one with a warning.
 
 ---
 
