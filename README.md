@@ -1,11 +1,8 @@
-To install dependencies:
-```sh
-bun install
-```
+## TODO:
+- [ ] better error handling in `storage/index.ts`
 
-To run:
-```sh
-bun run dev
-```
-
-open http://localhost:3000
+- [ ] Consider Effect-ts
+  - error handling
+  - type safe routes
+  - mixing types between backend and frontend
+  - use effect-atom on the frontend for fun

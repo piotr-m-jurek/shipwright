@@ -1,12 +1,35 @@
 {
   "name": "shipwright",
+  "type": "module",
   "scripts": {
-    "dev": "bun run --hot src/index.ts"
+    "dev": "vite",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
-    "hono": "^4.12.23"
+    "@aws-sdk/client-s3": "^3.1055.0",
+    "@hono/vite-dev-server": "0.26.0",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "1.0.0-beta.22",
+    "hono": "4.12.23",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "vite": "^8.0.14"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "drizzle-kit": "1.0.0-beta.22",
+    "oxfmt": "0.52.0",
+    "oxlint": "1.67.0",
+    "postgres": "^3.4.9",
+    "tsx": "^4.22.3",
+    "typescript": "5.8"
   }
 }
