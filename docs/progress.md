@@ -57,3 +57,9 @@ Next steps per `docs/build_sequence.md`:
 - Validate upload endpoint body with `@hono/zod-validator`
 
 Gate: upload a PDF, query semantically related chunks back out.
+
+### Decisions during Phase 1
+
+- **Better Auth withdrawn** — drizzle-orm v1 beta + Better Auth compatibility risk. Auth deferred until drizzle reaches stable 1.0. No `users` table, no auth layer, no presigned upload flow. Reverted to original simple multipart `POST /api/sessions` pattern.
+- `agentSessions` rename retained — good separation regardless of auth status.
+- Image support (PNG/JPEG/WebP) deferred — was tied to auth scope expansion, not in original spec.

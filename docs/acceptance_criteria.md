@@ -21,7 +21,7 @@ it "mostly works".
 - [ ] `drizzle-kit push` runs without errors — all tables created in Postgres
 - [ ] `SELECT * FROM sessions LIMIT 1` returns an empty result (not an error)
 - [ ] pgvector extension is enabled: `SELECT * FROM pg_extension WHERE extname = 'vector'` returns a row
-- [ ] garage (or chosen S3-local) is reachable: a test upload via `@aws-sdk/client-s3` succeeds
+- [ ] rustfs is reachable: a test upload via `@aws-sdk/client-s3` succeeds
 - [ ] `.env.example` lists every required environment variable with a description
 - [ ] `.env` is gitignored
 
@@ -162,4 +162,5 @@ it "mostly works".
 - [ ] No file in `src/agent/` imports from `@anthropic-ai/sdk` directly
 - [ ] No file calls `mammoth.convertToHtml()` — only `mammoth.extractRawText()`
 - [ ] No file writes to the filesystem with `fs.writeFile` or `fs.writeFileSync` directly — all file I/O goes through `StorageAdapter`
+- [ ] No LLM call uses `generateText` where `generateObject` is appropriate (structured output passes)
 - [ ] No LLM call uses `generateText` where `generateObject` is appropriate (structured output passes)

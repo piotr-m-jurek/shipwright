@@ -10,6 +10,8 @@ import {
 } from "drizzle-orm/pg-core";
 import { defineRelations } from "drizzle-orm";
 
+import { createInsertSchema } from "drizzle-orm/zod";
+
 export const sessionStatusEnum = pgEnum("session_status", [
   "idle",
   "uploading",
@@ -24,7 +26,7 @@ export const sessionStatusEnum = pgEnum("session_status", [
 
 export const inputModeEnum = pgEnum("input_mode", ["context", "retrieval"]);
 
-export const sessions = pgTable("sessions", {
+export const agentSessions = pgTable("agent_sessions", {
   id: uuid("id").primaryKey().defaultRandom().notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at")
@@ -36,6 +38,10 @@ export const sessions = pgTable("sessions", {
   inputMode: inputModeEnum("input_mode").notNull().default("context"),
   xstateSnapshot: jsonb("xstate_snapshot"),
 });
+
+export const sessionInsertSchema = createInsertSchema(agentSessions);
+export type SessionInsert = typeof agentSessions.$inferInsert;
+export type SessionSelect = typeof agentSessions.$inferSelect;
 
 export const documentTypeEnum = pgEnum("document_type", [
   "transcript",
@@ -52,13 +58,15 @@ export const documents = pgTable("documents", {
     .defaultNow()
     .$onUpdate(() => new Date()),
   sessionId: uuid("session_id")
-    .references(() => sessions.id, { onDelete: "cascade" })
+    .references(() => agentSessions.id, { onDelete: "cascade" })
     .notNull(),
   filename: text("filename").notNull(),
   documentType: documentTypeEnum("document_type").notNull(),
   storagePath: text("storage_path"),
   rawText: text("raw_text"),
   tokenCount: integer("token_count"),
+  // TODO: mimeType
+  // TODO: size
 });
 
 export const chunks = pgTable("chunks", {
@@ -72,7 +80,7 @@ export const chunks = pgTable("chunks", {
     .references(() => documents.id, { onDelete: "cascade" })
     .notNull(),
   sessionId: uuid("session_id")
-    .references(() => sessions.id, { onDelete: "cascade" })
+    .references(() => agentSessions.id, { onDelete: "cascade" })
     .notNull(),
   content: text("content").notNull(),
   chunkIndex: integer("chunk_index").notNull(),
@@ -90,7 +98,7 @@ export const messages = pgTable("messages", {
     .defaultNow()
     .$onUpdate(() => new Date()),
   sessionId: uuid("session_id")
-    .references(() => sessions.id, { onDelete: "cascade" })
+    .references(() => agentSessions.id, { onDelete: "cascade" })
     .notNull(),
   content: text("content").notNull(),
   role: messageRoleEnum("role").notNull(),
@@ -105,7 +113,7 @@ export const questions = pgTable("questions", {
     .defaultNow()
     .$onUpdate(() => new Date()),
   sessionId: uuid("session_id")
-    .references(() => sessions.id, { onDelete: "cascade" })
+    .references(() => agentSessions.id, { onDelete: "cascade" })
     .notNull(),
   text: text("text").notNull(),
   sourceDocuments: text("source_documents").array().notNull(),
@@ -121,7 +129,7 @@ export const answers = pgTable("answers", {
     .defaultNow()
     .$onUpdate(() => new Date()),
   sessionId: uuid("session_id")
-    .references(() => sessions.id, { onDelete: "cascade" })
+    .references(() => agentSessions.id, { onDelete: "cascade" })
     .notNull(),
   questionId: uuid("question_id")
     .references(() => questions.id, { onDelete: "cascade" })
@@ -140,7 +148,7 @@ export const outputs = pgTable("outputs", {
     .defaultNow()
     .$onUpdate(() => new Date()),
   sessionId: uuid("session_id")
-    .references(() => sessions.id, { onDelete: "cascade" })
+    .references(() => agentSessions.id, { onDelete: "cascade" })
     .notNull(),
   type: outputTypeEnum().notNull(),
   content: text(),
@@ -149,7 +157,7 @@ export const outputs = pgTable("outputs", {
 
 export const relations = defineRelations(
   {
-    sessions,
+    agentSessions,
     documents,
     chunks,
     messages,
@@ -167,26 +175,26 @@ export const relations = defineRelations(
       outputs: r.many.outputs(),
     },
     documents: {
-      session: r.one.sessions({ from: r.documents.sessionId, to: r.sessions.id }),
+      session: r.one.agentSessions({ from: r.documents.sessionId, to: r.agentSessions.id }),
       chunks: r.many.chunks(),
     },
     chunks: {
       document: r.one.documents({ from: r.chunks.documentId, to: r.documents.id }),
-      session: r.one.sessions({ from: r.chunks.sessionId, to: r.sessions.id }),
+      session: r.one.agentSessions({ from: r.chunks.sessionId, to: r.agentSessions.id }),
     },
     messages: {
-      session: r.one.sessions({ from: r.messages.sessionId, to: r.sessions.id }),
+      session: r.one.agentSessions({ from: r.messages.sessionId, to: r.agentSessions.id }),
     },
     questions: {
-      session: r.one.sessions({ from: r.questions.sessionId, to: r.sessions.id }),
+      session: r.one.agentSessions({ from: r.questions.sessionId, to: r.agentSessions.id }),
       answers: r.many.answers(),
     },
     answers: {
-      session: r.one.sessions({ from: r.answers.sessionId, to: r.sessions.id }),
+      session: r.one.agentSessions({ from: r.answers.sessionId, to: r.agentSessions.id }),
       question: r.one.questions({ from: r.answers.questionId, to: r.questions.id }),
     },
     outputs: {
-      session: r.one.sessions({ from: r.outputs.sessionId, to: r.sessions.id }),
+      session: r.one.agentSessions({ from: r.outputs.sessionId, to: r.agentSessions.id }),
     },
   }),
 );

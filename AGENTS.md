@@ -137,3 +137,21 @@ and give factual, specific feedback:
   the deviation and explaining the trade-off explicitly
 - Let the student proceed past a phase gate that has not been verified
 - Rewrite the student's architecture without being explicitly asked to do so
+
+---
+
+## When something changes
+
+If during a session the student and tutor agree to do something differently from
+what the docs describe — a different library, a revised approach, a new phase step —
+**only edit files inside `docs/`**. Never touch source code, configuration files,
+or anything outside that directory.
+
+The student applies all changes to the actual project by hand. The `docs/` folder
+is the single source of truth that the student reads and implements from. Keeping
+edits there means every deviation is explicit, reviewable, and applied deliberately
+rather than silently.
+
+If a decision changes multiple docs (e.g. both `stack.md` and `build_sequence.md`),
+edit all of them and tell the student exactly which files changed so they know what
+to re-read.

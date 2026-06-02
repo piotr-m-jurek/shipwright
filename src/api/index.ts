@@ -3,6 +3,7 @@ import { Hono } from "hono";
 const api = new Hono();
 
 api.post("/sessions", (c) => {
+  // INFO: Document upload
   return c.text("Created Session");
 });
 

@@ -39,7 +39,7 @@ returns a standard `Response` that Hono forwards directly; `useChat` on the fron
 already knows how to consume it. No custom SSE plumbing needed.
 
 **Route map:**
-- `POST /api/sessions` — create session, accept file upload
+- `POST /api/sessions` — create session, accept file upload (multipart)
 - `GET  /api/sessions/:id` — get session status + questions
 - `POST /api/sessions/:id/stream` — trigger analysis, stream progress + questions
 - `POST /api/sessions/:id/answers` — submit clarifying answers
@@ -227,7 +227,7 @@ session/output history.
 
 ---
 
-### 8. 🗃️ File Storage — StorageAdapter interface · @aws-sdk/client-s3 · garage (local) → Supabase Storage (prod)
+### 8. 🗃️ File Storage — StorageAdapter interface · @aws-sdk/client-s3 · rustfs (local) → Supabase Storage (prod)
 
 **Why:** File storage is a swappable component — wrap it behind a `StorageAdapter`
 interface (`upload()`, `download()`, `delete()`) so implementations can be swapped
@@ -238,14 +238,14 @@ without touching call sites. This applies to other independent components too
 `@aws-sdk/client-s3` works against Supabase Storage, AWS S3, and any S3-compatible
 local server with the same client code — no switching cost between environments.
 
-**Local dev:** `garage` or `rustfs` as the S3-compatible local server.
+**Local dev:** `rustfs` as the S3-compatible local server.
 Both are lightweight, Docker-friendly, and actively maintained. MinIO is explicitly
 outdated — avoid it.
 
 **Production:** Supabase Storage — S3-compatible, integrates with the existing
 Postgres layer, TypeScript SDK, no new infrastructure vendor.
 
-**Rejected:** Vercel Blob — vendor lock-in. MinIO — outdated, superseded by garage
+**Rejected:** Vercel Blob — vendor lock-in. MinIO — outdated, superseded by rustfs
 and rustfs. AWS S3 directly in prod without the adapter — locks call sites to one
 provider.
 
@@ -293,7 +293,7 @@ Braintrust — smaller community. Helicone — proxy-based, weak eval story.
 | Document Processing | unpdf + mammoth (extractRawText) + Node.js fs |
 | Vector DB / Retrieval | pgvector (Postgres) + OpenAI text-embedding-3-small |
 | Database | PostgreSQL + Drizzle ORM + postgres.js |
-| File Storage | StorageAdapter · @aws-sdk/client-s3 · garage → Supabase Storage |
+| File Storage | StorageAdapter · @aws-sdk/client-s3 · rustfs → Supabase Storage |
 | Observability / Evals | Langfuse (full stack: Postgres + ClickHouse + Redis + S3) |
 
 ---

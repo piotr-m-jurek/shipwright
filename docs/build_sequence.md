@@ -36,12 +36,12 @@ src/
   shared/     — types shared between api and web
 ```
 
-- Docker Compose: Postgres + pgvector + garage (S3-compatible local storage)
+- Docker Compose: Postgres + pgvector + rustfs (S3-compatible local storage)
 - Langfuse: use Langfuse Cloud free tier during development; full self-hosted
   stack (Postgres + ClickHouse + Redis + S3) when needed — defer this complexity
 - Drizzle schema — all tables including `vector(1536)` column on `chunks`
 - Hono skeleton with route stubs + Hono RPC types exported from `src/api/`
-- `StorageAdapter` interface defined in `src/storage/` with `garage` implementation
+- `StorageAdapter` interface defined in `src/storage/` with `rustfs` implementation
 - Environment variable setup (`.env.example` committed, `.env` gitignored)
 
 **End state:** nothing runs, but the project structure, data contract, and
@@ -49,21 +49,104 @@ type boundaries are established and won't need to change.
 
 ---
 
-## Phase 1 — Document Ingestion (~2 days)
+## Phase 1 — Document Ingestion (~3 days)
 
-- File upload endpoint on Hono (`POST /api/sessions`, multipart)
-- Parsers: `unpdf` (PDF), `mammoth` via `extractRawText()` (DOCX — never use
-  `convertToHtml()`, HTML tags pollute embeddings), `fs/promises` (plain text)
+### 1a — Auth (implement first, everything else is user-scoped)
+
+**Schema additions to Drizzle before writing any auth code:**
+- `users` — id, githubId, email, name, avatarUrl, role (member | admin | superadmin), createdAt
+- `sessions` — managed by Better Auth, stored in Postgres via Drizzle adapter
+
+**Env vars to add to `.env.example`:**
+- `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BETTER_AUTH_SECRET`
+
+- **Better Auth** with GitHub OAuth provider, Hono adapter, Drizzle adapter
+  - Sessions stored in Postgres via the Drizzle adapter — no separate session store
+  - GitHub OAuth flow handled by Better Auth automatically at `/api/auth/*`
+  - Session cookie: `httpOnly`, `secure`, `sameSite=lax`
+- Protect all `/api/*` routes except `/api/auth/*` with session middleware
+- **RBAC**: `role` column on `users` table (`member | admin | superadmin`)
+  - Role guard middleware for admin-only and superadmin-only routes
+  - V1: simple role check. V2 upgrade path: composable policy system
+    (see: https://lucas-barake.github.io/building-a-composable-policy-system/)
+
+**Zod additions for auth in `src/shared/schemas/auth.ts`:**
+```ts
+const UserRoleSchema = z.enum(['member', 'admin', 'superadmin'])
+
+const SessionUserSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  name: z.string(),
+  role: UserRoleSchema,
+})
+
+export type SessionUser = z.infer<typeof SessionUserSchema>
+```
+Parse the session user through `SessionUserSchema` on every authenticated request.
+A malformed session never reaches route handlers.
+
+---
+
+### 1b — File upload via presigned URLs
+
+**Flow:**
+```
+FE → POST /api/sessions/upload-url  → BE returns { sessionId, presignedUrl, s3Key }
+FE → PUT presignedUrl (direct to S3/rustfs, no BE in the middle)
+FE → POST /api/sessions/:id/confirm-upload { s3Key }
+BE → HeadObject(s3Key) — verify file actually exists before trusting FE
+BE → returns 202 Accepted, XState machine starts async
+```
+
+- `POST /api/sessions/upload-url` — authenticated, validates file metadata
+  (name, size, MIME type), generates presigned PUT URL (15 min TTL), creates
+  session record in `pending` state
+- FE uploads directly to S3/rustfs — no file bytes touch the Hono server
+- `POST /api/sessions/:id/confirm-upload` — BE calls `HeadObject` to verify
+  the object exists before firing `UPLOAD_COMPLETE` to the XState machine.
+  Returns `202 Accepted` immediately — processing runs async.
+- FE polls `GET /api/sessions/:id` for status updates
+- Accepted formats: PDF, DOCX, plain text/Markdown, PNG/JPEG/WebP
+- Reject uploads over 100MB at presigned URL generation time (no wasted upload)
+
+**Why presigned URLs over multipart to Hono:**
+File bytes never touch the server. No memory pressure, no timeout risk on large
+files, no streaming plumbing. S3 handles the upload; Hono handles the logic.
+
+**File type verification:**
+- At URL generation time: validate MIME type from client metadata
+- After `HeadObject` confirmation: `file-type` check on a small byte range from S3
+  before handing to the parser — reject if MIME type does not match actual content
+
+---
+
+### 1c — Document parsing + image handling
+
+- **PDF** — `unpdf`
+- **DOCX** — `mammoth` via `extractRawText()` only, never `convertToHtml()`
+- **Plain text / Markdown** — `fs/promises`
+- **Images (PNG, JPEG, WebP)** — Claude Vision via Vercel AI SDK `generateText()`
+  with a purpose-built prompt: *"Describe the content of this image in detail.
+  Focus on text, diagrams, data, and any information relevant to a software
+  project specification."*
+  The resulting text description is treated as a regular document and enters
+  the same chunking + embedding pipeline. `documentType` is set to `'image'`.
+  Use case: architecture diagrams, whiteboard photos, wireframe screenshots.
+
+---
+
+### 1d — Chunking, embedding, storage
+
 - Custom recursive character chunker with overlap
 - Metadata tagging per chunk: `sourceDocument`, `documentType`, `chunkIndex`, `sessionId`
 - Embed chunks via `OpenAI text-embedding-3-small` through Vercel AI SDK `embed()`
 - Store chunks in pgvector via Drizzle `vector()` column
-- Store raw files via `StorageAdapter` (garage locally, Supabase Storage in prod)
 - Store `tokenCount` on `documents` table (needed for Phase 2 threshold guard)
 
 **Zod schemas to define in `src/shared/schemas/documents.ts`:**
 ```ts
-const DocumentTypeSchema = z.enum(['transcript', 'prd_draft', 'rfp', 'notes', 'other'])
+const DocumentTypeSchema = z.enum(['transcript', 'prd_draft', 'rfp', 'notes', 'image', 'other'])
 
 const UploadRequestSchema = z.object({
   documentType: DocumentTypeSchema,
@@ -80,7 +163,9 @@ Validate the upload endpoint body with `@hono/zod-validator` using `UploadReques
 Parse chunk metadata through `ChunkMetaSchema` before insertion — catches missing
 fields before they silently enter the vector store.
 
-**End state:** upload a PDF, query semantically related chunks back out.
+**End state:** authenticated users can upload PDF, DOCX, text, or image files.
+Chunks are queryable. Image files produce text-description chunks via Claude Vision.
+Unauthenticated requests to `/api/*` are rejected.
 
 ---
 
@@ -282,9 +367,15 @@ condition logic — it’s the hardest design problem in the codebase.**
 **Zod + `@hono/zod-validator` on every route that accepts a body:**
 ```ts
 // src/shared/schemas/api.ts
-const CreateSessionSchema = z.object({
-  // multipart — validated after parsing
+const UploadUrlRequestSchema = z.object({
+  filename: z.string(),
+  mimeType: z.string(),
+  sizeBytes: z.number().int().positive().max(100 * 1024 * 1024), // 100MB hard limit
   documentType: DocumentTypeSchema,
+})
+
+const ConfirmUploadSchema = z.object({
+  s3Key: z.string().min(1),
 })
 
 const SessionIdParamSchema = z.object({
@@ -295,8 +386,14 @@ const SessionIdParamSchema = z.object({
 ```
 ```ts
 // src/api/routes/sessions.ts
-app.post('/api/sessions',
-  zValidator('form', CreateSessionSchema),
+app.post('/api/sessions/upload-url',
+  zValidator('json', UploadUrlRequestSchema),
+  async (c) => { ... }
+)
+
+app.post('/api/sessions/:id/confirm-upload',
+  zValidator('param', SessionIdParamSchema),
+  zValidator('json', ConfirmUploadSchema),
   async (c) => { ... }
 )
 
@@ -317,7 +414,8 @@ both just clients on top of this.
 ## Phase 7 — CLI (~1 day)
 
 - `clack` prompts for the three-phase wizard:
-  - Phase 1: file path input(s) → `POST /api/sessions`
+  - Phase 1: file path input(s) → `POST /api/sessions/upload-url` → upload
+    directly to S3 → `POST /api/sessions/:id/confirm-upload` → poll status
   - Phase 2: spinner during analysis → display questions → text prompts for answers
   - Phase 3: spinner → stream output to terminal
 - First full end-to-end run of the complete pipeline
@@ -393,3 +491,4 @@ response is a failed eval, not a passing one with a warning.
 - Whether one clarification round is enough or two are needed (tune in Phase 4)
 - Chunking strategy: chunk size and overlap (tune in Phase 1 against retrieval quality)
 - Whether `xstateSnapshot` serialisation covers all edge cases or needs custom reducers
+- Presigned URLs + background jobs for large file uploads (to be decided — see notes)
