@@ -51,44 +51,10 @@ type boundaries are established and won't need to change.
 
 ## Phase 1 — Document Ingestion (~3 days)
 
-### 1a — Auth (implement first, everything else is user-scoped)
+> Auth deferred — Better Auth + drizzle-orm v1 beta compatibility risk.
+> Will be added when drizzle reaches stable 1.0. No auth layer in V1.
 
-**Schema additions to Drizzle before writing any auth code:**
-- `users` — id, githubId, email, name, avatarUrl, role (member | admin | superadmin), createdAt
-- `sessions` — managed by Better Auth, stored in Postgres via Drizzle adapter
-
-**Env vars to add to `.env.example`:**
-- `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `BETTER_AUTH_SECRET`
-
-- **Better Auth** with GitHub OAuth provider, Hono adapter, Drizzle adapter
-  - Sessions stored in Postgres via the Drizzle adapter — no separate session store
-  - GitHub OAuth flow handled by Better Auth automatically at `/api/auth/*`
-  - Session cookie: `httpOnly`, `secure`, `sameSite=lax`
-- Protect all `/api/*` routes except `/api/auth/*` with session middleware
-- **RBAC**: `role` column on `users` table (`member | admin | superadmin`)
-  - Role guard middleware for admin-only and superadmin-only routes
-  - V1: simple role check. V2 upgrade path: composable policy system
-    (see: https://lucas-barake.github.io/building-a-composable-policy-system/)
-
-**Zod additions for auth in `src/shared/schemas/auth.ts`:**
-```ts
-const UserRoleSchema = z.enum(['member', 'admin', 'superadmin'])
-
-const SessionUserSchema = z.object({
-  id: z.string().uuid(),
-  email: z.string().email(),
-  name: z.string(),
-  role: UserRoleSchema,
-})
-
-export type SessionUser = z.infer<typeof SessionUserSchema>
-```
-Parse the session user through `SessionUserSchema` on every authenticated request.
-A malformed session never reaches route handlers.
-
----
-
-### 1b — File upload via presigned URLs
+### 1a — File upload via presigned URLs
 
 **Flow:**
 ```
@@ -121,28 +87,23 @@ files, no streaming plumbing. S3 handles the upload; Hono handles the logic.
 
 ---
 
-### 1c — Document parsing + image handling
+### 1b — Document parsing
 
 - **PDF** — `unpdf`
 - **DOCX** — `mammoth` via `extractRawText()` only, never `convertToHtml()`
 - **Plain text / Markdown** — `fs/promises`
-- **Images (PNG, JPEG, WebP)** — Claude Vision via Vercel AI SDK `generateText()`
-  with a purpose-built prompt: *"Describe the content of this image in detail.
-  Focus on text, diagrams, data, and any information relevant to a software
-  project specification."*
-  The resulting text description is treated as a regular document and enters
-  the same chunking + embedding pipeline. `documentType` is set to `'image'`.
-  Use case: architecture diagrams, whiteboard photos, wireframe screenshots.
+Image support (PNG, JPEG, WebP via Claude Vision) — deferred to a later iteration.
 
 ---
 
-### 1d — Chunking, embedding, storage
+### 1c — Chunking, embedding, storage
 
-- Custom recursive character chunker with overlap
-- Metadata tagging per chunk: `sourceDocument`, `documentType`, `chunkIndex`, `sessionId`
-- Embed chunks via `OpenAI text-embedding-3-small` through Vercel AI SDK `embed()`
+- Custom recursive character chunker with overlap and minimum chunk size guard
+- Metadata tagging per chunk: `documentType`, `chunkIndex`, `sessionId`, `documentId`
+- Embed chunks via `OpenAI text-embedding-3-small` through Vercel AI SDK `embedMany()`
 - Store chunks in pgvector via Drizzle `vector()` column
 - Store `tokenCount` on `documents` table (needed for Phase 2 threshold guard)
+- **`p-queue` with `concurrency: 2`** wraps the full parse → chunk → embed → store pipeline per document. Prevents memory exhaustion under concurrent uploads. Module-level singleton in `src/agent/process-uploaded-documents.ts`.
 
 **Zod schemas to define in `src/shared/schemas/documents.ts`:**
 ```ts
@@ -163,9 +124,8 @@ Validate the upload endpoint body with `@hono/zod-validator` using `UploadReques
 Parse chunk metadata through `ChunkMetaSchema` before insertion — catches missing
 fields before they silently enter the vector store.
 
-**End state:** authenticated users can upload PDF, DOCX, text, or image files.
-Chunks are queryable. Image files produce text-description chunks via Claude Vision.
-Unauthenticated requests to `/api/*` are rejected.
+**End state:** upload a PDF, DOCX, plain text, or Markdown file via presigned URL.
+Chunks are queryable via pgvector semantic search.
 
 ---
 
@@ -489,6 +449,20 @@ response is a failed eval, not a passing one with a warning.
 
 - Exact token threshold for context vs retrieval mode (tune empirically in Phase 3)
 - Whether one clarification round is enough or two are needed (tune in Phase 4)
-- Chunking strategy: chunk size and overlap (tune in Phase 1 against retrieval quality)
+- Chunking strategy: chunk size, overlap, and minimum chunk size (tune in Phase 1 against retrieval quality)
 - Whether `xstateSnapshot` serialisation covers all edge cases or needs custom reducers
-- Presigned URLs + background jobs for large file uploads (to be decided — see notes)
+- Minimum chunk size threshold — short paragraphs produce low-quality embeddings; merge or discard chunks below a minimum length
+
+---
+
+## Fine-tuning phase (after Phase 8)
+
+These items were raised in mentor review and deferred deliberately. Revisit
+after the core pipeline is working and evals pass.
+
+- **Streaming parse + chunk** — replace buffer-based parsing with stream-based parsing. Pipe the S3 download stream directly into the parser. Reduces memory pressure for large files and concurrent users. Requires verifying `unpdf` and `mammoth` stream support.
+- **Persistent processing queue** — `p-queue` (in-process, concurrency: 2) is already in place for V1. Upgrade to `pg-boss` (uses existing Postgres) or `BullMQ` (needs Redis) when job durability across server restarts is needed.
+- **`embedMany` batching** — `embedMany` has a request size limit. For documents producing many chunks, implement batching before calling `embedMany`.
+- **Document cleanup job** — background job to delete orphaned documents (no linked session), their chunks, and their S3 objects. Prevents storage accumulation from incomplete or abandoned sessions.
+- **Chunk metadata enrichment** — extend chunker return type to include per-chunk metadata: PDF → page number, Markdown → heading path, all → character offset. Required for precise source attribution in LLM prompts.
+- **SSE for status updates** — replace `GET /api/sessions/:id` polling with Server-Sent Events via `POST /api/sessions/:id/stream` when building the React SPA.

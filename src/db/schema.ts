@@ -22,6 +22,7 @@ export const sessionStatusEnum = pgEnum("session_status", [
   "generating",
   "complete",
   "error",
+  "partial_error",
 ]);
 
 export const inputModeEnum = pgEnum("input_mode", ["context", "retrieval"]);
@@ -36,7 +37,7 @@ export const agentSessions = pgTable("agent_sessions", {
 
   status: sessionStatusEnum("status").notNull().default("idle"),
   inputMode: inputModeEnum("input_mode").notNull().default("context"),
-  xstateSnapshot: jsonb("xstate_snapshot"),
+  xstateSnapshot: jsonb("xstate_snapshot"), //.$type<{ state: string }>(),
 });
 
 export const sessionInsertSchema = createInsertSchema(agentSessions);
@@ -48,6 +49,14 @@ export const documentTypeEnum = pgEnum("document_type", [
   "prd_draft",
   "rfp",
   "notes",
+]);
+
+export const documentStatusEnum = pgEnum("document_status", [
+  "pending",
+  "uploaded",
+  "processing",
+  "ready",
+  "error",
 ]);
 
 export const documents = pgTable("documents", {
@@ -65,6 +74,7 @@ export const documents = pgTable("documents", {
   storagePath: text("storage_path"),
   rawText: text("raw_text"),
   tokenCount: integer("token_count"),
+  status: documentStatusEnum("document_status").notNull().default("pending"),
   // TODO: mimeType
   // TODO: size
 });
@@ -76,15 +86,20 @@ export const chunks = pgTable("chunks", {
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date()),
-  documentId: uuid("document_id")
-    .references(() => documents.id, { onDelete: "cascade" })
-    .notNull(),
   sessionId: uuid("session_id")
     .references(() => agentSessions.id, { onDelete: "cascade" })
     .notNull(),
-  content: text("content").notNull(),
+  documentId: uuid("document_id")
+    .references(() => documents.id, { onDelete: "cascade" })
+    .notNull(),
   chunkIndex: integer("chunk_index").notNull(),
+  content: text("content").notNull(),
   embedding: vector("embedding", { dimensions: 1536 }).notNull(),
+  // TODO: odnośnik do miejsca w dokumencie
+  // Chapter2--H1/H2/H4.P427 <> json
+  // or page number: number | null,
+  //
+
   documentType: documentTypeEnum("document_type").notNull(),
 });
 
@@ -166,7 +181,7 @@ export const relations = defineRelations(
     outputs,
   },
   (r) => ({
-    sessions: {
+    agentSessions: {
       documents: r.many.documents(),
       chunks: r.many.chunks(),
       messages: r.many.messages(),

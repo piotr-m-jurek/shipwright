@@ -16,14 +16,13 @@ it "mostly works".
 
 ## Phase 0 — Scaffold
 
-- [ ] `npm run dev` starts the Hono server on port 3000 without errors
-- [ ] `npm run dev:web` starts the Vite dev server on port 5173 without errors
-- [ ] `drizzle-kit push` runs without errors — all tables created in Postgres
-- [ ] `SELECT * FROM sessions LIMIT 1` returns an empty result (not an error)
-- [ ] pgvector extension is enabled: `SELECT * FROM pg_extension WHERE extname = 'vector'` returns a row
-- [ ] rustfs is reachable: a test upload via `@aws-sdk/client-s3` succeeds
-- [ ] `.env.example` lists every required environment variable with a description
-- [ ] `.env` is gitignored
+- [x] `pnpm dev` starts the Vite + Hono server on port 5173 without errors
+- [x] `drizzle-kit push` runs without errors — all tables created in Postgres
+- [x] `SELECT * FROM agent_sessions LIMIT 1` returns an empty result (not an error)
+- [x] pgvector extension is enabled: `SELECT * FROM pg_extension WHERE extname = 'vector'` returns a row
+- [x] rustfs is reachable: a test upload via `@aws-sdk/client-s3` succeeds
+- [x] `.env.example` lists every required environment variable with a description
+- [x] `.env` is gitignored
 
 **Gate:** Do not start Phase 1 until the DB, vector extension, and storage are all confirmed reachable.
 
@@ -31,18 +30,27 @@ it "mostly works".
 
 ## Phase 1 — Document Ingestion
 
-- [ ] `POST /api/sessions` with a multipart PDF returns `200` with a `sessionId`
-- [ ] `POST /api/sessions` with a DOCX file returns `200` with a `sessionId`
-- [ ] `POST /api/sessions` with a `.txt` file returns `200` with a `sessionId`
-- [ ] After upload, `SELECT count(*) FROM chunks WHERE session_id = '<id>'` returns > 0
-- [ ] Every row in `chunks` has a non-null `embedding` column
-- [ ] Every row in `chunks` has non-null `source_document`, `document_type`, `chunk_index`, `session_id`
+### 1a — Presigned upload
+
+- [ ] `POST /api/sessions/upload-url` with valid file metadata returns `{ sessionId, presignedUrl, s3Key }`
+- [ ] The returned `presignedUrl` accepts a direct `PUT` request from the client — no Hono server in the path
+- [ ] After a successful S3 PUT, `POST /api/sessions/:id/confirm-upload` with the `s3Key` returns `202`
+- [ ] `POST /api/sessions/:id/confirm-upload` with a `s3Key` that does not exist in S3 returns `400`
+- [ ] `POST /api/sessions/upload-url` with `sizeBytes` > 100MB returns `400` before generating a URL
+
+### 1b — Parsing + chunking + embedding
+
+- [ ] After confirming a PDF upload, `SELECT count(*) FROM chunks WHERE session_id = '<id>'` returns > 0
+- [ ] After confirming a DOCX upload, chunks are present with non-empty `content`
+- [ ] After confirming a plain text or Markdown upload, chunks are present
+- [ ] Every chunk row has a non-null `embedding` column
+- [ ] Every chunk row has non-null `document_type`, `chunk_index`, `session_id`
 - [ ] `SELECT token_count FROM documents WHERE session_id = '<id>'` returns a positive integer
 - [ ] The uploaded file is retrievable via `StorageAdapter.download()` — not via `fs.readFile` directly
 - [ ] A semantic query against pgvector for a term present in the uploaded document returns that document's chunks in the top results
 - [ ] A semantic query for a term NOT in the document does not return that document's chunks at the top
 
-**Gate:** Do not start Phase 2 until uploads, chunking, embedding, and retrieval all pass.
+**Gate:** Do not start Phase 2 until presigned upload, chunking, embedding, and retrieval all pass.
 
 ---
 
@@ -117,7 +125,8 @@ it "mostly works".
 
 ## Phase 6 — Hono API + Streaming
 
-- [ ] `POST /api/sessions` returns `{ sessionId: string }`
+- [ ] `POST /api/sessions/upload-url` with valid metadata returns `{ sessionId, presignedUrl, s3Key }`
+- [ ] `POST /api/sessions/:id/confirm-upload` with a valid `s3Key` returns `202`
 - [ ] `GET /api/sessions/:id` returns current status and questions when in `awaiting_answers`
 - [ ] `POST /api/sessions/:id/stream` triggers analysis and streams progress — response content-type is `text/event-stream`
 - [ ] `POST /api/sessions/:id/answers` returns `200` and the machine transitions
@@ -162,5 +171,4 @@ it "mostly works".
 - [ ] No file in `src/agent/` imports from `@anthropic-ai/sdk` directly
 - [ ] No file calls `mammoth.convertToHtml()` — only `mammoth.extractRawText()`
 - [ ] No file writes to the filesystem with `fs.writeFile` or `fs.writeFileSync` directly — all file I/O goes through `StorageAdapter`
-- [ ] No LLM call uses `generateText` where `generateObject` is appropriate (structured output passes)
 - [ ] No LLM call uses `generateText` where `generateObject` is appropriate (structured output passes)

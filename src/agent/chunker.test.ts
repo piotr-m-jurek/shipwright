@@ -87,6 +87,42 @@ describe("chunkDocument", () => {
     });
   });
 
+  describe("small parts merging — window filling", () => {
+    test("small parts are merged to fill the window, not emitted individually (Bug A)", () => {
+      const text = Array(6).fill("a".repeat(20)).join("\n\n");
+      const result = chunkDocument(text, "plain-text", { chunkSize: 100, overlap: 10 });
+      expect(result.length).toBe(2);
+      result.forEach((chunk) => expect(chunk.length).toBeLessThanOrEqual(100));
+      expect(result.join("\n\n")).toBe(text);
+    });
+
+    test("merged chunk content exactly equals the joined parts (Bug A — content check)", () => {
+      const parts = ["a".repeat(30), "b".repeat(30), "c".repeat(30), "d".repeat(30)];
+      const text = parts.join("\n\n");
+      const result = chunkDocument(text, "plain-text", { chunkSize: 80, overlap: 10 });
+      expect(result.length).toBe(2);
+      expect(result[0]).toBe(parts[0] + "\n\n" + parts[1]);
+      expect(result[1]).toBe(parts[2] + "\n\n" + parts[3]);
+    });
+
+    test("no chunk is duplicated — double-push regression (Bug B)", () => {
+      const para1 = "a".repeat(120);
+      const para2 = "b".repeat(120);
+      const text = `${para1}\n\n${para2}`;
+      const result = chunkDocument(text, "plain-text", { chunkSize: 100, overlap: 10 });
+      const unique = new Set(result);
+      expect(unique.size).toBe(result.length);
+    });
+
+    test("chunk count from recursive branch is not doubled (Bug B — count check)", () => {
+      const para1 = "a".repeat(120);
+      const para2 = "b".repeat(120);
+      const text = `${para1}\n\n${para2}`;
+      const result = chunkDocument(text, "plain-text", { chunkSize: 100, overlap: 10 });
+      expect(result.length).toBe(4);
+    });
+  });
+
   describe("file type dispatch", () => {
     test("pdf uses text config", () => {
       const text = "a".repeat(200);

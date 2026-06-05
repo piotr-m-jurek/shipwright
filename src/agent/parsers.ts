@@ -1,22 +1,23 @@
 import { fileTypeFromBuffer } from "file-type";
 import { extractText, getDocumentProxy } from "unpdf";
 import { extractRawText } from "mammoth";
+import { UnknownFileExtension, UnknownFileTypeError } from "../shared/errors/index.js";
+import path from "node:path";
 
 export type ParsedFileType = "markdown" | "pdf" | "plain-text" | "docx";
+
 export type ParseResult = {
   type: ParsedFileType;
   text: string;
   filename: string;
 };
 
-export class UnknownFileTypeError extends Error {}
-export class UnknownFileExtension extends Error {}
-
 /**
  * @throws UnknownFileTypeError | UnknownFileExtension
  */
 export async function parseDocument(buffer: Buffer, filename: string): Promise<ParseResult> {
   const filenameExt = getExtension(filename);
+  const fileType = await fileTypeFromBuffer(buffer);
 
   if (filenameExt === ".md") {
     return { type: "markdown", text: buffer.toString("utf-8"), filename };
@@ -26,7 +27,6 @@ export async function parseDocument(buffer: Buffer, filename: string): Promise<P
     return { type: "plain-text", text: buffer.toString("utf-8"), filename };
   }
 
-  const fileType = await fileTypeFromBuffer(buffer);
   if (!fileType) {
     throw new UnknownFileTypeError("Could not read file type from buffer");
   }
@@ -34,7 +34,7 @@ export async function parseDocument(buffer: Buffer, filename: string): Promise<P
   if (filenameExt === ".pdf" && fileType.ext === "pdf") {
     const raw = await getDocumentProxy(buffer);
     const { text } = await extractText(raw);
-    return { type: "pdf", text: text.join("\n"), filename };
+    return { type: "pdf", text: text.join("\n\n"), filename };
   }
 
   if ((filenameExt === ".doc" || filenameExt === ".docx") && fileType.ext === "docx") {
@@ -48,14 +48,17 @@ export async function parseDocument(buffer: Buffer, filename: string): Promise<P
   throw new UnknownFileTypeError("Couldn't determine filetype in parseDocument");
 }
 
-/**
+/*
  * @throws UnknownFileExtension
  */
 function getExtension(filename: string): string {
-  const extensionMatch = filename.match(/\.(\w+)$/);
-  if (!extensionMatch || !extensionMatch.length) {
-    throw new UnknownFileExtension();
+  try {
+    const result = path.extname(filename);
+    if (result.length === 0) {
+      throw new UnknownFileExtension(`Could not match extension of file: ${filename}`);
+    }
+    return result;
+  } catch (error) {
+    throw new UnknownFileExtension(`The filename '${filename}' is not string`, { cause: error });
   }
-
-  return extensionMatch[0];
 }

@@ -1,4 +1,3 @@
-import { getEncoding } from "js-tiktoken";
 import { ParsedFileType } from "./parsers.js";
 
 type ChunkConfig = {
@@ -45,7 +44,7 @@ function splitText(
     return acc;
   }
 
-  if (text.length < config.chunkSize) {
+  if (text.length <= config.chunkSize) {
     acc.push(text);
     return acc;
   }
@@ -56,20 +55,37 @@ function splitText(
     return splitText(text.slice(config.chunkSize - config.overlap), config, [], acc);
   }
 
-  const splitted = text.split(separatorsRemaining[0]);
-  splitted.forEach((part) => {
-    if (part.length > config.chunkSize) {
-      const parts = splitText(part, config, separatorsRemaining.slice(1), acc);
-      acc.push(...parts);
+  const parts = text.split(separatorsRemaining[0]);
+  let buffer = "";
+
+  for (const part of parts) {
+    if (!part.length) continue;
+
+    const candidate = buffer.length ? buffer + separatorsRemaining[0] + part : part;
+
+    if (candidate.length <= config.chunkSize) {
+      // Fits — keep accumulating
+      buffer = candidate;
+    } else if (buffer.length) {
+      // Flush the current buffer as a chunk
+      acc.push(buffer);
+      // Start new buffer; if the part itself is too big, recurse
+      if (part.length > config.chunkSize) {
+        splitText(part, config, separatorsRemaining.slice(1), acc);
+        buffer = "";
+      } else {
+        buffer = part;
+      }
     } else {
-      acc.push(part);
+      // buffer is empty but part alone is already too big — recurse
+      splitText(part, config, separatorsRemaining.slice(1), acc);
     }
-  });
+  }
+
+  // Flush remaining buffer
+  if (buffer.length) {
+    acc.push(buffer);
+  }
 
   return acc;
-}
-
-export function estimateTokenCount(text: string): number {
-  const encoding = getEncoding("cl100k_base");
-  return encoding.encode(text).length;
 }

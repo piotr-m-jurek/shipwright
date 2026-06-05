@@ -42,24 +42,68 @@ All 10 rules checked — no violations at Phase 0.
 
 ---
 
-## Phase 1 — Document Ingestion (NOT STARTED)
+## Phase 1 — Document Ingestion (IN PROGRESS)
 
-Next steps per `docs/build_sequence.md`:
-- File upload endpoint on Hono (`POST /api/sessions`, multipart)
-- Parsers: `unpdf` (PDF), `mammoth.extractRawText()` (DOCX), `fs/promises` (plain text)
-- Custom recursive character chunker with overlap
-- Metadata tagging per chunk: `sourceDocument`, `documentType`, `chunkIndex`, `sessionId`
-- Embed chunks via `OpenAI text-embedding-3-small` through Vercel AI SDK `embed()`
-- Store chunks in pgvector via Drizzle `vector()` column
-- Store raw files via `StorageAdapter`
-- Store `tokenCount` on `documents` table
-- Zod schemas in `src/shared/schemas/documents.ts`: `DocumentTypeSchema`, `UploadRequestSchema`, `ChunkMetaSchema`
-- Validate upload endpoint body with `@hono/zod-validator`
+### Done
+- `src/agent/parsers.ts` — PDF (`unpdf`), DOCX (`mammoth.extractRawText()`), Markdown, plain text
+- `src/agent/chunker.ts` — recursive character splitter, overlap, config per file type, `estimateTokenCount` via `js-tiktoken`
+- `src/agent/chunker.test.ts` — 14 tests, all passing
+- `src/agent/embedder.ts` — `embedChunks` via Vercel AI SDK `embedMany` + OpenAI `text-embedding-3-small`
+- `src/shared/schemas/index.ts` — insert/select schemas derived from Drizzle via `drizzle-zod`, `ChunkMetaSchema`, `UploadRequestSchema`
+
+### Done (continued)
+- `src/db/queries.ts` — `createAgentSession`, `updateAgentSession`, `createDocument`, `updateDocumentTokenCount`, `createChunks`
+- `src/storage/index.ts` — `generatePresignedPutUrl` and `headObject` added to `S3Storage`
+- `POST /api/sessions/upload-url` — validates JSON body, creates session + document records, returns presigned URLs
+- `POST /api/sessions/:id/confirm-upload` — `headObject` verification, returns `202`
+
+### Still to build
+1. **Fix compile blockers** — remove `../../db/out/schema.js` import from `src/shared/schemas/index.ts`; remove duplicate `estimateTokenCount` from `chunker.ts`
+2. **Add `getDocumentById` to `src/db/queries.ts`**
+3. **Implement `src/agent/process-uploaded-documents.ts`** — sequential `for...of` processing with `p-queue` (concurrency: 2) for memory protection; on success: `updateAgentSession('processing')`; on error: `updateAgentSession('error')`
+4. **Hexagonal cleanup of `POST /api/sessions/upload-url`** — extract business logic to `src/agent/createUploadSession.ts`; route handler becomes thin adapter
+5. **Apply mentor notes** — `parsers.ts`: swap regex for `path.extname()`; `chunker.ts`: minimum chunk size guard
+6. **`drizzle-kit push`** if schema changed
+7. **Phase 1 gate verification**
+
+### Key decisions
+- **Better Auth withdrawn** — drizzle-orm v1 beta + Better Auth compatibility risk. Auth deferred until drizzle reaches stable 1.0.
+- **Presigned upload adopted** — files go directly from client to S3, not through Hono. Backend generates presigned URL, client PUTs directly, backend confirms and processes.
+- **No `sourceDocument` column on chunks** — derived via `documentId` JOIN to `documents.filename`. Simpler schema, join cost acceptable at this scale.
+- **`agentSessions`** — renamed from `sessions` to avoid collision with future Better Auth session table.
+- **Image support deferred** — not in original spec, added complexity without auth scope.
+- **Multiple files per session** — `POST /api/sessions/upload-url` accepts an array of file metadata objects.
+- **Hexagonal architecture for processing** — route handlers are thin adapters (validation + HTTP), business logic lives in use case functions (`src/agent/`). Route handler owns 400s, use case owns 500s and session state updates.
+- **`p-queue` for concurrency control** — in-process queue with `concurrency: 2` wrapping document processing in `process-uploaded-documents.ts`. Prevents memory exhaustion from concurrent parse + embed operations. Persistent queue (pg-boss/BullMQ) deferred to fine-tuning phase.
+- **Polling for status updates (V1)** — client polls `GET /api/sessions/:id` to track session status after `confirm-upload` returns `202`. Fire-and-forget processing updates `agentSessions.status` when done.
+
+### Future consideration
+- **Replace polling with SSE or WebSocket** — `GET /api/sessions/:id` polling works for V1 but adds unnecessary request overhead. When the React SPA is built (Phase 9), consider replacing with Server-Sent Events via `POST /api/sessions/:id/stream` (already stubbed) or a WebSocket connection. SSE is simpler and sufficient — full duplex (WebSocket) is not needed since updates only flow server → client.
 
 Gate: upload a PDF, query semantically related chunks back out.
 
-### Decisions during Phase 1
+---
 
-- **Better Auth withdrawn** — drizzle-orm v1 beta + Better Auth compatibility risk. Auth deferred until drizzle reaches stable 1.0. No `users` table, no auth layer, no presigned upload flow. Reverted to original simple multipart `POST /api/sessions` pattern.
-- `agentSessions` rename retained — good separation regardless of auth status.
-- Image support (PNG/JPEG/WebP) deferred — was tied to auth scope expansion, not in original spec.
+## Mentor Notes — 03.07.2026
+
+Items raised in mentor review. Categorised by urgency.
+
+### Apply before Phase 1 gate
+
+- **`agent/parsers.ts` — use `path.extname()`** instead of the regex to extract file extension. Also use `fileTypeFromStream` (not `fileTypeFromBuffer`) connected to a `downloadPartialObject` call — read only the first N bytes from S3 to verify MIME type matches content before full download. A `.txt` file can be a disguised binary.
+- **`chunker.ts` — minimum chunk size guard** — short paragraphs can produce very small chunks that degrade embedding quality. Add a minimum chunk size (e.g. 100 chars). Merge chunks below the minimum with the previous chunk rather than emitting them standalone.
+- **`chunker.ts` — return chunk metadata** — return `{ content: string, meta: ChunkMeta }[]` not just `string[]`. Metadata per file type: PDF → page number, Markdown → heading path, all → char offset. Needed for accurate source attribution in LLM prompts.
+- **`db/schema.ts` — type JSON columns with `$type()`** — Drizzle's `jsonb()` column builder supports `.$type<T>()` to give the column a proper TypeScript type instead of `unknown`. Apply to `xstateSnapshot` at minimum.
+- **`db/queries.ts` — Data Transfer Objects** — define explicit DTO types for DB inputs/outputs rather than using raw Drizzle inferred types directly in query functions. Keeps the DB layer decoupled from the rest of the application.
+
+### Apply before Phase 3 (agent passes)
+
+- **`content` and `embedding` are the same concept** — the `chunks` table stores both `content` (text) and `embedding` (vector of that text). This is correct and intentional, but worth making explicit in code comments so it's clear they're two representations of the same information.
+- **`ts-pattern`** — consider using `ts-pattern` for exhaustive pattern matching in the agent pipeline (file type dispatch, XState event handling). Makes unhandled cases a compile error.
+
+### Deferred — fine-tuning phase (after Phase 8)
+
+- **Streaming parsing and chunking** — current approach buffers entire files before parsing. For large files or concurrent users this risks memory exhaustion. Long-term: pipe S3 download stream directly into the parser, chunk on the stream. Requires checking `unpdf` and `mammoth` stream support. Alternatively: process queue with concurrency limit (1–3 files at a time).
+- **`embedChunks` batch limit** — `embedMany` has a default request size limit. For large documents with many chunks, implement batching with a configurable batch size before calling `embedMany`.
+- **Document cleanup background job** — schedule a job to delete orphaned documents (documents not connected to any existing session) and their chunks + S3 objects. Prevents storage accumulation from incomplete sessions.
+- **SSE / WebSocket for status updates** — current polling on `GET /api/sessions/:id` works for V1. Replace with SSE via `POST /api/sessions/:id/stream` when building the React SPA (Phase 9). Full duplex (WebSocket) not needed — updates only flow server → client.

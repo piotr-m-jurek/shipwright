@@ -206,6 +206,46 @@ adds unnecessary latency and DB load.
 
 ## Rule 10 — The Hono RPC client (hc) is the only HTTP client on the frontend
 
+---
+
+## Rule 11 — JSON columns in Drizzle schema must be typed with $type()
+
+Never leave a `jsonb()` column as `unknown`. Use `.$type<T>()` to give it an
+explicit TypeScript type.
+
+```ts
+// ✅ Allowed
+xstateSnapshot: jsonb('xstate_snapshot').$type<MachineContext | null>()
+
+// ❌ Blocked
+xstateSnapshot: jsonb('xstate_snapshot') // infers as unknown
+```
+
+**Why:** An untyped jsonb column means any code reading it must cast or
+validate manually at every call site. A typed column makes the contract
+explicit and catches shape mismatches at compile time.
+
+---
+
+## Rule 12 — File type must be verified from content, not just extension
+
+Never trust file extension alone. Use `fileTypeFromStream` on the first bytes
+of the file content to verify the MIME type matches the claimed extension
+before passing to any parser.
+
+```ts
+// ✅ Allowed — verify content matches claimed type
+const type = await fileTypeFromStream(partialStream)
+if (type?.mime !== expectedMime) throw new UnsupportedFileTypeError()
+
+// ❌ Blocked — trust extension alone
+if (filename.endsWith('.txt')) parseAsText(buffer)
+```
+
+**Why:** A binary file renamed to `.txt` will crash or produce garbage output
+in the parser. Content-based verification catches this before it reaches the
+pipeline.
+
 Frontend code must not construct `fetch` calls to the Hono API manually. All API
 calls go through the typed `hc<typeof app>` client.
 

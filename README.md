@@ -1,3 +1,7 @@
+@ai-sdk/openai      — OpenAI provider for embeddings
+@ai-sdk/anthropic   — Anthropic provider (needed later, wire now)
+@hono/zod-validator — request validation
+zod                 — schemas
 # Shipwright
 
 An AI agent that ingests a messy bundle of project inputs — briefs, PRD drafts, RFPs, meeting transcripts — analyses them for gaps and contradictions, asks a targeted set of clarifying questions, and produces two outputs: a human-readable **Project Brief** and a coding-agent-ready **Implementation PRD**.
@@ -32,10 +36,85 @@ pnpm dev
 ```
 
 ## TODO:
+- rustfs requires more configuration in docker compose
+  - https://docs.rustfs.com/installation/docker/#docker-compose-installation
+
+---
+
+03.07.2026
+
+- [ ] consider data transfer object for db instead of raw dogging db queries in /db/queries.ts
+- [ ] `agent/parsers.ts` - use `extname` from node to double check file extension (a .txt file can actually be a binary that's gonna run unexpectedly somewhere in the process)
+- [ ] chunker.ts - make sure we don't split into too small chunks. what if we have very short paragraphs?
+- [ ] chunker.ts - return not just list of chunks, but also metadata about those chunks, for pdf -> page number, maybe for markdown -> paragraph list, for all 
+  - imagine the situation that something is on one page in a very long chapter of very long paragraph, metadata needed
+- [ ] content and embedding are technically the same thing
+- [ ] try typing jsons in drizzle schema with $type() method on builder
+- [ ] file-type -> fileTypeFromStream - connect that with downloadPartialObject
+- [ ] parsing and chunking should be on a stream not on a buffer. because we might kill the server when parsing a big file, or we parse files from multiple users. we don't have the capacity. unless you have queues and you can process only 1-3 files at a time...
+  - can chunking go on streams? unpdf?
+  - embedChunks has to be queued or handles queueing itself?
+- [ ] deleting all the documents from everything
+  - background job/schedule to remove documents that are not connected to any existing session (and remove docs chunks and from bucket)
+  - consider that for one of the last phases of the project - fine tuning
+
+---
+
+- step 1 - parsing/indexing/chunkgin
+  - consider **pictures** or **text about pictures**
+    - [text] either AI is guessing what's on the pictures and the content lands in the RAG
+      - [description] of what's on the picture
+    - [picture] or we just put picture to the RAG
+      - you can semantically compare to other pictures
+      - if we have to compare pictures, then it makes sense, for knowledge retrieval - doesn't make much sense
+
+  - authentication
+    - SSO with github
+
+    - Backend sessions
+      - check out frameworks
+    - session cookies instead of JWT
+      - opening session
+      - revoking session
+
+  - authorization
+    - roles: member, admin, superadmin,
+    - RBAC? ABAC etc. (read about it)
+    - [policy system in effect](https://lucas-barake.github.io/building-a-composable-policy-system/)
+
+  - upload size
+    - 100MB what if multiple users do it? 
+      - ALBO stream FE -> BE -> S3 - jazda bez trzymanki i można zepsuć
+      - ALBO presigned URLs - client -> Bucket
+        - public, or session guarded
+
+        - **background jobs** for listening for upload (we want to start processing uploaded file)
+          - queues
+          - pubsub
+          - event bus in the simplest form
+
+
+  - verify uploading files
+    - [`file-type`](https://github.com/sindresorhus/file-type) is one of the libraries
+    - if the mime type and the content actually match
+
+  - chunking strategies
+    - pdf
+    - docx
+---
+
 - [ ] better error handling in `storage/index.ts`
+- [ ] embedMany in `src/agent/embedder.ts` has a default batch limit, after which it throws, 
+remember for later
+- [ ] `src/shared/schemas/api.ts` has some wild types. figure out the way and nomenclature of typing endpoints
+  - {Resource}{Action}{Role} 
+  - Resource - what the endpoint operates on
+  - Action - the operation (Create, Confirm, Upload)
+  - Role - Request for input, Response for output
 
 - [ ] Consider Effect-ts
   - error handling
   - type safe routes
   - mixing types between backend and frontend
   - use effect-atom on the frontend for fun
+
