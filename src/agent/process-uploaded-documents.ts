@@ -9,7 +9,7 @@ import {
 import { type StorageAdapter } from "../storage/index.js";
 import PQueue from "p-queue";
 import { parseDocument } from "./parsers.js";
-import { estimateTokenCount } from "./lib/estimate-token-count.js";
+import { estimateTokenCount } from "./estimate-token-count.js";
 import { chunkDocument } from "./chunker.js";
 import { embedChunks } from "./embedder.js";
 import _ from "lodash";

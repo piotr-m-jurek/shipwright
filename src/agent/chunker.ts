@@ -1,4 +1,5 @@
 import { ParsedFileType } from "./parsers.js";
+import { match, P } from "ts-pattern";
 
 type ChunkConfig = {
   chunkSize: number;
@@ -23,15 +24,11 @@ export function chunkDocument(
   fileType: ParsedFileType,
   config?: Partial<ChunkConfig>,
 ): string[] {
-  switch (fileType) {
-    case "markdown":
-      return splitText(text, { ...MARKDOWN_CONFIG, ...config }, MARKDOWN_CONFIG.separators, []);
-    case "plain-text":
-    case "pdf":
-    case "docx":
-    default:
-      return splitText(text, { ...TEXT_CONFIG, ...config }, TEXT_CONFIG.separators, []);
-  }
+  return match(fileType)
+    .with("markdown", () =>
+      splitText(text, { ...MARKDOWN_CONFIG, ...config }, MARKDOWN_CONFIG.separators, []),
+    )
+    .otherwise(() => splitText(text, { ...TEXT_CONFIG, ...config }, TEXT_CONFIG.separators, []));
 }
 
 function splitText(
@@ -40,18 +37,13 @@ function splitText(
   separatorsRemaining: string[],
   acc: string[],
 ): string[] {
-  if (!text.length) {
-    return acc;
-  }
-
+  if (!text.length) return acc;
   if (text.length <= config.chunkSize) {
     acc.push(text);
     return acc;
   }
-
   if (!separatorsRemaining.length) {
-    const splitted = text.slice(0, config.chunkSize);
-    acc.push(splitted);
+    acc.push(text.slice(0, config.chunkSize));
     return splitText(text.slice(config.chunkSize - config.overlap), config, [], acc);
   }
 
@@ -61,31 +53,32 @@ function splitText(
   for (const part of parts) {
     if (!part.length) continue;
 
-    const candidate = buffer.length ? buffer + separatorsRemaining[0] + part : part;
+    const candidate = buffer ? buffer + separatorsRemaining[0] + part : part;
 
-    if (candidate.length <= config.chunkSize) {
-      // Fits — keep accumulating
-      buffer = candidate;
-    } else if (buffer.length) {
-      // Flush the current buffer as a chunk
-      acc.push(buffer);
-      // Start new buffer; if the part itself is too big, recurse
-      if (part.length > config.chunkSize) {
+    match({
+      candidateFits: candidate.length <= config.chunkSize,
+      bufferHasContent: buffer.length > 0,
+      partTooBig: part.length > config.chunkSize,
+    })
+      .with({ candidateFits: true }, () => {
+        buffer = candidate;
+      })
+      .with({ candidateFits: false, bufferHasContent: true, partTooBig: true }, () => {
+        acc.push(buffer);
         splitText(part, config, separatorsRemaining.slice(1), acc);
         buffer = "";
-      } else {
+      })
+      .with({ candidateFits: false, bufferHasContent: true, partTooBig: false }, () => {
+        acc.push(buffer);
         buffer = part;
-      }
-    } else {
-      // buffer is empty but part alone is already too big — recurse
-      splitText(part, config, separatorsRemaining.slice(1), acc);
-    }
+      })
+      .with({ candidateFits: false, bufferHasContent: false }, () => {
+        splitText(part, config, separatorsRemaining.slice(1), acc);
+      })
+      .exhaustive();
   }
 
-  // Flush remaining buffer
-  if (buffer.length) {
-    acc.push(buffer);
-  }
+  if (buffer.length) acc.push(buffer);
 
   return acc;
 }

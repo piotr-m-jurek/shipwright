@@ -3,6 +3,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import { extractRawText } from "mammoth";
 import { UnknownFileExtension, UnknownFileTypeError } from "../shared/errors/index.js";
 import path from "node:path";
+import { match, P } from "ts-pattern";
 
 export type ParsedFileType = "markdown" | "pdf" | "plain-text" | "docx";
 
@@ -19,33 +20,33 @@ export async function parseDocument(buffer: Buffer, filename: string): Promise<P
   const filenameExt = getExtension(filename);
   const fileType = await fileTypeFromBuffer(buffer);
 
-  if (filenameExt === ".md") {
-    return { type: "markdown", text: buffer.toString("utf-8"), filename };
-  }
-
-  if (filenameExt === ".txt") {
-    return { type: "plain-text", text: buffer.toString("utf-8"), filename };
-  }
-
-  if (!fileType) {
-    throw new UnknownFileTypeError("Could not read file type from buffer");
-  }
-
-  if (filenameExt === ".pdf" && fileType.ext === "pdf") {
-    const raw = await getDocumentProxy(buffer);
-    const { text } = await extractText(raw);
-    return { type: "pdf", text: text.join("\n\n"), filename };
-  }
-
-  if ((filenameExt === ".doc" || filenameExt === ".docx") && fileType.ext === "docx") {
-    const rawText = await extractRawText({ buffer: buffer });
-    return {
-      type: "docx",
-      text: rawText.value,
+  return match({ filenameExt, fileTypeExt: fileType?.ext })
+    .with({ filenameExt: ".md" }, async () => ({
+      type: "markdown" as const,
+      text: buffer.toString("utf-8"),
       filename,
-    };
-  }
-  throw new UnknownFileTypeError("Couldn't determine filetype in parseDocument");
+    }))
+    .with({ filenameExt: ".txt" }, async () => ({
+      type: "plain-text" as const,
+      text: buffer.toString("utf-8"),
+      filename,
+    }))
+    .with({ filenameExt: ".pdf", fileTypeExt: "pdf" }, async () => {
+      const raw = await getDocumentProxy(buffer);
+      const { text } = await extractText(raw);
+      return { type: "pdf" as const, text: text.join("\n\n"), filename };
+    })
+    .with({ filenameExt: P.union(".doc", ".docx"), fileTypeExt: "docx" }, async () => {
+      const rawText = await extractRawText({ buffer });
+      return { type: "docx" as const, text: rawText.value, filename };
+    })
+    .otherwise(() => {
+      throw new UnknownFileTypeError(
+        fileType
+          ? "Couldn't determine filetype in parseDocument"
+          : "Could not read file type from buffer",
+      );
+    });
 }
 
 /*
