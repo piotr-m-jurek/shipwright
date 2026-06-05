@@ -11,7 +11,6 @@ An AI agent that ingests a messy bundle of project inputs — briefs, PRD drafts
 | Layer | Technology |
 |---|---|
 | API | Hono + Hono RPC |
-| Frontend | Vite + React + assistant-ui + shadcn/ui |
 | Agent / Orchestration | Vercel AI SDK Core + XState |
 | LLM | Claude 3.7 Sonnet (Anthropic via Vercel AI SDK) |
 | Document Processing | unpdf + mammoth + Node.js fs |
@@ -34,6 +33,50 @@ pnpm install
 pnpm drizzle-kit push
 pnpm dev
 ```
+
+## Requirements
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> uploading: FILES_SELECTED_BY_USER
+    idle --> analyzing: USER_CONFIRM
+    uploading --> processing: UPLOAD_COMPLETE
+    uploading --> uploading_error: ERROR
+    processing --> analyzing: USER_CONFIRM [hasEnoughContext && tokensBelowThreshold]
+    processing --> processing_error: ERROR
+    analyzing --> awaiting_answers: ANALYSIS_DONE
+    analyzing --> analyzing_error: ERROR
+    awaiting_answers --> re_evaluating: USER_ANSWERED
+    re_evaluating --> awaiting_answers: ANSWERS_INSUFFICIENT [round < 2]
+    re_evaluating --> generating: ANSWERS_SUFFICIENT
+    re_evaluating --> generating: ANSWERS_INSUFFICIENT [roundLimitReached]
+    re_evaluating --> re_evaluating_error: ERROR
+    generating --> complete: OUTPUT_READY
+    generating --> generating_error: ERROR
+    complete --> [*]
+
+    state Error {
+        uploading_error
+        analyzing_error
+        processing_error
+        re_evaluating_error
+        generating_error
+    }
+
+    note right of analyzing 
+        Suspend point - waits for external
+        USER_CONFIRM event. 
+        Does not proceed autonomously.
+    end note
+
+    note right of awaiting_answers
+        Suspend point — waits for external
+        USER_ANSWERED event. Does not
+        proceed autonomously.
+    end note
+```
+
 
 ## TODO:
 - rustfs requires more configuration in docker compose

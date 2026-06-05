@@ -147,8 +147,14 @@ awaiting_answers → re_evaluating → generating → complete
 **Events:**
 ```
 UPLOAD_COMPLETE, ANALYSIS_DONE, USER_ANSWERED,
-ANSWERS_SUFFICIENT, ANSWERS_INSUFFICIENT, OUTPUT_READY, ERROR
+ANSWERS_SUFFICIENT, ANSWERS_INSUFFICIENT, OUTPUT_READY, ERROR,
+USER_CONFIRM
 ```
+
+`USER_CONFIRM` — explicit user confirmation required before analysis starts.
+The machine does not transition from `processing` to `analyzing` automatically
+after upload completes. The user must confirm they are ready. This is a deliberate
+HITL decision — the user can review what was uploaded before committing to analysis.
 
 **Guards:**
 ```

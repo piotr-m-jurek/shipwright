@@ -60,7 +60,7 @@ it "mostly works".
 
 - [ ] All 8 states are present: `idle`, `uploading`, `processing`, `analyzing`, `awaiting_answers`, `re_evaluating`, `generating`, `complete`
 - [ ] `error` state is reachable from every other state
-- [ ] All 7 events are defined: `UPLOAD_COMPLETE`, `ANALYSIS_DONE`, `USER_ANSWERED`, `ANSWERS_SUFFICIENT`, `ANSWERS_INSUFFICIENT`, `OUTPUT_READY`, `ERROR`
+- [ ] All 8 events are defined: `UPLOAD_COMPLETE`, `ANALYSIS_DONE`, `USER_ANSWERED`, `ANSWERS_SUFFICIENT`, `ANSWERS_INSUFFICIENT`, `OUTPUT_READY`, `ERROR`, `USER_CONFIRM`
 - [ ] All 3 guards are defined with clear descriptions: `hasEnoughContext`, `tokensBelowThreshold`, `roundLimitReached`
 - [ ] Context shape is fully defined: `sessionId`, `documents[]`, `questions[]`, `answers[]`, `round`, `inputMode`, `agentAnalysis`, `outputs{}`
 - [ ] The diagram shows `awaiting_answers` as a suspend point (waits for external `USER_ANSWERED` event)
