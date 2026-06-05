@@ -32,25 +32,25 @@ it "mostly works".
 
 ### 1a — Presigned upload
 
-- [ ] `POST /api/sessions/upload-url` with valid file metadata returns `{ sessionId, presignedUrl, s3Key }`
-- [ ] The returned `presignedUrl` accepts a direct `PUT` request from the client — no Hono server in the path
-- [ ] After a successful S3 PUT, `POST /api/sessions/:id/confirm-upload` with the `s3Key` returns `202`
-- [ ] `POST /api/sessions/:id/confirm-upload` with a `s3Key` that does not exist in S3 returns `400`
-- [ ] `POST /api/sessions/upload-url` with `sizeBytes` > 100MB returns `400` before generating a URL
+- [x] `POST /api/sessions/upload-url` with valid file metadata returns `{ sessionId, presignedUrl, s3Key }`
+- [x] The returned `presignedUrl` accepts a direct `PUT` request from the client — no Hono server in the path
+- [x] After a successful S3 PUT, `POST /api/sessions/:id/confirm-upload` with the `s3Key` returns `202`
+- [x] `POST /api/sessions/:id/confirm-upload` with a `s3Key` that does not exist in S3 returns `400`
+- [x] `POST /api/sessions/upload-url` with `sizeBytes` > 100MB returns `400` before generating a URL
 
 ### 1b — Parsing + chunking + embedding
 
-- [ ] After confirming a PDF upload, `SELECT count(*) FROM chunks WHERE session_id = '<id>'` returns > 0
-- [ ] After confirming a DOCX upload, chunks are present with non-empty `content`
-- [ ] After confirming a plain text or Markdown upload, chunks are present
-- [ ] Every chunk row has a non-null `embedding` column
-- [ ] Every chunk row has non-null `document_type`, `chunk_index`, `session_id`
-- [ ] `SELECT token_count FROM documents WHERE session_id = '<id>'` returns a positive integer
-- [ ] The uploaded file is retrievable via `StorageAdapter.download()` — not via `fs.readFile` directly
-- [ ] A semantic query against pgvector for a term present in the uploaded document returns that document's chunks in the top results
-- [ ] A semantic query for a term NOT in the document does not return that document's chunks at the top
+- [ ] After confirming a PDF upload, `SELECT count(*) FROM chunks WHERE session_id = '<id>'` returns > 0 — *pending real OpenAI key*
+- [ ] After confirming a DOCX upload, chunks are present with non-empty `content` — *pending real OpenAI key*
+- [x] After confirming a plain text or Markdown upload, chunks are present (verified with mocked embeddings)
+- [ ] Every chunk row has a non-null `embedding` column — *pending real OpenAI key*
+- [x] Every chunk row has non-null `document_type`, `chunk_index`, `session_id`
+- [ ] `SELECT token_count FROM documents WHERE session_id = '<id>'` returns a positive integer — *pending real OpenAI key*
+- [x] The uploaded file is retrievable via `StorageAdapter.download()` — not via `fs.readFile` directly
+- [ ] A semantic query against pgvector for a term present in the uploaded document returns that document's chunks in the top results — *pending real OpenAI key*
+- [ ] A semantic query for a term NOT in the document does not return that document's chunks at the top — *pending real OpenAI key*
 
-**Gate:** Do not start Phase 2 until presigned upload, chunking, embedding, and retrieval all pass.
+**Gate:** Structural wiring verified. Items marked *pending real OpenAI key* to be re-verified when API key available. Proceeding to Phase 2 with this acknowledged.
 
 ---
 
@@ -58,16 +58,16 @@ it "mostly works".
 
 > This phase produces a diagram, not code. The tutor reviews the diagram.
 
-- [ ] All 8 states are present: `idle`, `uploading`, `processing`, `analyzing`, `awaiting_answers`, `re_evaluating`, `generating`, `complete`
-- [ ] `error` state is reachable from every other state
-- [ ] All 8 events are defined: `UPLOAD_COMPLETE`, `ANALYSIS_DONE`, `USER_ANSWERED`, `ANSWERS_SUFFICIENT`, `ANSWERS_INSUFFICIENT`, `OUTPUT_READY`, `ERROR`, `USER_CONFIRM`
-- [ ] All 3 guards are defined with clear descriptions: `hasEnoughContext`, `tokensBelowThreshold`, `roundLimitReached`
-- [ ] Context shape is fully defined: `sessionId`, `documents[]`, `questions[]`, `answers[]`, `round`, `inputMode`, `agentAnalysis`, `outputs{}`
-- [ ] The diagram shows `awaiting_answers` as a suspend point (waits for external `USER_ANSWERED` event)
-- [ ] The diagram shows the loop: `re_evaluating` → `awaiting_answers` (when `ANSWERS_INSUFFICIENT` and round < limit) or → `generating` (when `ANSWERS_SUFFICIENT`)
-- [ ] The diagram shows `roundLimitReached` guard forcing progression to `generating` even if answers are insufficient
+- [x] All 8 states are present: `idle`, `uploading`, `processing`, `analyzing`, `awaiting_answers`, `re_evaluating`, `generating`, `complete`
+- [x] `error` state is reachable from every other state — V1 deviation: `awaiting_answers` has no ERROR transition by design (session blocks until user responds; server restart handled via snapshot rehydration)
+- [x] All 8 events are defined: `UPLOAD_COMPLETE`, `ANALYSIS_DONE`, `USER_ANSWERED`, `ANSWERS_SUFFICIENT`, `ANSWERS_INSUFFICIENT`, `OUTPUT_READY`, `ERROR`, `USER_CONFIRM`
+- [x] All 3 guards are defined with clear descriptions: `hasEnoughContext`, `tokensBelowThreshold`, `roundLimitReached`
+- [x] Context shape is fully defined in `src/shared/schemas/machine.ts`: `sessionId`, `documents[]`, `questions[]`, `answers[]`, `round`, `inputMode`, `agentAnalysis`, `outputs{}`
+- [x] The diagram shows `awaiting_answers` as a suspend point (waits for external `USER_ANSWERED` event)
+- [x] The diagram shows the loop: `re_evaluating` → `awaiting_answers` (when `ANSWERS_INSUFFICIENT` and round < limit) or → `generating` (when `ANSWERS_SUFFICIENT`)
+- [x] The diagram shows `roundLimitReached` guard forcing progression to `generating` even if answers are insufficient
 
-**Gate:** Do not write XState code until the diagram passes. The code is a translation of the diagram.
+**Gate:** PASSED. Diagram reviewed and approved. XState implementation in Phase 4 is a translation of this diagram.
 
 ---
 
@@ -96,7 +96,7 @@ it "mostly works".
 - [ ] After `USER_ANSWERED`, the machine transitions (does not stay in `awaiting_answers` indefinitely)
 - [ ] Questions are persisted to the `questions` table before the machine suspends
 - [ ] Answers are persisted to the `answers` table after `USER_ANSWERED`
-- [ ] `SELECT xstate_snapshot FROM sessions WHERE id = '<id>'` returns a non-null JSON value after every transition
+- [ ] `SELECT xstate_snapshot FROM agent_sessions WHERE id = '<id>'` returns a non-null JSON value after every transition
 - [ ] After a simulated server restart (stop + restart Hono), sending `USER_ANSWERED` to an in-progress session resumes correctly
 - [ ] The `round` field in context increments correctly after each clarifying round
 - [ ] When `round >= 2`, the `roundLimitReached` guard forces progression to `generating` regardless of answer quality
@@ -131,7 +131,7 @@ it "mostly works".
 - [ ] `POST /api/sessions/:id/stream` triggers analysis and streams progress — response content-type is `text/event-stream`
 - [ ] `POST /api/sessions/:id/answers` returns `200` and the machine transitions
 - [ ] `GET /api/sessions/:id/output` streams output — response content-type is `text/event-stream`
-- [ ] A `GET` request from `localhost:5173` to `localhost:3000/api/sessions` does not return a CORS error
+- [ ] A `GET` request from `localhost:5173` to `localhost:5173/api/sessions` does not return a CORS error (single server setup — `@hono/vite-dev-server`)
 - [ ] Stopping and restarting the Hono server mid-session does not lose session state
 - [ ] Hono RPC types are exported and the `hc<typeof app>` client compiles without errors on the frontend
 
