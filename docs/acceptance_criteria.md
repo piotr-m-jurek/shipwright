@@ -73,16 +73,17 @@ it "mostly works".
 
 ## Phase 3 — Single Agent Pass
 
-- [ ] `generateObject` is used for the Extractor pass — not `generateText`
+- [ ] `generateText` with `Output.object()` is used for the Extractor pass — not bare `generateText` or deprecated `generateObject`
 - [ ] The Extractor Zod schema has a `sourceDocument` field on every item in the requirements array
 - [ ] Running the Extractor against the test corpus returns zero requirements without a `sourceDocument`
 - [ ] Running the Extractor against the test corpus identifies at least 3 distinct requirements
-- [ ] `generateObject` is used for the Challenger pass — not `generateText`
+- [ ] `generateText` with `Output.object()` is used for the Challenger pass
 - [ ] The Challenger Zod schema has `documentA` and `documentB` fields on conflicts
 - [ ] Running the Challenger against the test corpus returns at least one conflict (the planted contradiction)
 - [ ] Running the Challenger against the test corpus returns at least one gap
 - [ ] The Anthropic SDK (`@anthropic-ai/sdk`) is NOT imported anywhere in the agent passes — only `@ai-sdk/anthropic` is used as a provider
 - [ ] The system prompt for the Extractor is different from the system prompt for the Challenger
+- [ ] Documents are passed as `messages` user content — not in the system prompt
 
 **Gate:** Do not start Phase 4 until the Extractor identifies the planted missing acceptance criterion and the Challenger surfaces the planted contradiction.
 
@@ -171,4 +172,4 @@ it "mostly works".
 - [ ] No file in `src/agent/` imports from `@anthropic-ai/sdk` directly
 - [ ] No file calls `mammoth.convertToHtml()` — only `mammoth.extractRawText()`
 - [ ] No file writes to the filesystem with `fs.writeFile` or `fs.writeFileSync` directly — all file I/O goes through `StorageAdapter`
-- [ ] No LLM call uses `generateText` where `generateObject` is appropriate (structured output passes)
+- [ ] No structured output pass uses bare `generateText` without `Output.object()` — all structured passes use `generateText` + `Output.object({ schema })`

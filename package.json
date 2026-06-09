@@ -10,7 +10,8 @@
     "fmt:check": "oxfmt --check",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "test": "vitest"
+    "test": "vitest",
+    "test:corpus": "tsx src/agent/test-corpus.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.80",

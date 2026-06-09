@@ -213,9 +213,24 @@ implementation in Phase 4 is just translating this diagram into code.
 ## Phase 3 — Single Agent Pass (~2 days)
 
 - Wire Vercel AI SDK + Claude 3.7 Sonnet via Anthropic provider
-- Implement **Extractor pass** with `generateObject` + `DocumentAnalysisSchema`
-- Implement **Challenger pass** with `generateObject` + `GapReportSchema`
+- Implement **Extractor pass** with `generateText` + `Output.object({ schema: DocumentAnalysisSchema })`
+- Implement **Challenger pass** with `generateText` + `Output.object({ schema: GapReportSchema })`
 - Tune prompts until output is reliable on the test bundle
+
+**AI SDK v6 note:** `generateObject` is deprecated. Use `generateText` with `Output.object()`:
+```ts
+import { generateText, Output } from 'ai'
+import { anthropic } from '@ai-sdk/anthropic'
+
+const { output } = await generateText({
+  model: anthropic('claude-sonnet-4-5'),
+  output: Output.object({ schema: DocumentAnalysisSchema }),
+  system: systemPrompt,
+  messages: [{ role: 'user', content: documentContext }],
+})
+```
+Documents go into `messages` as user content (not the system prompt).
+The system prompt describes the task; the documents are the input.
 
 **Zod schemas to define in `src/shared/schemas/agent.ts`:**
 ```ts
