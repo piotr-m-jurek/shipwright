@@ -44,18 +44,22 @@ export async function processUploadedDocuments({
 
         const rawDocument = await storageAdapter.download(upload.s3Key);
         const parsed = await parseDocument(Buffer.from(rawDocument), doc.filename);
+        const chunks = chunkDocument(parsed);
         const tokenCount = estimateTokenCount(parsed.text);
-        const chunks = chunkDocument(parsed.text, parsed.type);
-        const embeddings = await embedChunks(chunks);
+
+        const embeddings = await embedChunks(chunks.map((ch) => ch.content));
         const zipped = _.zip(chunks, embeddings);
         await createChunks(
           zipped.map(([chunk, embedding], index) => ({
             sessionId,
             documentId: doc.id,
             documentType: doc.documentType,
-            embedding: embedding || [], // TODO:
+            embedding: embedding || [],
             chunkIndex: index,
-            content: chunk ?? "", // TODO:
+            content: chunk?.content ?? "",
+            charOffset: chunk?.charOffset,
+            pageNumber: chunk?.pageNumber,
+            headingPath: chunk?.headingPath,
           })),
         );
 

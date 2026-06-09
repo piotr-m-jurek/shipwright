@@ -1,14 +1,14 @@
 import z from "zod/v4";
-import { SelectAgentSessionSchema, SelectDocumentSchema } from "./index.js";
+import { documentTypeLiteral } from "../../db/out/schema.js";
 
 export const MachineContextSchema = z.object({
-  sessionId: SelectAgentSessionSchema.shape.id,
+  sessionId: z.uuid(),
   documents: z.array(
-    SelectDocumentSchema.pick({
-      id: true,
-      filename: true,
-      documentType: true,
-      tokenCount: true,
+    z.object({
+      id: z.uuid(),
+      filename: z.string(),
+      documentType: z.literal(documentTypeLiteral),
+      tokenCount: z.number,
     }),
   ),
   questions: z.array(
@@ -34,3 +34,4 @@ export const MachineContextSchema = z.object({
     implementationPrd: z.string().optional(),
   }),
 });
+export type MachineContext = z.infer<typeof MachineContextSchema>;

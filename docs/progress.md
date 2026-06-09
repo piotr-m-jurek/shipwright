@@ -82,6 +82,45 @@ All 10 rules checked — no violations at Phase 0.
 
 Gate: upload a PDF, query semantically related chunks back out.
 
+### Schema cleanup (post-Phase 2)
+- `documents.mimeType` and `documents.sizeBytes` added — wired through from upload request
+- `chunks.charOffset` (integer), `chunks.pageNumber` (integer), `chunks.headingPath` (text[]) added
+- `xstateSnapshot` typed with inline `XStateSnapshot` type to avoid circular dependency with `machine.ts`
+- `chunkDocument` refactored to accept `ParseResult` directly — overloads removed
+- `addOffsets` post-processing computes `charOffset` per chunk; `pageBoundaries` for PDF page number mapping; `headingIndex` regex scan for Markdown heading paths
+- `ts-pattern` adopted in parsers and chunker for exhaustive pattern matching
+- All 30 tests passing
+
+---
+
+## Phase 2 — XState Machine Design (COMPLETE)
+
+### Diagram
+Stored in `README.md`. Approved after gate review.
+
+### Key decisions
+- **Single `error` state** (tutor's recommendation, not used — per-state error substates kept in student's design)
+- **`USER_CONFIRM` added as 8th event** — explicit user confirmation before analysis starts; machine doesn't auto-transition from `processing` to `analyzing`
+- **`awaiting_answers` has no ERROR transition in V1** — session blocks until user responds; server restart handled via snapshot rehydration
+- **Context shape** defined in `src/shared/schemas/machine.ts` as `MachineContextSchema` — used both as TypeScript type and for snapshot validation at rehydration
+
+### Gate
+PASSED.
+
+---
+
+## Phase 3 — Single Agent Pass (NOT STARTED)
+
+Next steps per `docs/build_sequence.md`:
+- Define Zod schemas in `src/shared/schemas/agent.ts`: `RequirementSchema`, `DocumentAnalysisSchema`, `ConflictSchema`, `GapReportSchema`
+- Wire Vercel AI SDK + Claude 3.7 Sonnet via `@ai-sdk/anthropic`
+- Implement Extractor pass: `generateObject` + `DocumentAnalysisSchema`
+- Implement Challenger pass: `generateObject` + `GapReportSchema`
+- Tune prompts on test corpus
+- Verify: zero requirements without `sourceDocument`, Challenger surfaces planted contradiction
+
+Gate: Extractor identifies planted missing acceptance criterion AND Challenger surfaces planted contradiction.
+
 ---
 
 ## Mentor Notes — 03.07.2026
@@ -92,7 +131,7 @@ Items raised in mentor review. Categorised by urgency.
 
 - **`agent/parsers.ts` — use `path.extname()`** instead of the regex to extract file extension. Also use `fileTypeFromStream` (not `fileTypeFromBuffer`) connected to a `downloadPartialObject` call — read only the first N bytes from S3 to verify MIME type matches content before full download. A `.txt` file can be a disguised binary.
 - **`chunker.ts` — minimum chunk size guard** — short paragraphs can produce very small chunks that degrade embedding quality. Add a minimum chunk size (e.g. 100 chars). Merge chunks below the minimum with the previous chunk rather than emitting them standalone.
-- **`chunker.ts` — return chunk metadata** — return `{ content: string, meta: ChunkMeta }[]` not just `string[]`. Metadata per file type: PDF → page number, Markdown → heading path, all → char offset. Needed for accurate source attribution in LLM prompts.
+- **`chunker.ts` — return chunk metadata** — return `{ content: string, meta: ChunkMeta }[]` not just `string[]`. Metadata per file type: PDF → page number, Markdown → heading path, all → char offset. Needed for accurate source attribution in LLM prompts. **Decided:** use `LocationMeta` jsonb column on `chunks` table: `{ pageNumber?: number, headingPath?: string, charOffset?: number }`. Nullable — plain text has no page/heading. Column typed with `.$type<LocationMeta | null>()`.
 - **`db/schema.ts` — type JSON columns with `$type()`** — Drizzle's `jsonb()` column builder supports `.$type<T>()` to give the column a proper TypeScript type instead of `unknown`. Apply to `xstateSnapshot` at minimum.
 - **`db/queries.ts` — Data Transfer Objects** — define explicit DTO types for DB inputs/outputs rather than using raw Drizzle inferred types directly in query functions. Keeps the DB layer decoupled from the rest of the application.
 

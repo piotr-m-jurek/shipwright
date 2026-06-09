@@ -7,8 +7,15 @@ import { match, P } from "ts-pattern";
 
 export type ParsedFileType = "markdown" | "pdf" | "plain-text" | "docx";
 
-export type ParseResult = {
-  type: ParsedFileType;
+export type ParseResult = (
+  | {
+      type: Extract<ParsedFileType, "pdf">;
+      pages: string[];
+    }
+  | {
+      type: Exclude<ParsedFileType, "pdf">;
+    }
+) & {
   text: string;
   filename: string;
 };
@@ -33,8 +40,13 @@ export async function parseDocument(buffer: Buffer, filename: string): Promise<P
     }))
     .with({ filenameExt: ".pdf", fileTypeExt: "pdf" }, async () => {
       const raw = await getDocumentProxy(buffer);
-      const { text } = await extractText(raw);
-      return { type: "pdf" as const, text: text.join("\n\n"), filename };
+      const { text: pages } = await extractText(raw);
+      return {
+        type: "pdf" as const,
+        text: pages.join(PDF_PAGES_SEPARATOR),
+        pages,
+        filename,
+      };
     })
     .with({ filenameExt: P.union(".doc", ".docx"), fileTypeExt: "docx" }, async () => {
       const rawText = await extractRawText({ buffer });

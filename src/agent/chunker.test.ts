@@ -1,27 +1,30 @@
 import { describe, expect, test } from "vitest";
-import { chunkDocument } from "./chunker.js";
+import { chunkDocument, type ChunkResult } from "./chunker.js";
 
 const SMALL_CONFIG = { chunkSize: 50, overlap: 10 };
+
+// Helper to extract content strings from ChunkResult[]
+const contents = (chunks: ChunkResult[]) => chunks.map((c) => c.content);
 
 describe("chunkDocument", () => {
   describe("short text — fits in one chunk", () => {
     test("returns single chunk when text is shorter than chunkSize", () => {
       const text = "Hello world";
-      const result = chunkDocument(text, "plain-text", SMALL_CONFIG);
+      const result = chunkDocument({ text, type: "plain-text", filename: "" }, SMALL_CONFIG);
       expect(result).toHaveLength(1);
-      expect(result[0]).toBe("Hello world");
+      expect(result[0].content).toBe("Hello world");
     });
 
     test("returns single chunk when text equals chunkSize exactly", () => {
       const text = "a".repeat(50);
-      const result = chunkDocument(text, "plain-text", SMALL_CONFIG);
+      const result = chunkDocument({ text, type: "plain-text", filename: "" }, SMALL_CONFIG);
       expect(result).toHaveLength(1);
-      expect(result[0]).toBe(text);
+      expect(result[0].content).toBe(text);
     });
 
     test("does not return empty chunks for empty string", () => {
-      const result = chunkDocument("", "plain-text", SMALL_CONFIG);
-      const nonEmpty = result.filter((c) => c.length > 0);
+      const result = chunkDocument({ text: "", type: "plain-text", filename: "" }, SMALL_CONFIG);
+      const nonEmpty = result.filter((c) => c.content.length > 0);
       expect(nonEmpty).toHaveLength(0);
     });
   });
@@ -31,26 +34,25 @@ describe("chunkDocument", () => {
       const para1 = "a".repeat(30);
       const para2 = "b".repeat(30);
       const text = `${para1}\n\n${para2}`;
-      const result = chunkDocument(text, "plain-text", SMALL_CONFIG);
+      const result = chunkDocument({ text, type: "plain-text", filename: "" }, SMALL_CONFIG);
       expect(result.length).toBeGreaterThanOrEqual(2);
-      expect(result.some((c) => c.includes("aaa"))).toBe(true);
-      expect(result.some((c) => c.includes("bbb"))).toBe(true);
+      expect(contents(result).some((c) => c.includes("aaa"))).toBe(true);
+      expect(contents(result).some((c) => c.includes("bbb"))).toBe(true);
     });
 
     test("splits markdown on headings before paragraphs", () => {
       const text =
         "## Section One\n\n" + "a".repeat(30) + "\n\n## Section Two\n\n" + "b".repeat(30);
-      const result = chunkDocument(text, "markdown", SMALL_CONFIG);
+      const result = chunkDocument({ text, type: "markdown", filename: "" }, SMALL_CONFIG);
       expect(result.length).toBeGreaterThanOrEqual(2);
     });
 
     test("falls back to character split when no separator fits", () => {
-      // One long word with no spaces or newlines
       const text = "a".repeat(200);
-      const result = chunkDocument(text, "plain-text", SMALL_CONFIG);
+      const result = chunkDocument({ text: text, type: "plain-text", filename: "" }, SMALL_CONFIG);
       expect(result.length).toBeGreaterThan(1);
       result.forEach((chunk) => {
-        expect(chunk.length).toBeLessThanOrEqual(50);
+        expect(chunk.content.length).toBeLessThanOrEqual(50);
       });
     });
   });
@@ -58,12 +60,10 @@ describe("chunkDocument", () => {
   describe("overlap", () => {
     test("consecutive character-split chunks share overlap chars", () => {
       const text = "a".repeat(200);
-      const result = chunkDocument(text, "plain-text", SMALL_CONFIG);
-      // With chunkSize=50 and overlap=10, second chunk starts 40 chars after first
-      // So last 10 chars of chunk[0] should equal first 10 chars of chunk[1]
+      const result = chunkDocument({ text: text, type: "plain-text", filename: "" }, SMALL_CONFIG);
       if (result.length >= 2) {
-        const endOfFirst = result[0].slice(-10);
-        const startOfSecond = result[1].slice(0, 10);
+        const endOfFirst = result[0].content.slice(-10);
+        const startOfSecond = result[1].content.slice(0, 10);
         expect(endOfFirst).toBe(startOfSecond);
       }
     });
@@ -72,45 +72,105 @@ describe("chunkDocument", () => {
   describe("config override", () => {
     test("custom chunkSize is respected", () => {
       const text = "a".repeat(300);
-      const result = chunkDocument(text, "plain-text", { chunkSize: 100, overlap: 0 });
+      const result = chunkDocument(
+        { text: text, type: "plain-text", filename: "" },
+        { chunkSize: 100, overlap: 0 },
+      );
       result.forEach((chunk) => {
-        expect(chunk.length).toBeLessThanOrEqual(100);
+        expect(chunk.content.length).toBeLessThanOrEqual(100);
       });
     });
 
     test("all text is preserved across chunks (no content loss)", () => {
       const text = "The quick brown fox jumps over the lazy dog. ".repeat(10);
-      const result = chunkDocument(text, "plain-text", SMALL_CONFIG);
-      // Every word should appear somewhere in the chunks
-      expect(result.join(" ")).toContain("quick");
-      expect(result.join(" ")).toContain("lazy");
+      const result = chunkDocument({ text: text, type: "plain-text", filename: "" }, SMALL_CONFIG);
+      expect(contents(result).join(" ")).toContain("quick");
+      expect(contents(result).join(" ")).toContain("lazy");
+    });
+  });
+
+  describe("location metadata", () => {
+    test("every chunk has a charOffset", () => {
+      const text = "a".repeat(200);
+      const result = chunkDocument({ text: text, type: "plain-text", filename: "" }, SMALL_CONFIG);
+      result.forEach((chunk) => {
+        expect(typeof chunk.charOffset).toBe("number");
+        expect(chunk.charOffset).toBeGreaterThanOrEqual(0);
+      });
+    });
+
+    test("charOffset increases monotonically", () => {
+      const text = "a".repeat(200);
+      const result = chunkDocument({ text: text, type: "plain-text", filename: "" }, SMALL_CONFIG);
+      for (let i = 1; i < result.length; i++) {
+        expect(result[i].charOffset).toBeGreaterThan(result[i - 1].charOffset);
+      }
+    });
+
+    test("first chunk has charOffset of 0", () => {
+      const text = "Hello world this is a test";
+      const result = chunkDocument({ text: text, type: "plain-text", filename: "" }, SMALL_CONFIG);
+      expect(result[0].charOffset).toBe(0);
+    });
+
+    test("pageNumber is undefined for plain-text chunks", () => {
+      const text = "a".repeat(200);
+      const result = chunkDocument({ text: text, type: "plain-text", filename: "" }, SMALL_CONFIG);
+      result.forEach((chunk) => {
+        expect(chunk.pageNumber).toBeUndefined();
+      });
+    });
+
+    test("headingPath is undefined for plain-text chunks", () => {
+      const text = "a".repeat(200);
+      const result = chunkDocument({ text: text, type: "plain-text", filename: "" }, SMALL_CONFIG);
+      result.forEach((chunk) => {
+        expect(chunk.headingPath).toBeUndefined();
+      });
+    });
+
+    test("headingPath is set for markdown chunks under a heading", () => {
+      const text =
+        "## Introduction\n\n" + "a".repeat(30) + "\n\n## Conclusion\n\n" + "b".repeat(30);
+      const result = chunkDocument({ text: text, type: "markdown", filename: "" }, SMALL_CONFIG);
+      const chunksWithHeadings = result.filter((c) => c.headingPath !== undefined);
+      expect(chunksWithHeadings.length).toBeGreaterThan(0);
     });
   });
 
   describe("small parts merging — window filling", () => {
     test("small parts are merged to fill the window, not emitted individually (Bug A)", () => {
       const text = Array(6).fill("a".repeat(20)).join("\n\n");
-      const result = chunkDocument(text, "plain-text", { chunkSize: 100, overlap: 10 });
+      const result = chunkDocument(
+        { text: text, type: "plain-text", filename: "" },
+        { chunkSize: 100, overlap: 10 },
+      );
       expect(result.length).toBe(2);
-      result.forEach((chunk) => expect(chunk.length).toBeLessThanOrEqual(100));
-      expect(result.join("\n\n")).toBe(text);
+      result.forEach((chunk) => expect(chunk.content.length).toBeLessThanOrEqual(100));
+      expect(contents(result).join("\n\n")).toBe(text);
     });
 
     test("merged chunk content exactly equals the joined parts (Bug A — content check)", () => {
       const parts = ["a".repeat(30), "b".repeat(30), "c".repeat(30), "d".repeat(30)];
       const text = parts.join("\n\n");
-      const result = chunkDocument(text, "plain-text", { chunkSize: 80, overlap: 10 });
+      const result = chunkDocument(
+        { text: text, type: "plain-text", filename: "" },
+        { chunkSize: 80, overlap: 10 },
+      );
       expect(result.length).toBe(2);
-      expect(result[0]).toBe(parts[0] + "\n\n" + parts[1]);
-      expect(result[1]).toBe(parts[2] + "\n\n" + parts[3]);
+      expect(result[0].content).toBe(parts[0] + "\n\n" + parts[1]);
+      expect(result[1].content).toBe(parts[2] + "\n\n" + parts[3]);
     });
 
     test("no chunk is duplicated — double-push regression (Bug B)", () => {
       const para1 = "a".repeat(120);
       const para2 = "b".repeat(120);
       const text = `${para1}\n\n${para2}`;
-      const result = chunkDocument(text, "plain-text", { chunkSize: 100, overlap: 10 });
-      const unique = new Set(result);
+      const result = chunkDocument(
+        { text: text, type: "plain-text", filename: "" },
+        { chunkSize: 100, overlap: 10 },
+      );
+      const unique = new Set(contents(result));
       expect(unique.size).toBe(result.length);
     });
 
@@ -118,21 +178,27 @@ describe("chunkDocument", () => {
       const para1 = "a".repeat(120);
       const para2 = "b".repeat(120);
       const text = `${para1}\n\n${para2}`;
-      const result = chunkDocument(text, "plain-text", { chunkSize: 100, overlap: 10 });
+      const result = chunkDocument(
+        { text: text, type: "plain-text", filename: "" },
+        { chunkSize: 100, overlap: 10 },
+      );
       expect(result.length).toBe(4);
     });
   });
 
   describe("file type dispatch", () => {
     test("pdf uses text config", () => {
-      const text = "a".repeat(200);
-      const result = chunkDocument(text, "pdf", SMALL_CONFIG);
+      const pages = ["a".repeat(100), "a".repeat(100)];
+      const result = chunkDocument(
+        { type: "pdf", pages, text: pages.join("\n\n"), filename: "" },
+        SMALL_CONFIG,
+      );
       expect(result.length).toBeGreaterThan(1);
     });
 
     test("docx uses text config", () => {
       const text = "a".repeat(200);
-      const result = chunkDocument(text, "docx", SMALL_CONFIG);
+      const result = chunkDocument({ text: text, type: "docx", filename: "" }, SMALL_CONFIG);
       expect(result.length).toBeGreaterThan(1);
     });
   });

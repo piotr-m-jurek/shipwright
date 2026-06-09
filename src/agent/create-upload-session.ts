@@ -17,6 +17,8 @@ export async function createUploadSession({
         filename: file.filename,
         documentType: file.documentType,
         sessionId: session.id,
+        mimeType: file.mimeType,
+        sizeBytes: file.sizeBytes,
       });
       const s3Key = `${session.id}/${doc.id}`;
       const presignedUrl = await storageAdapter.generatePresignedUrl(s3Key, file.mimeType, 15);

@@ -11,6 +11,7 @@ import {
 import { defineRelations } from "drizzle-orm";
 
 import { createInsertSchema } from "drizzle-orm/zod";
+import { MachineContext } from "../shared/schemas/machine.js";
 
 export const sessionStatusEnum = pgEnum("session_status", [
   "idle",
@@ -37,7 +38,7 @@ export const agentSessions = pgTable("agent_sessions", {
 
   status: sessionStatusEnum("status").notNull().default("idle"),
   inputMode: inputModeEnum("input_mode").notNull().default("context"),
-  xstateSnapshot: jsonb("xstate_snapshot"), //.$type<{ state: string }>(),
+  xstateSnapshot: jsonb("xstate_snapshot").$type<MachineContext>(),
 });
 
 export const sessionInsertSchema = createInsertSchema(agentSessions);
@@ -69,14 +70,14 @@ export const documents = pgTable("documents", {
   sessionId: uuid("session_id")
     .references(() => agentSessions.id, { onDelete: "cascade" })
     .notNull(),
-  filename: text("filename").notNull(),
   documentType: documentTypeEnum("document_type").notNull(),
-  storagePath: text("storage_path"),
+  filename: text("filename").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
   rawText: text("raw_text"),
-  tokenCount: integer("token_count"),
   status: documentStatusEnum("document_status").notNull().default("pending"),
-  // TODO: mimeType
-  // TODO: size
+  storagePath: text("storage_path"),
+  tokenCount: integer("token_count"),
 });
 
 export const chunks = pgTable("chunks", {
@@ -92,15 +93,13 @@ export const chunks = pgTable("chunks", {
   documentId: uuid("document_id")
     .references(() => documents.id, { onDelete: "cascade" })
     .notNull(),
+  charOffset: integer("char_offset"),
   chunkIndex: integer("chunk_index").notNull(),
   content: text("content").notNull(),
-  embedding: vector("embedding", { dimensions: 1536 }).notNull(),
-  // TODO: odnośnik do miejsca w dokumencie
-  // Chapter2--H1/H2/H4.P427 <> json
-  // or page number: number | null,
-  //
-
   documentType: documentTypeEnum("document_type").notNull(),
+  embedding: vector("embedding", { dimensions: 1536 }).notNull(),
+  headingPath: text("heading_path").array(),
+  pageNumber: integer("page_number"),
 });
 
 export const messageRoleEnum = pgEnum("role", ["user", "assistant", "system"]);
