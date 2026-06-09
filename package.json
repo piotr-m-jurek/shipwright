@@ -11,7 +11,8 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "test": "vitest",
-    "test:corpus": "tsx src/agent/test-corpus.ts"
+    "test:corpus": "tsx src/agent/test-corpus.ts",
+    "docs:effect-update": "git subtree pull --prefix docs/effect-smol effect-smol main --squash"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.80",
@@ -23,6 +24,7 @@
     "ai": "^6.0.191",
     "dotenv": "^17.4.2",
     "drizzle-orm": "1.0.0-beta.22",
+    "effect": "4.0.0-beta.78",
     "file-type": "^22.0.1",
     "hono": "4.12.23",
     "js-tiktoken": "^1.0.21",
@@ -38,6 +40,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@effect/language-service": "^0.86.2",
     "@types/bun": "latest",
     "@types/lodash": "^4.17.24",
     "@types/react": "^19.2.15",

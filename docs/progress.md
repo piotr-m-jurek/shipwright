@@ -109,17 +109,104 @@ PASSED.
 
 ---
 
-## Phase 3 — Single Agent Pass (NOT STARTED)
+## Effect-TS Migration (between Phase 3 and Phase 4)
 
-Next steps per `docs/build_sequence.md`:
-- Define Zod schemas in `src/shared/schemas/agent.ts`: `RequirementSchema`, `DocumentAnalysisSchema`, `ConflictSchema`, `GapReportSchema`
-- Wire Vercel AI SDK + Claude 3.7 Sonnet via `@ai-sdk/anthropic`
-- Implement Extractor pass: `generateObject` + `DocumentAnalysisSchema`
-- Implement Challenger pass: `generateObject` + `GapReportSchema`
-- Tune prompts on test corpus
-- Verify: zero requirements without `sourceDocument`, Challenger surfaces planted contradiction
+### Reference
+- `docs/effect-smol/` — effect-smol repo as git subtree (run `pnpm docs:effect-update` to pull latest)
+- `docs/effect-smol/ai-docs/src/01_effect/02_services/` — `Context.Service` and `Layer` patterns
+- `docs/effect-smol/ai-docs/src/01_effect/03_errors/` — typed errors with `Schema.TaggedErrorClass`
+- `docs/effect-smol/ai-docs/src/03_integration/10_managed-runtime.ts` — `ManagedRuntime` + Hono bridge
 
-Gate: Extractor identifies planted missing acceptance criterion AND Challenger surfaces planted contradiction.
+### Philosophy
+- XState stays — owns the state machine (transitions, guards, suspend/resume)
+- Effect wraps side-effecting work inside XState actors via `Effect.runPromise`
+- `ManagedRuntime` is the bridge between Effect's Layer/Service world and Hono's async handlers
+- `effect` v4 beta installed (`4.0.0-beta.78`)
+
+### What was built
+
+**`src/storage/index.ts` — `EffectStorageAdapter` service (COMPLETE)**
+
+Full rewrite of storage as an Effect `Context.Service`. All six operations implemented:
+
+| Method | Error type |
+|---|---|
+| `upload` | `UploadError` |
+| `download` | `DownloadError` |
+| `downloadPartialObject` | `DownloadError` |
+| `remove` | `DeleteError` |
+| `generatePresignedUrl` | `PresignedUrlError` |
+| `headObject` | `HeadObjectError` |
+
+Key patterns used:
+- `Layer.effect` + `Effect.gen` — `S3Client` constructed once, closed over by all methods
+- `Effect.fn("span/name")(generator, ...combinators)` — generator handles core logic, combinators handle transformation and error mapping
+- `Effect.tryPromise({ try, catch })` — wraps AWS SDK calls with typed errors
+- `Effect.fromNullishOr` + `Effect.catchTag("NoSuchElementError")` — nullable body handling in download
+- `Effect.catchDefect` — intercepts untyped AWS exceptions in `headObject`, maps known 403/404 to `false`
+- `Effect.map(() => true)` — maps successful `headObject` response to boolean
+
+The old `S3Storage` class (Promise-based) kept alongside `EffectStorageAdapter` during migration. Both coexist in the same file until the full migration is complete.
+
+### How to use `EffectStorageAdapter`
+
+See next section below for integration guidance.
+
+### Remaining migration steps
+
+**Step 2 — Create `ManagedRuntime` in `src/runtime.ts`**
+```ts
+import { Layer, ManagedRuntime } from "effect"
+import { EffectStorageAdapter } from "./storage/index.js"
+
+export const appMemoMap = Layer.makeMemoMapUnsafe()
+export const runtime = ManagedRuntime.make(
+  EffectStorageAdapter.layer,
+  { memoMap: appMemoMap }
+)
+```
+
+**Step 3 — Hono routes use `runtime.runPromise`**
+```ts
+app.post('/sessions/upload-url', async (c) => {
+  const result = await runtime.runPromise(
+    EffectStorageAdapter.use((s) => s.generatePresignedUrl(key, mimeType, 15)).pipe(
+      Effect.catchTag("PresignedUrlError", () => Effect.fail(...))
+    )
+  )
+  return c.json(result)
+})
+```
+
+**Step 4 — Rewrite `process-uploaded-documents.ts`**
+Replace `try/catch` + `p-queue` with `Effect.fn` + `Effect.forEach(..., { concurrency: 2 })`.
+
+**Step 5 — Rewrite extractor and challenger with `Effect.fn`**
+
+### XState + Effect bridge
+XState actors call `Effect.runPromise(effect.pipe(Effect.provide(runtime)))` inside `invoke.src`. XState owns all state transitions. Effect owns typed errors and DI inside each actor.
+
+---
+
+## Phase 3 — Single Agent Pass (COMPLETE)
+
+### What was built
+- `src/shared/schemas/agent.ts` — `RequirementSchema`, `DocumentAnalysisSchema`, `ConflictSchema`, `GapReportSchema`, `DocumentAnalysis` and `GapReport` types
+- `src/agent/extractor.ts` — `runExtractor(documents)` using `generateText` + `Output.object({ schema: DocumentAnalysisSchema })` via `@ai-sdk/anthropic`
+- `src/agent/challenger.ts` — `runChallenger(documents, analysis)` using `generateText` + `Output.object({ schema: GapReportSchema })`
+- `src/agent/test-corpus.ts` — integration test script, run with `pnpm test:corpus`
+- Both passes have purpose-built system prompts (different from each other)
+- Documents passed as `messages` user content with `=== filename ===` headers for source attribution
+
+### Gate verification (pnpm test:corpus output)
+- ✓ 30 requirements found (≥3)
+- ✓ All items have sourceDocument
+- ✓ 3 conflicts found with both documentA and documentB
+- ✓ 8 gaps found
+- Planted contradiction surfaced: `prd_draft.md` (mobile out of scope) vs `discovery_call_transcript.txt` (CEO hard requirement for mobile)
+
+### Gate
+PASSED.
 
 ---
 
