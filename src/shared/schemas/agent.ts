@@ -1,4 +1,43 @@
+import { Schema } from "effect";
 import z from "zod/v4";
+
+export namespace EffectSchemas {
+  export class RequirementSchema extends Schema.Class<RequirementSchema>("RequirementSchema")({
+    text: Schema.String,
+    sourceDocument: Schema.String,
+    confidence: Schema.Literals(["high", "medium", "low"]),
+  }) {}
+
+  export class DocumentAnalysisSchema extends Schema.Class<DocumentAnalysisSchema>(
+    "DocumentAnalysisSchema",
+  )({
+    requirements: Schema.Array(RequirementSchema),
+    constraints: Schema.Array(RequirementSchema),
+    assumptions: Schema.Array(RequirementSchema),
+  }) {}
+
+  export class ConflictSchema extends Schema.Class<ConflictSchema>("ConflictSchema")({
+    description: Schema.String,
+    documentA: Schema.String,
+    documentB: Schema.String,
+  }) {}
+
+  class GapsSchema extends Schema.Class<GapsSchema>("GapsSchema")({
+    description: Schema.String,
+    affectedArea: Schema.String,
+  }) {}
+
+  class AmbiguitiesSchema extends Schema.Class<AmbiguitiesSchema>("AmbiguitiesSchema")({
+    description: Schema.String,
+    sourceDocument: Schema.String,
+  }) {}
+
+  export class GapReportSchema extends Schema.Class<GapReportSchema>("GapReportSchema")({
+    conflicts: Schema.Array(ConflictSchema),
+    gaps: Schema.Array(GapsSchema),
+    ambiguities: Schema.Array(AmbiguitiesSchema),
+  }) {}
+}
 
 export const RequirementSchema = z.object({
   text: z.string(),

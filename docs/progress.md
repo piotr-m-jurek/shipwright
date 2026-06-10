@@ -5,6 +5,31 @@
 
 ---
 
+## Quick-start for new sessions
+
+**Project:** AI agent that ingests messy project docs → asks clarifying questions → produces Project Brief + Implementation PRD.
+
+**Stack:** Hono + Vite (single server, port 5173) · Drizzle + pgvector (port 5433) · rustfs S3 (port 9000) · Vercel AI SDK + Claude · Effect v4 beta · XState (Phase 4+)
+
+**Run:** `docker compose up -d && pnpm dev`
+**Tests:** `pnpm test` · `pnpm test:corpus` (needs real ANTHROPIC_API_KEY)
+**Schema:** `pnpm db:push`
+**Effect docs:** `docs/effect-smol/ai-docs/src/` — authoritative reference for Effect patterns
+
+**Key conventions:**
+- Effect errors: `Schema.TaggedErrorClass`, tag format `"shipwright/module/ErrorName"`
+- Effect services: `Context.Service` + static `layer`, grouped in `namespace` alongside errors
+- Effect functions: `Effect.fn("span/name")(generator, ...combinators)` — generator = core logic, combinators = transforms + error mapping
+- Zod schemas: top-level exports, used with Vercel AI SDK `Output.object({ schema })`
+- Effect schemas: `namespace EffectSchemas { ... }`, used with Effect pipelines
+- Route handlers: thin `runtime.runPromise(...)` wrappers (not yet wired — Step 2 of Effect migration)
+- Documents go into `messages` user content with `=== filename ===` headers, not system prompt
+- `drizzle-kit push` required after every schema change
+
+**Current status:** Phase 3 complete · Effect migration in progress (storage done) · Phase 4 next
+
+---
+
 ## Phase 0 — Scaffold (COMPLETE)
 
 ### What was built

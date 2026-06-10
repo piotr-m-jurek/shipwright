@@ -5,7 +5,7 @@
     "jsxImportSource": "react",
     "moduleResolution": "nodenext",
     "module":"nodenext",
-    "target": "esnext"
+    "target": "esnext",
     "plugins": [ { "name": "@effect/language-service" } ]
   }
 }

@@ -1,21 +1,20 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { zValidator } from "@hono/zod-validator";
-import { S3Storage } from "../storage/index.js";
-import pLimit from "p-limit";
-import { processUploadedDocuments } from "../agent/process-uploaded-documents.js";
+import { EffectProcessing } from "../agent/process-uploaded-documents.js";
 import { createUploadSession } from "../agent/create-upload-session.js";
 import {
   ConfirmUploadRequestSchema,
   CreateSessionRequestSchema,
 } from "../shared/schemas/sessions.js";
+import { runtime } from "../runtime.js";
+import { confirmUploadResults } from "../agent/confirm-upload-results.js";
 
 const api = new Hono();
-const storageAdapter = new S3Storage();
 
 api.post("/sessions/upload-url", zValidator("json", CreateSessionRequestSchema), async (c) => {
   const { files } = c.req.valid("json");
-  const result = await createUploadSession({ files, storageAdapter });
+  const result = await runtime.runPromise(createUploadSession(files));
   return c.json(result);
 });
 
@@ -26,12 +25,7 @@ api.post(
     const { uploads } = c.req.valid("json");
     const sessionId = c.req.param("sessionId");
 
-    const limit = pLimit(10);
-    const results = await Promise.all(
-      uploads.map(({ s3Key }) =>
-        limit(async () => ({ s3Key, exists: await storageAdapter.headObject(s3Key) })),
-      ),
-    );
+    const results = await runtime.runPromise(confirmUploadResults(uploads));
 
     const missingKeys = results.filter((r) => !r.exists).map((r) => r.s3Key);
     if (missingKeys.length > 0) {
@@ -43,9 +37,12 @@ api.post(
       });
     }
 
-    processUploadedDocuments({ sessionId, uploads, storageAdapter });
-    // TODO: Consider queues, so we don't block the endpoint.
-    // For now "don't await" is the good practice, but we don't handle the errors. that's why we need queues
+    await runtime
+      .runPromise(EffectProcessing.processUploadedDocuments({ sessionId, uploads }))
+      .catch((error) => {
+        // Effect errors that escaped — log them
+        console.error("[confirm-upload] processUploadedDocuments failed:", error);
+      });
 
     return c.json({ valid: true }, 202);
   },
