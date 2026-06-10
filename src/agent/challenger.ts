@@ -1,6 +1,8 @@
 import { generateText, ModelMessage, Output } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { DocumentAnalysis, GapReport, GapReportSchema } from "../shared/schemas/agent.js";
+import { Effect } from "effect";
+import { TextGenerationError } from "./errors.js";
 
 const ChallengerSystemPrompt = `You are an adversarial requirements reviewer. Your job is to find everything wrong, missing, or contradictory in a set of project documents and a preliminary requirements analysis.
 
@@ -20,10 +22,10 @@ RULES:
 4. Do not repeat things already captured well in the extractor analysis. Find what it missed.
 5. Priority: conflicts are the most critical, then gaps, then ambiguities.`;
 
-export async function runChallenger(
+export const runChallenger = Effect.fn("agent/run-challenger")(function* (
   documents: { filename: string; text: string }[],
   analysis: DocumentAnalysis,
-): Promise<GapReport> {
+): Effect.fn.Return<GapReport, TextGenerationError> {
   const messages: ModelMessage[] = [
     {
       role: "user",
@@ -35,15 +37,19 @@ export async function runChallenger(
     },
   ];
 
-  const { output } = await generateText({
-    model: anthropic("claude-sonnet-4-6"),
-    output: Output.object({ schema: GapReportSchema }),
-    system: ChallengerSystemPrompt,
-    messages,
+  const results = yield* Effect.tryPromise({
+    try: () =>
+      generateText({
+        model: anthropic("claude-sonnet-4-6"),
+        output: Output.object({ schema: GapReportSchema }),
+        system: ChallengerSystemPrompt,
+        messages,
+      }),
+    catch: (cause) => new TextGenerationError({ cause }),
   });
 
-  return output;
-}
+  return results.output;
+});
 
 function prepareDocument(doc: { filename: string; text: string }): string {
   return `=== ${doc.filename} ===\n${doc.text}`;

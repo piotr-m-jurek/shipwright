@@ -21,6 +21,7 @@ config({ path: resolve(process.cwd(), ".env") });
 
 import { runExtractor } from "./extractor.js";
 import { runChallenger } from "./challenger.js";
+import { runtime } from "../runtime.js";
 
 const CORPUS_DIR = resolve(process.cwd(), "docs/test_corpus");
 
@@ -47,7 +48,7 @@ async function main() {
 
   // ── Extractor ──────────────────────────────────────────────────────────────
   console.log("Running Extractor...");
-  const analysis = await runExtractor(documents);
+  const analysis = await runtime.runPromise(runExtractor(documents));
 
   console.log("\n── EXTRACTOR OUTPUT ────────────────────────────────────────");
   console.log(`Requirements: ${analysis.requirements.length}`);
@@ -55,11 +56,7 @@ async function main() {
   console.log(`Assumptions:  ${analysis.assumptions.length}`);
 
   // Gate check: zero requirements without sourceDocument
-  const allItems = [
-    ...analysis.requirements,
-    ...analysis.constraints,
-    ...analysis.assumptions,
-  ];
+  const allItems = [...analysis.requirements, ...analysis.constraints, ...analysis.assumptions];
   const missingSource = allItems.filter((item) => !item.sourceDocument);
   if (missingSource.length > 0) {
     console.error(`\n❌ GATE FAIL: ${missingSource.length} items missing sourceDocument:`);
@@ -72,7 +69,9 @@ async function main() {
   if (analysis.requirements.length >= 3) {
     console.log(`✓ Found ${analysis.requirements.length} requirements (≥3)`);
   } else {
-    console.error(`❌ GATE FAIL: Only ${analysis.requirements.length} requirements found (need ≥3)`);
+    console.error(
+      `❌ GATE FAIL: Only ${analysis.requirements.length} requirements found (need ≥3)`,
+    );
   }
 
   console.log("\nSample requirements:");
@@ -91,11 +90,11 @@ async function main() {
   console.log(`Ambiguities:  ${gapReport.ambiguities.length}`);
 
   // Gate check: at least one conflict with documentA and documentB
-  const wellFormedConflicts = gapReport.conflicts.filter(
-    (c) => c.documentA && c.documentB,
-  );
+  const wellFormedConflicts = gapReport.conflicts.filter((c) => c.documentA && c.documentB);
   if (wellFormedConflicts.length > 0) {
-    console.log(`✓ Found ${wellFormedConflicts.length} conflict(s) with both documentA and documentB`);
+    console.log(
+      `✓ Found ${wellFormedConflicts.length} conflict(s) with both documentA and documentB`,
+    );
   } else {
     console.error("❌ GATE FAIL: No conflicts with both documentA and documentB");
   }

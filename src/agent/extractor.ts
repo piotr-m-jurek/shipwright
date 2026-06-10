@@ -1,6 +1,7 @@
 import { generateText, ModelMessage, Output } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { DocumentAnalysis, DocumentAnalysisSchema } from "../shared/schemas/agent.js";
+import { DocumentAnalysisSchema } from "../shared/schemas/agent.js";
+import { Effect } from "effect";
 
 const ExtractorSystemPrompt = `You are an expert requirements analyst. Your job is to extract every requirement, constraint, and assumption from a set of project documents.
 
@@ -24,21 +25,25 @@ type Document = {
   text: string;
 };
 
-export async function runExtractor(documents: Document[]): Promise<DocumentAnalysis> {
+export const runExtractor = Effect.fn("agent/runExtractor")(function* (documents: Document[]) {
   const message: ModelMessage = {
     role: "user",
     content: documents.map(prepareDocument).join("\n\n"),
   };
 
-  const { output } = await generateText({
-    model: anthropic("claude-sonnet-4-6"),
-    output: Output.object({ schema: DocumentAnalysisSchema }),
-    system: ExtractorSystemPrompt,
-    messages: [message],
+  const { output } = yield* Effect.tryPromise({
+    try: () =>
+      generateText({
+        model: anthropic("claude-sonnet-4-6"),
+        output: Output.object({ schema: DocumentAnalysisSchema }),
+        system: ExtractorSystemPrompt,
+        messages: [message],
+      }),
+    catch: (cause) => new TextGenerationError({ cause }),
   });
 
   return output;
-}
+});
 
 function prepareDocument(doc: Document) {
   return `=== ${doc.filename} ===\n${doc.text}`;

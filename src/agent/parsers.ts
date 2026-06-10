@@ -1,77 +1,113 @@
 import { fileTypeFromBuffer } from "file-type";
 import { extractText, getDocumentProxy } from "unpdf";
 import { extractRawText } from "mammoth";
-import { UnknownFileExtension, UnknownFileTypeError } from "../shared/errors/index.js";
 import path from "node:path";
-import { match, P } from "ts-pattern";
+import { PDF_PAGES_SEPARATOR } from "./index.js";
+import { Effect, Match, pipe, Schema } from "effect";
 
 export type ParsedFileType = "markdown" | "pdf" | "plain-text" | "docx";
 
 export type ParseResult = (
-  | {
-      type: Extract<ParsedFileType, "pdf">;
-      pages: string[];
-    }
-  | {
-      type: Exclude<ParsedFileType, "pdf">;
-    }
-) & {
-  text: string;
-  filename: string;
-};
+  | { type: Extract<ParsedFileType, "pdf">; pages: string[] }
+  | { type: Exclude<ParsedFileType, "pdf"> }
+) & { text: string; filename: string };
 
-/**
- * @throws UnknownFileTypeError | UnknownFileExtension
- */
-export async function parseDocument(buffer: Buffer, filename: string): Promise<ParseResult> {
-  const filenameExt = getExtension(filename);
-  const fileType = await fileTypeFromBuffer(buffer);
+class UnknownFileExtension extends Schema.TaggedErrorClass<UnknownFileExtension>()(
+  "UnknownFileExtension",
+  { cause: Schema.Defect(), message: Schema.optional(Schema.String) },
+) {}
 
-  return match({ filenameExt, fileTypeExt: fileType?.ext })
-    .with({ filenameExt: ".md" }, async () => ({
-      type: "markdown" as const,
-      text: buffer.toString("utf-8"),
-      filename,
-    }))
-    .with({ filenameExt: ".txt" }, async () => ({
-      type: "plain-text" as const,
-      text: buffer.toString("utf-8"),
-      filename,
-    }))
-    .with({ filenameExt: ".pdf", fileTypeExt: "pdf" }, async () => {
-      const raw = await getDocumentProxy(buffer);
-      const { text: pages } = await extractText(raw);
-      return {
-        type: "pdf" as const,
-        text: pages.join(PDF_PAGES_SEPARATOR),
-        pages,
-        filename,
-      };
-    })
-    .with({ filenameExt: P.union(".doc", ".docx"), fileTypeExt: "docx" }, async () => {
-      const rawText = await extractRawText({ buffer });
-      return { type: "docx" as const, text: rawText.value, filename };
-    })
-    .otherwise(() => {
-      throw new UnknownFileTypeError(
-        fileType
-          ? "Couldn't determine filetype in parseDocument"
-          : "Could not read file type from buffer",
-      );
-    });
-}
+class PdfParseError extends Schema.TaggedErrorClass<PdfParseError>()("PdfParseError", {
+  cause: Schema.Defect(),
+}) {}
 
-/*
- * @throws UnknownFileExtension
- */
-function getExtension(filename: string): string {
-  try {
-    const result = path.extname(filename);
-    if (result.length === 0) {
-      throw new UnknownFileExtension(`Could not match extension of file: ${filename}`);
-    }
-    return result;
-  } catch (error) {
-    throw new UnknownFileExtension(`The filename '${filename}' is not string`, { cause: error });
-  }
-}
+class DocParseError extends Schema.TaggedErrorClass<DocParseError>()("DocParseError", {
+  cause: Schema.Defect(),
+}) {}
+
+class UnsupportedFileTypeError extends Schema.TaggedErrorClass<UnsupportedFileTypeError>()(
+  "UnsupportedFileTypeError",
+  { filetype: Schema.optional(Schema.String) },
+) {}
+
+const getExtension = (filename: string) =>
+  pipe(
+    Effect.try({
+      try: () => path.extname(filename),
+      catch: (cause) => new UnknownFileExtension({ cause }),
+    }),
+    Effect.filterOrFail(
+      (ext) => ext.length > 0,
+      () =>
+        new UnknownFileExtension({
+          message: `Could not match extension of file: ${filename}`,
+          cause: "",
+        }),
+    ),
+    Effect.withSpan("agent/get-extension"),
+  );
+
+const getPdfParseResult = (buffer: Buffer, filename: string) =>
+  pipe(
+    Effect.tryPromise({
+      try: () => getDocumentProxy(buffer),
+      catch: (cause) => new PdfParseError({ cause }),
+    }),
+    Effect.flatMap((raw) =>
+      Effect.tryPromise({
+        try: () => extractText(raw),
+        catch: (cause) => new PdfParseError({ cause }),
+      }),
+    ),
+    Effect.map(
+      (extracted) =>
+        ({
+          type: "pdf",
+          pages: extracted.text,
+          filename,
+          text: extracted.text.join(PDF_PAGES_SEPARATOR),
+        }) satisfies ParseResult,
+    ),
+  );
+
+const getDocParseResult = (buffer: Buffer, filename: string) =>
+  pipe(
+    Effect.tryPromise({
+      try: () => extractRawText({ buffer }),
+      catch: (cause) => new DocParseError({ cause }),
+    }),
+    Effect.map((rawText) => ({ type: "docx" as const, text: rawText.value, filename })),
+  );
+
+export const parseDocument = Effect.fn("agent/parse-document")(function* (
+  buffer: Buffer,
+  filename: string,
+) {
+  const filenameExt = yield* getExtension(filename);
+  const fileType = yield* Effect.tryPromise({
+    try: () => fileTypeFromBuffer(buffer),
+    catch: (cause) =>
+      new UnknownFileExtension({
+        cause,
+        message: `Could not read fileType from buffer ${buffer}`,
+      }),
+  });
+
+  return yield* Match.value({ filenameExt, fileTypeExt: fileType?.ext }).pipe(
+    Match.when({ filenameExt: ".md" }, () =>
+      Effect.succeed({ type: "markdown", text: buffer.toString("utf-8") }),
+    ),
+    Match.when({ filenameExt: ".txt" }, () =>
+      Effect.succeed({ type: "plain-text", text: buffer.toString("utf-8") }),
+    ),
+    Match.when({ filenameExt: ".pdf", fileTypeExt: "pdf" }, () =>
+      getPdfParseResult(buffer, filename),
+    ),
+    Match.when({ filenameExt: ".docx", fileTypeExt: "docx" }, () =>
+      getDocParseResult(buffer, filename),
+    ),
+    Match.orElse(({ fileTypeExt }) =>
+      Effect.fail(new UnsupportedFileTypeError({ filetype: fileTypeExt })),
+    ),
+  );
+});

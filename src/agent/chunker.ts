@@ -140,7 +140,7 @@ function splitText(
         match({
           candidateFits: candidate.length <= config.chunkSize,
           bufferHasContent: buffer.length > 0,
-          partTooBig: part.length > config.chunkSize
+          partTooBig: part.length > config.chunkSize,
         })
           .with({ candidateFits: true }, () => {
             buffer = candidate;
