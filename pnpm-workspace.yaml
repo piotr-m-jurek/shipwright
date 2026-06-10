@@ -1,5 +1,5 @@
 allowBuilds:
   esbuild: true
-  msgpackr-extract: set this to true or false
+  msgpackr-extract: false
 blockExoticSubdeps: true
 minimumReleaseAge: 1440

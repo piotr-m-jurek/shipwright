@@ -47,7 +47,10 @@ const getExtension = (filename: string) =>
     Effect.withSpan("agent/get-extension"),
   );
 
-const getPdfParseResult = (buffer: Buffer, filename: string) =>
+const getPdfParseResult = (
+  buffer: Buffer,
+  filename: string,
+): Effect.Effect<ParseResult, PdfParseError> =>
   pipe(
     Effect.tryPromise({
       try: () => getDocumentProxy(buffer),
@@ -82,7 +85,10 @@ const getDocParseResult = (buffer: Buffer, filename: string) =>
 export const parseDocument = Effect.fn("agent/parse-document")(function* (
   buffer: Buffer,
   filename: string,
-) {
+): Effect.fn.Return<
+  ParseResult,
+  UnknownFileExtension | PdfParseError | DocParseError | UnsupportedFileTypeError
+> {
   const filenameExt = yield* getExtension(filename);
   const fileType = yield* Effect.tryPromise({
     try: () => fileTypeFromBuffer(buffer),
@@ -95,10 +101,10 @@ export const parseDocument = Effect.fn("agent/parse-document")(function* (
 
   return yield* Match.value({ filenameExt, fileTypeExt: fileType?.ext }).pipe(
     Match.when({ filenameExt: ".md" }, () =>
-      Effect.succeed({ type: "markdown", text: buffer.toString("utf-8") }),
+      Effect.succeed({ type: "markdown" as const, text: buffer.toString("utf-8"), filename }),
     ),
     Match.when({ filenameExt: ".txt" }, () =>
-      Effect.succeed({ type: "plain-text", text: buffer.toString("utf-8") }),
+      Effect.succeed({ type: "plain-text" as const, text: buffer.toString("utf-8"), filename }),
     ),
     Match.when({ filenameExt: ".pdf", fileTypeExt: "pdf" }, () =>
       getPdfParseResult(buffer, filename),

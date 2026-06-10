@@ -82,7 +82,7 @@ async function main() {
 
   // ── Challenger ─────────────────────────────────────────────────────────────
   console.log("\nRunning Challenger...");
-  const gapReport = await runChallenger(documents, analysis);
+  const gapReport = await runtime.runPromise(runChallenger(documents, analysis));
 
   console.log("\n── CHALLENGER OUTPUT ───────────────────────────────────────");
   console.log(`Conflicts:    ${gapReport.conflicts.length}`);

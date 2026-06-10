@@ -58,9 +58,7 @@ export namespace EffectProcessing {
             });
 
             const rawDocument = yield* storage.download(upload.s3Key);
-
             const parsed = yield* parseDocument(Buffer.from(rawDocument), doc.filename);
-
             const chunks = chunkDocument(parsed);
             const tokenCount = estimateTokenCount(parsed.text);
 
