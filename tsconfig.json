@@ -6,6 +6,7 @@
     "moduleResolution": "nodenext",
     "module":"nodenext",
     "target": "esnext",
-    "plugins": [ { "name": "@effect/language-service" } ]
+    "plugins": [ { "name": "@effect/language-service" } ],
+    "exclude": ["docs/", "node_modules"]
   }
 }

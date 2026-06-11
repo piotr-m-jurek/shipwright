@@ -20,6 +20,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.1057.0
         version: 3.1057.0
+      '@hono/effect-validator':
+        specifier: ^1.2.0
+        version: 1.2.0(effect@4.0.0-beta.78)(hono@4.12.23)
       '@hono/vite-dev-server':
         specifier: 0.26.0
         version: 0.26.0(hono@4.12.23)
@@ -112,7 +115,7 @@ importers:
         specifier: ^4.22.3
         version: 4.22.3
       typescript:
-        specifier: '5.8'
+        specifier: ~5.8.3
         version: 5.8.3
       vitest:
         specifier: ^4.1.8
@@ -609,6 +612,12 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@hono/effect-validator@1.2.0':
+    resolution: {integrity: sha512-PJTTVsF3bN/ld7w3g3rcWRzhbgn2wG4CcAtZpgGAz90DF3TLD5ByVkkRI3SK0HnbtPQKT2Ndng+bJvLwV1lZZQ==}
+    peerDependencies:
+      effect: '>=3.10.0'
+      hono: '>=4.4.13'
 
   '@hono/node-server@1.19.14':
     resolution: {integrity: sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw==}
@@ -2375,6 +2384,11 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.0':
     optional: true
+
+  '@hono/effect-validator@1.2.0(effect@4.0.0-beta.78)(hono@4.12.23)':
+    dependencies:
+      effect: 4.0.0-beta.78
+      hono: 4.12.23
 
   '@hono/node-server@1.19.14(hono@4.12.23)':
     dependencies:

@@ -10,9 +10,13 @@ import { config } from "../config.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-vi.mock("../agent/embedder.js", () => ({
-  embedChunks: async (chunks: string[]) => chunks.map(() => Array(1536).fill(0.1)),
-}));
+vi.mock("../agent/embedder.js", async () => {
+  const { Effect } = await import("effect");
+  return {
+    embedChunks: (chunks: string[]) =>
+      Effect.succeed(chunks.map(() => Array(1536).fill(0.1))),
+  };
+});
 
 async function post(path: string, body: unknown) {
   return app.request(path, {

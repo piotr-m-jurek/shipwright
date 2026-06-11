@@ -177,7 +177,15 @@ The old `S3Storage` class (Promise-based) kept alongside `EffectStorageAdapter` 
 
 See next section below for integration guidance.
 
-### Remaining migration steps
+### Full rewrite planned (Phase 9.5)
+See `docs/build_sequence.md` Phase 9.5 for the complete plan. Key items:
+- `DatabaseService` — wrap all Drizzle queries as Effect service, enable mock DB in tests
+- `@effect/ai-anthropic` — replace Vercel AI SDK with Effect's typed AI layer
+- Parsers + embedder as Effect services
+- Delete `S3Storage` class and `StorageAdapter` Promise interface
+- Merge all layers in `runtime.ts`
+
+### Remaining migration steps (current)
 
 **Step 2 — Create `ManagedRuntime` in `src/runtime.ts`**
 ```ts

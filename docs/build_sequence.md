@@ -476,6 +476,81 @@ response is a failed eval, not a passing one with a warning.
 
 ---
 
+## Phase 9.5 — Full Effect Rewrite (after Phase 9 SPA, before production)
+
+Complete the Effect migration once the full backend pipeline works end-to-end
+and evals pass. Do not start this before Phase 8 gate passes.
+
+### 1. `DatabaseService` — wrap all Drizzle queries
+
+Define a `DatabaseService` as `Context.Service` wrapping all functions from
+`src/db/queries.ts`. Each query returns `Effect<T, DbError>` instead of
+`Promise<T>`.
+
+```ts
+export class DatabaseService extends Context.Service<DatabaseService, {
+  createAgentSession(data: InsertAgentSession): Effect.Effect<SelectAgentSession, DbError>
+  createDocument(data: InsertDocument): Effect.Effect<SelectDocument, DbError>
+  getDocumentById(id: string): Effect.Effect<SelectDocument, DbError | DocumentNotFoundError>
+  // ... all other queries
+}>()("shipwright/db/DatabaseService") {
+  static readonly layer = Layer.effect(DatabaseService, Effect.sync(() => {
+    // implement using db from src/db/index.ts
+  }))
+}
+```
+
+Benefits: eliminates all `Effect.tryPromise(...)` wrappers in the pipeline,
+enables test layers with mock DB (no real Postgres needed for unit tests).
+
+### 2. `@effect/ai-anthropic` — typed AI layer
+
+Install `@effect/ai-anthropic@4.0.0-beta.78`. Migrate extractor and challenger
+from Vercel AI SDK to Effect's provider-agnostic AI layer:
+
+```ts
+import { AnthropicClient, AnthropicLanguageModel } from "@effect/ai-anthropic"
+import { LanguageModel } from "effect/unstable/ai"
+import { FetchHttpClient } from "effect/unstable/http"
+
+const AnthropicClientLayer = AnthropicClient.layerConfig({
+  apiKey: Config.redacted("ANTHROPIC_API_KEY")
+}).pipe(Layer.provide(FetchHttpClient.layer))
+```
+
+- `LanguageModel.generateObject({ schema: EffectSchemas.DocumentAnalysisSchema, ... })`
+  replaces `generateText` + `Output.object({ schema: ZodSchema })`
+- `AiError` with typed `reason` replaces generic `TextGenerationError`
+- `ExecutionPlan` enables provider fallback (Claude → GPT-4o) declaratively
+- Effect `Schema.Class` (already in `EffectSchemas` namespace) used throughout
+
+### 3. Parsers + embedder as Effect services
+
+- `parseDocument` → `Effect.fn` returning `Effect<ParseResult, ParseError>`
+- `embedChunks` → `Effect.fn` returning `Effect<number[][], EmbedError>`
+- Eliminates remaining `Effect.tryPromise` wrappers in `process-uploaded-documents.ts`
+
+### 4. Merge all layers in `runtime.ts`
+
+```ts
+export const runtime = ManagedRuntime.make(
+  Layer.mergeAll(
+    EffectStorageAdapterService.EffectStorageAdapter.layer,
+    DatabaseService.layer,
+    AnthropicService.layer,
+  ),
+  { memoMap: appMemoMap }
+)
+```
+
+### 5. Delete legacy code
+
+- `S3Storage` class (Promise-based) and `StorageAdapter` interface
+- Remaining `Effect.tryPromise` wrappers that wrapped now-Effect functions
+- Old Zod schemas in `agent.ts` if fully replaced by `EffectSchemas`
+
+---
+
 ## Fine-tuning phase (after Phase 8)
 
 These items were raised in mentor review and deferred deliberately. Revisit
