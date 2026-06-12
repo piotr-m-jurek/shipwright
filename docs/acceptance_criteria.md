@@ -71,21 +71,37 @@ it "mostly works".
 
 ---
 
-## Phase 3 — Single Agent Pass
+## Phase 3 — Per-Document Summarization + Challenger
 
-- [ ] `generateText` with `Output.object()` is used for the Extractor pass — not bare `generateText` or deprecated `generateObject`
-- [ ] The Extractor Zod schema has a `sourceDocument` field on every item in the requirements array
-- [ ] Running the Extractor against the test corpus returns zero requirements without a `sourceDocument`
-- [ ] Running the Extractor against the test corpus identifies at least 3 distinct requirements
+> **Design revision (11.06.2026):** Extractor replaced by per-document map-reduce
+> summarizer. Chunks from DB are the primary read path. Raw document text is never
+> passed directly into an analysis LLM call.
+
+### 3a — Per-document summarization
+
+- [ ] `document_summaries` table exists in the DB schema with columns: `id`, `document_id`, `session_id`, `version`, `summary_type`, `batch_index`, `content`, `token_count`, `created_at`
+- [ ] `drizzle-kit push` succeeds with the new table
+- [ ] For each document in the session, chunks are loaded from the `chunks` table ordered by `chunkIndex` — raw `documents.rawText` is NOT passed to the LLM
+- [ ] The map pass splits chunks into batches — each batch produces a `generateText` + `Output.object()` call and stores a row with `summary_type = 'map_intermediate'` and the correct `batch_index`
+- [ ] The reduce pass produces a row with `summary_type = 'final'`
+- [ ] `SELECT count(*) FROM document_summaries WHERE session_id = '<id>' AND summary_type = 'final'` equals the number of documents in the session
+- [ ] Every final summary row has a non-null, non-empty `content` and a positive `token_count`
+- [ ] Every requirement, constraint, and assumption in the summary content has a `sourceDocument` field — nothing omitted or null
+- [ ] `generateText` with `Output.object()` is used — not bare `generateText` or deprecated `generateObject`
+- [ ] The Anthropic SDK (`@anthropic-ai/sdk`) is NOT imported in the summarizer — only `@ai-sdk/anthropic`
+- [ ] Re-running summarization on the same document creates a new row (`version = 2`) — it does not overwrite the existing final
+
+### 3b — Challenger pass
+
+- [ ] The Challenger loads rows from `document_summaries` where `summary_type = 'final'`, not from `documents.rawText`
 - [ ] `generateText` with `Output.object()` is used for the Challenger pass
 - [ ] The Challenger Zod schema has `documentA` and `documentB` fields on conflicts
 - [ ] Running the Challenger against the test corpus returns at least one conflict (the planted contradiction)
 - [ ] Running the Challenger against the test corpus returns at least one gap
-- [ ] The Anthropic SDK (`@anthropic-ai/sdk`) is NOT imported anywhere in the agent passes — only `@ai-sdk/anthropic` is used as a provider
-- [ ] The system prompt for the Extractor is different from the system prompt for the Challenger
-- [ ] Documents are passed as `messages` user content — not in the system prompt
+- [ ] The system prompt for the summarizer is different from the system prompt for the Challenger
+- [ ] Chunks go into `messages` as user content with `=== chunk N ===` headers — not in the system prompt
 
-**Gate:** Do not start Phase 4 until the Extractor identifies the planted missing acceptance criterion and the Challenger surfaces the planted contradiction.
+**Gate:** Do not start Phase 4 until `document_summaries` rows with `summary_type = 'final'` exist for all session documents and the Challenger surfaces the planted contradiction from those summaries, not raw text.
 
 ---
 
@@ -120,7 +136,32 @@ it "mostly works".
 - [ ] The system prompt for the Brief writer is different from the system prompt for the PRD writer
 - [ ] Prompt caching is configured: the Anthropic provider call includes cache control headers on the document context
 
-**Gate:** Both outputs must be stored in the DB before Phase 6.
+**Gate:** Both outputs must be stored in the DB before Phase 5b.
+
+---
+
+## Phase 5b — Output Export + Revision Loop
+
+### Export
+
+- [ ] `GET /api/sessions/:id/output/:type/download-url` returns `{ url: string }` with a presigned S3 GET URL
+- [ ] The `type` param accepts only `project_brief` or `implementation_prd` — other values return `400`
+- [ ] The presigned URL resolves to the correct output file content when fetched directly
+- [ ] The presigned URL has a TTL (expires — it is not permanent)
+- [ ] File bytes do not pass through Hono — the URL points directly to S3/rustfs
+
+### Revision loop
+
+- [ ] `POST /api/sessions/:id/revise` with `{ feedback: string }` returns `202`
+- [ ] Sending `REVISION_REQUESTED` transitions the machine from `complete` to `revising`
+- [ ] `xstateSnapshot` is persisted after the `complete → revising` transition
+- [ ] The revision Writer pass receives the existing outputs + feedback + `documentSummaries[]` — not raw document text
+- [ ] After revision completes, `SELECT version FROM outputs WHERE session_id = '<id>' ORDER BY version DESC LIMIT 1` returns `2`
+- [ ] Both Brief and PRD are regenerated on revision (not just one)
+- [ ] If the revision pass surfaces new questions, the machine enters `awaiting_answers` before returning to `generating`
+- [ ] `outputVersion` in XState context increments correctly after each revision
+
+**Gate:** Export URL must work and revision must produce a version-2 output before Phase 6.
 
 ---
 
@@ -132,6 +173,8 @@ it "mostly works".
 - [ ] `POST /api/sessions/:id/stream` triggers analysis and streams progress — response content-type is `text/event-stream`
 - [ ] `POST /api/sessions/:id/answers` returns `200` and the machine transitions
 - [ ] `GET /api/sessions/:id/output` streams output — response content-type is `text/event-stream`
+- [ ] `GET /api/sessions/:id/output/:type/download-url` returns a presigned URL
+- [ ] `POST /api/sessions/:id/revise` returns `202` and the machine transitions to `revising`
 - [ ] A `GET` request from `localhost:5173` to `localhost:5173/api/sessions` does not return a CORS error (single server setup — `@hono/vite-dev-server`)
 - [ ] Stopping and restarting the Hono server mid-session does not lose session state
 - [ ] Hono RPC types are exported and the `hc<typeof app>` client compiles without errors on the frontend

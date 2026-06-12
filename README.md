@@ -84,6 +84,35 @@ stateDiagram-v2
 
 ---
 
+11.06.2026
+
+- [ ] refine prompts using rules from anthropic course
+- [ ] refine testing corpus using rules from anthropic course - prompt evals
+- [ ] concurrency works for now, but later on, we might need a real queue - 
+- [ ] find out if RAG was not ommited in the plan - where do we retrieve chunks? where llm is answering our questions based on the acquired knowledge
+
+  - extractor
+    - extractor is wrong - it should use DB with RAG capabilities to read and answer files.
+  - ask questions to the rag
+  - working memory - go through all the documents in the system and summarize the main topic or problem that we are trying to solve
+  - based on the summary formulate questions (to user) that have to be asked wherever there are discrepancies inside summarized knowledge
+  - save user answers (with corresponding question, preferably with corresponding related documents)
+
+
+  - retrieval is programmatic
+  - but could be an agent that does this agentically with Tools (query database, summarizing similar chunks)
+    - this is how you read
+    - this is how you write
+    - analyze the documents and make sense of it all
+
+- how do we do the loop of summarizing and finding discrepancies?
+  - how to build working memory
+    - graphRAG
+- **optional** graph RAG
+  - complicated
+  - 
+---
+
 03.07.2026
 
 - [ ] consider data transfer object for db instead of raw dogging db queries in /db/queries.ts

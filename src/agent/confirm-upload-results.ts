@@ -1,11 +1,11 @@
 import { Effect, pipe } from "effect";
-import { ConfirmUploadRequest } from "../shared/schemas/sessions.js";
-import { EffectStorageAdapterService } from "../storage/index.js";
+import { ConfirmUploadRequest } from "../shared/schemas/api.js";
+import { StorageAdapter } from "../storage/index.js";
 
 export const confirmUploadResults = Effect.fn("agent/confirmUploadResults")(function* (
   uploads: ConfirmUploadRequest["uploads"],
 ) {
-  const storage = yield* EffectStorageAdapterService.EffectStorageAdapter;
+  const storage = yield* StorageAdapter;
   return yield* pipe(
     uploads,
     Effect.forEach(

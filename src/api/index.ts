@@ -3,10 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { zValidator } from "@hono/zod-validator";
 import { EffectProcessing } from "../agent/process-uploaded-documents.js";
 import { createUploadSession } from "../agent/create-upload-session.js";
-import {
-  ConfirmUploadRequestSchema,
-  CreateSessionRequestSchema,
-} from "../shared/schemas/sessions.js";
+import { ConfirmUploadRequestSchema, CreateSessionRequestSchema } from "../shared/schemas/api.js";
 import { runtime } from "../runtime.js";
 import { confirmUploadResults } from "../agent/confirm-upload-results.js";
 

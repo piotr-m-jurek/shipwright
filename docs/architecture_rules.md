@@ -227,6 +227,37 @@ explicit and catches shape mismatches at compile time.
 
 ---
 
+## Rule 13 — Analysis passes read chunks from DB, never raw document text
+
+No Extractor, Summarizer, Challenger, or Writer pass may read `documents.rawText`
+directly and pass it as LLM input. All analysis passes load chunks from the `chunks`
+table and work from them (or from per-document summaries derived from chunks).
+
+```ts
+// ✅ Allowed — load chunks from DB, pass to summarizer
+const chunks = await db.select().from(chunksTable)
+  .where(eq(chunksTable.documentId, docId))
+  .orderBy(chunksTable.chunkIndex)
+const { output } = await generateText({
+  messages: [{ role: 'user', content: formatChunks(chunks) }],
+  ...
+})
+
+// ❌ Blocked — passing rawText directly into an analysis LLM call
+const doc = await db.select({ rawText: documents.rawText }).from(documents)...
+const { output } = await generateText({
+  messages: [{ role: 'user', content: doc.rawText }],
+  ...
+})
+```
+
+**Why:** Raw text is unbounded — a large document will exceed the context window
+silently or require truncation, losing information without any visibility. Chunks are
+already sized for context and carry metadata. The map-reduce summarization pass is
+the correct escalation path for large documents.
+
+---
+
 ## Rule 12 — File type must be verified from content, not just extension
 
 Never trust file extension alone. Use `fileTypeFromStream` on the first bytes

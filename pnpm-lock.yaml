@@ -9,31 +9,31 @@ importers:
   .:
     dependencies:
       '@ai-sdk/anthropic':
-        specifier: ^3.0.80
+        specifier: 3.0.80
         version: 3.0.80(zod@4.4.3)
       '@ai-sdk/openai':
-        specifier: ^3.0.66
+        specifier: 3.0.66
         version: 3.0.66(zod@4.4.3)
       '@aws-sdk/client-s3':
-        specifier: ^3.1055.0
+        specifier: 3.1055.0
         version: 3.1055.0
       '@aws-sdk/s3-request-presigner':
-        specifier: ^3.1057.0
+        specifier: 3.1057.0
         version: 3.1057.0
       '@hono/effect-validator':
-        specifier: ^1.2.0
+        specifier: 1.2.0
         version: 1.2.0(effect@4.0.0-beta.78)(hono@4.12.23)
       '@hono/vite-dev-server':
         specifier: 0.26.0
         version: 0.26.0(hono@4.12.23)
       '@hono/zod-validator':
-        specifier: ^0.8.0
+        specifier: 0.8.0
         version: 0.8.0(hono@4.12.23)(zod@4.4.3)
       ai:
-        specifier: ^6.0.191
+        specifier: 6.0.191
         version: 6.0.191(zod@4.4.3)
       dotenv:
-        specifier: ^17.4.2
+        specifier: 17.4.2
         version: 17.4.2
       drizzle-orm:
         specifier: 1.0.0-beta.22
@@ -42,62 +42,59 @@ importers:
         specifier: 4.0.0-beta.78
         version: 4.0.0-beta.78
       file-type:
-        specifier: ^22.0.1
+        specifier: 22.0.1
         version: 22.0.1
       hono:
         specifier: 4.12.23
         version: 4.12.23
       js-tiktoken:
-        specifier: ^1.0.21
+        specifier: 1.0.21
         version: 1.0.21
       lodash:
-        specifier: ^4.18.1
+        specifier: 4.18.1
         version: 4.18.1
       mammoth:
-        specifier: ^1.12.0
+        specifier: 1.12.0
         version: 1.12.0
-      p-limit:
-        specifier: ^7.3.0
-        version: 7.3.0
-      p-queue:
-        specifier: ^9.3.0
-        version: 9.3.0
       react:
-        specifier: ^19.2.6
+        specifier: 19.2.6
         version: 19.2.6
       react-dom:
-        specifier: ^19.2.6
+        specifier: 19.2.6
         version: 19.2.6(react@19.2.6)
       ts-pattern:
-        specifier: ^5.9.0
+        specifier: 5.9.0
         version: 5.9.0
       unpdf:
-        specifier: ^1.6.2
+        specifier: 1.6.2
         version: 1.6.2
       vite:
-        specifier: ^8.0.14
+        specifier: 8.0.14
         version: 8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      xstate:
+        specifier: 5.32.0
+        version: 5.32.0
       zod:
-        specifier: ^4.4.3
+        specifier: 4.4.3
         version: 4.4.3
     devDependencies:
       '@effect/language-service':
-        specifier: ^0.86.2
+        specifier: 0.86.2
         version: 0.86.2
       '@types/bun':
         specifier: latest
         version: 1.3.14
       '@types/lodash':
-        specifier: ^4.17.24
+        specifier: 4.17.24
         version: 4.17.24
       '@types/react':
-        specifier: ^19.2.15
+        specifier: 19.2.15
         version: 19.2.15
       '@types/react-dom':
-        specifier: ^19.2.3
+        specifier: 19.2.3
         version: 19.2.3(@types/react@19.2.15)
       '@vitejs/plugin-react':
-        specifier: ^6.0.2
+        specifier: 6.0.2
         version: 6.0.2(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
       drizzle-kit:
         specifier: 1.0.0-beta.22
@@ -109,16 +106,16 @@ importers:
         specifier: 1.67.0
         version: 1.67.0
       postgres:
-        specifier: ^3.4.9
+        specifier: 3.4.9
         version: 3.4.9
       tsx:
-        specifier: ^4.22.3
+        specifier: 4.22.3
         version: 4.22.3
       typescript:
         specifier: ~5.8.3
         version: 5.8.3
       vitest:
-        specifier: ^4.1.8
+        specifier: 4.1.8
         version: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
 
 packages:
@@ -176,10 +173,6 @@ packages:
 
   '@aws-sdk/client-s3@3.1055.0':
     resolution: {integrity: sha512-FxVwuw86c2Mw4p+0tOtoE+1sDTk+eOBZD/NwwK+wwx1gHkdO/EYSv231O9A1YM8HPjUrI0vZ/hP/szckBxHW0A==}
-    engines: {node: '>=20.0.0'}
-
-  '@aws-sdk/core@3.974.14':
-    resolution: {integrity: sha512-ppamm04uoj3hhNO5IlQSs5D6rWX1fWkzcn6a4pZrojk8Y6ObY9wzLDdT/Eq3gv6O9hOebi9tYTNB8b8fQj9XJw==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.974.15':
@@ -252,10 +245,6 @@ packages:
 
   '@aws-sdk/s3-request-presigner@3.1057.0':
     resolution: {integrity: sha512-mTxO9BCztlos7gzHIFKf3p3CakOmLhjfv6Llo9LIAF+UCu/eCoKMPaFi87WmYUWWf7rIGIyb20Wa8hd4puuUKg==}
-    engines: {node: '>=20.0.0'}
-
-  '@aws-sdk/signature-v4-multi-region@3.996.29':
-    resolution: {integrity: sha512-Few9FoQqOt/0KSvZYP+qdW0dfOhfQ9N+gl2UUDvCPW6mkPKHli9LMbKxWj+wZ5zKPaOoqxuR3Hhy3OTpndkfSw==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/signature-v4-multi-region@3.996.30':
@@ -1373,9 +1362,6 @@ packages:
   estree-walker@3.0.3:
     resolution: {integrity: sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==}
 
-  eventemitter3@5.0.4:
-    resolution: {integrity: sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw==}
-
   eventsource-parser@3.1.0:
     resolution: {integrity: sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg==}
     engines: {node: '>=18.0.0'}
@@ -1606,18 +1592,6 @@ packages:
         optional: true
       vite-plus:
         optional: true
-
-  p-limit@7.3.0:
-    resolution: {integrity: sha512-7cIXg/Z0M5WZRblrsOla88S4wAK+zOQQWeBYfV3qJuJXMr+LnbYjaadrFaS0JILfEDPVqHyKnZ1Z/1d6J9VVUw==}
-    engines: {node: '>=20'}
-
-  p-queue@9.3.0:
-    resolution: {integrity: sha512-7NED7xhQ74Ngp4JP/2e0VZHp7vSWfJfqeiR92jPgxsz6m0Se4P03YoTKa9dDXyZ3r6P616gUXttrB6nnHYKang==}
-    engines: {node: '>=20'}
-
-  p-timeout@7.0.1:
-    resolution: {integrity: sha512-AxTM2wDGORHGEkPCt8yqxOTMgpfbEHqF51f/5fJCmwFC3C/zNcGT63SymH2ttOAaiIws2zVg4+izQCjrakcwHg==}
-    engines: {node: '>=20'}
 
   pako@1.0.11:
     resolution: {integrity: sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw==}
@@ -1874,14 +1848,13 @@ packages:
     resolution: {integrity: sha512-OyzrcFLL/nb6fMGHbiRDuPup9ljBycsdCypwuyg5AAHvyWzGfChJpCXMG88AGTIMFhGZ9RccFN1e6lhg3hkwKg==}
     engines: {node: '>=4.0'}
 
+  xstate@5.32.0:
+    resolution: {integrity: sha512-zsk73aWGmxn9z34P0kbiod5JwTvdYRW3+IDxITq8sd9+VWwMyW7BUzpplnYy9mIEXa6V8IMDv7Hy4m0mhT5+2Q==}
+
   yaml@2.9.0:
     resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
     engines: {node: '>= 14.6'}
     hasBin: true
-
-  yocto-queue@1.2.2:
-    resolution: {integrity: sha512-4LCcse/U2MHZ63HAJVE+v71o7yOdIe4cZ70Wpf8D/IyjDKYQLV5GD46B+hSTjJsvV5PztjvHoU580EftxjDZFQ==}
-    engines: {node: '>=12.20'}
 
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
@@ -1970,7 +1943,7 @@ snapshots:
       '@aws-crypto/sha1-browser': 5.2.0
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
-      '@aws-sdk/core': 3.974.14
+      '@aws-sdk/core': 3.974.15
       '@aws-sdk/credential-provider-node': 3.972.45
       '@aws-sdk/middleware-bucket-endpoint': 3.972.16
       '@aws-sdk/middleware-expect-continue': 3.972.13
@@ -1978,23 +1951,12 @@ snapshots:
       '@aws-sdk/middleware-location-constraint': 3.972.11
       '@aws-sdk/middleware-sdk-s3': 3.972.43
       '@aws-sdk/middleware-ssec': 3.972.11
-      '@aws-sdk/signature-v4-multi-region': 3.996.29
+      '@aws-sdk/signature-v4-multi-region': 3.996.30
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
       '@smithy/fetch-http-handler': 5.4.5
       '@smithy/node-http-handler': 4.7.5
       '@smithy/types': 4.14.2
-      tslib: 2.8.1
-
-  '@aws-sdk/core@3.974.14':
-    dependencies:
-      '@aws-sdk/types': 3.973.9
-      '@aws-sdk/xml-builder': 3.972.26
-      '@aws/lambda-invoke-store': 0.2.4
-      '@smithy/core': 3.24.5
-      '@smithy/signature-v4': 5.4.5
-      '@smithy/types': 4.14.2
-      bowser: 2.14.1
       tslib: 2.8.1
 
   '@aws-sdk/core@3.974.15':
@@ -2015,7 +1977,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-env@3.972.40':
     dependencies:
-      '@aws-sdk/core': 3.974.14
+      '@aws-sdk/core': 3.974.15
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
       '@smithy/types': 4.14.2
@@ -2023,7 +1985,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-http@3.972.42':
     dependencies:
-      '@aws-sdk/core': 3.974.14
+      '@aws-sdk/core': 3.974.15
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
       '@smithy/fetch-http-handler': 5.4.5
@@ -2033,7 +1995,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-ini@3.972.44':
     dependencies:
-      '@aws-sdk/core': 3.974.14
+      '@aws-sdk/core': 3.974.15
       '@aws-sdk/credential-provider-env': 3.972.40
       '@aws-sdk/credential-provider-http': 3.972.42
       '@aws-sdk/credential-provider-login': 3.972.44
@@ -2049,7 +2011,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-login@3.972.44':
     dependencies:
-      '@aws-sdk/core': 3.974.14
+      '@aws-sdk/core': 3.974.15
       '@aws-sdk/nested-clients': 3.997.12
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
@@ -2072,7 +2034,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-process@3.972.40':
     dependencies:
-      '@aws-sdk/core': 3.974.14
+      '@aws-sdk/core': 3.974.15
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
       '@smithy/types': 4.14.2
@@ -2080,7 +2042,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-sso@3.972.44':
     dependencies:
-      '@aws-sdk/core': 3.974.14
+      '@aws-sdk/core': 3.974.15
       '@aws-sdk/nested-clients': 3.997.12
       '@aws-sdk/token-providers': 3.1054.0
       '@aws-sdk/types': 3.973.9
@@ -2090,7 +2052,7 @@ snapshots:
 
   '@aws-sdk/credential-provider-web-identity@3.972.44':
     dependencies:
-      '@aws-sdk/core': 3.974.14
+      '@aws-sdk/core': 3.974.15
       '@aws-sdk/nested-clients': 3.997.12
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
@@ -2099,7 +2061,7 @@ snapshots:
 
   '@aws-sdk/middleware-bucket-endpoint@3.972.16':
     dependencies:
-      '@aws-sdk/core': 3.974.14
+      '@aws-sdk/core': 3.974.15
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
       '@smithy/types': 4.14.2
@@ -2117,7 +2079,7 @@ snapshots:
       '@aws-crypto/crc32': 5.2.0
       '@aws-crypto/crc32c': 5.2.0
       '@aws-crypto/util': 5.2.0
-      '@aws-sdk/core': 3.974.14
+      '@aws-sdk/core': 3.974.15
       '@aws-sdk/crc64-nvme': 3.972.9
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
@@ -2132,8 +2094,8 @@ snapshots:
 
   '@aws-sdk/middleware-sdk-s3@3.972.43':
     dependencies:
-      '@aws-sdk/core': 3.974.14
-      '@aws-sdk/signature-v4-multi-region': 3.996.29
+      '@aws-sdk/core': 3.974.15
+      '@aws-sdk/signature-v4-multi-region': 3.996.30
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
       '@smithy/types': 4.14.2
@@ -2149,8 +2111,8 @@ snapshots:
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0
-      '@aws-sdk/core': 3.974.14
-      '@aws-sdk/signature-v4-multi-region': 3.996.29
+      '@aws-sdk/core': 3.974.15
+      '@aws-sdk/signature-v4-multi-region': 3.996.30
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
       '@smithy/fetch-http-handler': 5.4.5
@@ -2167,13 +2129,6 @@ snapshots:
       '@smithy/types': 4.14.2
       tslib: 2.8.1
 
-  '@aws-sdk/signature-v4-multi-region@3.996.29':
-    dependencies:
-      '@aws-sdk/types': 3.973.9
-      '@smithy/signature-v4': 5.4.5
-      '@smithy/types': 4.14.2
-      tslib: 2.8.1
-
   '@aws-sdk/signature-v4-multi-region@3.996.30':
     dependencies:
       '@aws-sdk/types': 3.973.9
@@ -2183,7 +2138,7 @@ snapshots:
 
   '@aws-sdk/token-providers@3.1054.0':
     dependencies:
-      '@aws-sdk/core': 3.974.14
+      '@aws-sdk/core': 3.974.15
       '@aws-sdk/nested-clients': 3.997.12
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
@@ -2892,8 +2847,6 @@ snapshots:
     dependencies:
       '@types/estree': 1.0.9
 
-  eventemitter3@5.0.4: {}
-
   eventsource-parser@3.1.0: {}
 
   expect-type@1.3.0: {}
@@ -3126,17 +3079,6 @@ snapshots:
       '@oxlint/binding-win32-ia32-msvc': 1.67.0
       '@oxlint/binding-win32-x64-msvc': 1.67.0
 
-  p-limit@7.3.0:
-    dependencies:
-      yocto-queue: 1.2.2
-
-  p-queue@9.3.0:
-    dependencies:
-      eventemitter3: 5.0.4
-      p-timeout: 7.0.1
-
-  p-timeout@7.0.1: {}
-
   pako@1.0.11: {}
 
   path-expression-matcher@1.5.0: {}
@@ -3324,8 +3266,8 @@ snapshots:
 
   xmlbuilder@10.1.1: {}
 
-  yaml@2.9.0: {}
+  xstate@5.32.0: {}
 
-  yocto-queue@1.2.2: {}
+  yaml@2.9.0: {}
 
   zod@4.4.3: {}

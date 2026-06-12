@@ -1,8 +1,8 @@
 import { Layer, ManagedRuntime } from "effect";
-import { EffectStorageAdapterService } from "./storage/index.js";
+import { StorageAdapter } from "./storage/index.js";
 
 export const appMemoMap = Layer.makeMemoMapUnsafe();
 
-export const runtime = ManagedRuntime.make(EffectStorageAdapterService.EffectStorageAdapter.layer, {
+export const runtime = ManagedRuntime.make(StorageAdapter.layer, {
   memoMap: appMemoMap,
 });

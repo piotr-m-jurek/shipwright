@@ -6,12 +6,12 @@ import {
   updateDocument,
   updateDocumentStatus,
 } from "../db/queries.js";
-import { EffectStorageAdapterService } from "../storage/index.js";
+import { StorageAdapter } from "../storage/index.js";
 import { parseDocument } from "./parsers.js";
 import { estimateTokenCount } from "./estimate-token-count.js";
 import { chunkDocument } from "./chunker.js";
 import { embedChunks } from "./embedder.js";
-import { ConfirmUploadRequest } from "../shared/schemas/sessions.js";
+import { ConfirmUploadRequest } from "../shared/schemas/api.js";
 import { Effect, Schema, Array } from "effect";
 
 export namespace EffectProcessing {
@@ -39,7 +39,7 @@ export namespace EffectProcessing {
     uploads: ConfirmUploadRequest["uploads"];
     sessionId: string;
   }) {
-    const storage = yield* EffectStorageAdapterService.EffectStorageAdapter;
+    const storage = yield* StorageAdapter;
 
     yield* Effect.forEach(
       uploads,

@@ -174,14 +174,37 @@ Drizzle has native pgvector support via the `vector()` column type and cosine
 similarity operators. The chunks table lives alongside the sessions and messages
 tables — one schema, one ORM, consistent ergonomics throughout.
 
-**Retrieval is not always used:** short input bundles go straight into context.
-The XState machine holds the explicit threshold logic — when total token count
-exceeds a configurable limit, the session switches to retrieval mode. This decision
-is visible in the state machine, not buried in a utility function.
+**Chunks are always the read path for analysis passes.** Raw document text is never
+passed directly into an Extractor or Challenger LLM call. The summarization pass
+(Phase 3) reads chunks from pgvector, runs a map-reduce summarization per document,
+and stores a compact per-document summary in the DB. All downstream passes
+(Challenger, Question Generator, Writer) consume summaries, not raw text.
+
+**Retrieval as fallback only:** for very large bundles where the combined size of all
+per-document summaries exceeds the context window, the XState `tokensBelowThreshold`
+guard switches to retrieval mode — retrieving summaries by priority rather than
+stuffing all of them. This decision is visible in the state machine, not buried in a
+utility function. The threshold is evaluated against summary token counts, not raw
+document token counts.
 
 **Embedding model:** OpenAI `text-embedding-3-small` via Vercel AI SDK `embed()`.
 Good cost/performance ratio. Local models (`@xenova/transformers`) deferred — adds
 latency and setup complexity not worth it for V1.
+
+**Summarization strategy — decision deferred, three options kept open:**
+
+The `src/agent/summarizer.ts` interface is written so the strategy is swappable.
+No final choice made — implement and benchmark against the test corpus.
+
+| Strategy | How it works | Trade-off |
+|---|---|---|
+| **Map-reduce** | Batch N chunks → parallel intermediate summaries → single reduce call | Simple, parallelisable. Can lose coherence at batch boundaries. |
+| **Hierarchical** | Summarise pairs of chunks recursively until one summary remains | Better cross-boundary coherence. Moderate added complexity. |
+| **Agentic with tools** | Model issues `query_chunks(query)` calls to pgvector, builds understanding iteratively | Most flexible for sparse key information. Hardest to bound — model decides call count. |
+
+Note: with Gemini 2.5 Pro (1M context) already in the stack as overflow fallback,
+very large single documents can bypass summarization entirely by routing there.
+Summarization strategy applies to the typical document size where chunking is needed.
 
 **Rejected:** Qdrant — right for large-scale production RAG, wrong for this project's
 scale; adds an unnecessary second service. Pinecone — vendor lock-in. Chroma —

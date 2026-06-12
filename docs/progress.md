@@ -26,7 +26,9 @@
 - Documents go into `messages` user content with `=== filename ===` headers, not system prompt
 - `drizzle-kit push` required after every schema change
 
-**Current status:** Phase 3 complete · Effect migration in progress (storage done) · Phase 4 next
+**Build sequence:** Phases 1–8 → Phase 9 (Full Effect Rewrite) → Phase 10 (React SPA)
+
+**Current status:** Phase 3 REOPENED (design revision 11.06.2026 — see below) · Effect migration in progress · Phase 3 must re-pass gate before Phase 4
 
 ---
 
@@ -150,7 +152,7 @@ PASSED.
 
 ### What was built
 
-**`src/storage/index.ts` — `EffectStorageAdapter` service (COMPLETE)**
+**`src/storage/index.ts` — `StorageAdapter` service (COMPLETE)**
 
 Full rewrite of storage as an Effect `Context.Service`. All six operations implemented:
 
@@ -171,14 +173,14 @@ Key patterns used:
 - `Effect.catchDefect` — intercepts untyped AWS exceptions in `headObject`, maps known 403/404 to `false`
 - `Effect.map(() => true)` — maps successful `headObject` response to boolean
 
-The old `S3Storage` class (Promise-based) kept alongside `EffectStorageAdapter` during migration. Both coexist in the same file until the full migration is complete.
+The old `S3Storage` class (Promise-based) kept alongside `StorageAdapter` during migration. Both coexist in the same file until the full migration is complete.
 
-### How to use `EffectStorageAdapter`
+### How to use `StorageAdapter`
 
 See next section below for integration guidance.
 
-### Full rewrite planned (Phase 9.5)
-See `docs/build_sequence.md` Phase 9.5 for the complete plan. Key items:
+### Full rewrite planned (Phase 9)
+See `docs/build_sequence.md` Phase 9 for the complete plan. Key items:
 - `DatabaseService` — wrap all Drizzle queries as Effect service, enable mock DB in tests
 - `@effect/ai-anthropic` — replace Vercel AI SDK with Effect's typed AI layer
 - Parsers + embedder as Effect services
@@ -221,7 +223,7 @@ XState actors call `Effect.runPromise(effect.pipe(Effect.provide(runtime)))` ins
 
 ---
 
-## Phase 3 — Single Agent Pass (COMPLETE)
+## Phase 3 — Per-Document Summarization + Challenger (REOPENED — design revision 11.06.2026)
 
 ### What was built
 - `src/shared/schemas/agent.ts` — `RequirementSchema`, `DocumentAnalysisSchema`, `ConflictSchema`, `GapReportSchema`, `DocumentAnalysis` and `GapReport` types
@@ -239,7 +241,51 @@ XState actors call `Effect.runPromise(effect.pipe(Effect.provide(runtime)))` ins
 - Planted contradiction surfaced: `prd_draft.md` (mobile out of scope) vs `discovery_call_transcript.txt` (CEO hard requirement for mobile)
 
 ### Gate
-PASSED.
+Previously PASSED on the old single-pass Extractor design. **REOPENED** — the design
+has changed. Gate must be re-verified against the new acceptance criteria (Phase 3a + 3b).
+
+### Design revision — 11.06.2026
+
+The Extractor is replaced by a per-document **map-reduce summarizer**. Key changes:
+
+- **Chunks as read path:** No analysis pass reads `documents.rawText` directly. Every
+  analysis LLM call loads chunks from the `chunks` table.
+- **Map-reduce:** For large documents, chunks are batched (default: 20 per batch). Each
+  batch produces an intermediate summary (map). Intermediates are reduced into a single
+  per-document summary (reduce). Small documents skip map and go directly to reduce.
+- **Summarization strategy deferred:** Three options kept open — map-reduce (default),
+  hierarchical (recursive pair summarisation), agentic with tools (model queries pgvector).
+  Interface in `summarizer.ts` written to be swappable; decision deferred to benchmarking.
+- **Summary storage:** separate `document_summaries` table (not a column on `documents`).
+  Stores both `map_intermediate` rows (one per batch) and `final` rows (one per document
+  per summarization run). `version` increments on re-summarization — history never
+  overwritten. `token_count` per row enables the XState context threshold guard without
+  re-reading content.
+- **Challenger reads summaries:** The Challenger pass receives per-document summaries, not
+  raw text. Contradictions between documents are visible at the summary level.
+- **XState context updated:** `documentSummaries[]`, `revisionFeedback`, `outputVersion`
+  added to machine context shape.
+- **`inputMode` guard:** `tokensBelowThreshold` now evaluates summary token counts, not
+  raw document token counts. Full-context fallback is still present but is the exception.
+- **Architecture Rule 13 added:** Analysis passes must not read `documents.rawText`.
+- **Revision loop added (Phase 5b):** `complete → revising → [awaiting_answers?] → generating → complete`.
+  Free-form feedback via `POST /api/sessions/:id/revise`. New XState event `REVISION_REQUESTED`,
+  new state `revising`. Each revision increments `outputVersion` on outputs rows.
+- **Output export added (Phase 5b):** `GET /api/sessions/:id/output/:type/download-url`
+  returns a presigned S3 GET URL (short TTL). File bytes never pass through Hono.
+
+**What to build next (Phase 3 redo):**
+1. Add `document_summaries` table to `src/db/schema.ts` (columns: `id`, `documentId`,
+   `sessionId`, `version`, `summaryType`, `batchIndex`, `content`, `tokenCount`, `createdAt`),
+   run `drizzle-kit push`
+2. Add `DocumentSummarySchema` to `src/shared/schemas/agent.ts`
+3. Implement `src/agent/summarizer.ts` — map-reduce per document, reads chunks from DB,
+   writes intermediate and final rows to `document_summaries`
+4. Rewrite `src/agent/challenger.ts` — loads `summary_type = 'final'` rows from
+   `document_summaries`, not from raw documents
+5. Update `src/shared/schemas/machine.ts` — add `documentSummaries[]` to context schema
+   (shape: `{ id, documentId, sourceDocument, documentType, content, tokenCount }[]`)
+6. Re-run `pnpm test:corpus` — verify Phase 3 gate criteria in `acceptance_criteria.md`
 
 ---
 

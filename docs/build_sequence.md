@@ -140,15 +140,19 @@ getting it wrong costs days of refactoring.
 **States:**
 ```
 idle → uploading → processing → analyzing →
-awaiting_answers → re_evaluating → generating → complete
+awaiting_answers → re_evaluating → generating → complete → revising
 + error (reachable from any state)
 ```
+
+`revising` — reachable from `complete` when the user submits free-form revision
+feedback. May loop through `awaiting_answers` again if new questions surface, then
+back to `generating`. Each pass through `generating` increments `outputVersion`.
 
 **Events:**
 ```
 UPLOAD_COMPLETE, ANALYSIS_DONE, USER_ANSWERED,
 ANSWERS_SUFFICIENT, ANSWERS_INSUFFICIENT, OUTPUT_READY, ERROR,
-USER_CONFIRM
+USER_CONFIRM, REVISION_REQUESTED
 ```
 
 `USER_CONFIRM` — explicit user confirmation required before analysis starts.
@@ -156,18 +160,27 @@ The machine does not transition from `processing` to `analyzing` automatically
 after upload completes. The user must confirm they are ready. This is a deliberate
 HITL decision — the user can review what was uploaded before committing to analysis.
 
+`REVISION_REQUESTED` — fired when the user submits free-form feedback on the
+generated outputs. Carries `{ feedback: string }`. Transitions `complete → revising`.
+
 **Guards:**
 ```
 hasEnoughContext       — tokenCount below threshold → stuff context directly
-tokensBelowThreshold  — decides context vs retrieval mode
+tokensBelowThreshold  — decides context vs retrieval mode (on summary token counts)
 roundLimitReached     — caps clarifying loop at 2 rounds
 ```
 
 **Context shape** (what flows through the machine):
 ```
-sessionId, documents[], questions[], answers[], round,
+sessionId, documents[], documentSummaries[], questions[], answers[], round,
 inputMode (context | retrieval), agentAnalysis, outputs{}
 ```
+
+`documentSummaries[]` — the latest `final` row per document from the `document_summaries`
+table, loaded into XState context before the `analyzing` state is entered. These are what
+the Challenger and Writer passes consume — never raw document text. Each entry carries
+`tokenCount` so the `tokensBelowThreshold` guard can evaluate whether all summaries fit
+in context without re-reading content.
 
 **Define the context shape as a Zod schema in `src/shared/schemas/machine.ts`:**
 ```ts
@@ -177,6 +190,14 @@ const MachineContextSchema = z.object({
     id: z.string().uuid(),
     filename: z.string(),
     documentType: DocumentTypeSchema,
+    tokenCount: z.number().int().positive(),
+  })),
+  documentSummaries: z.array(z.object({
+    id: z.string().uuid(),              // document_summaries.id
+    documentId: z.string().uuid(),
+    sourceDocument: z.string(),         // documents.filename
+    documentType: DocumentTypeSchema,
+    content: z.string(),                // final summary content
     tokenCount: z.number().int().positive(),
   })),
   questions: z.array(z.object({
@@ -193,6 +214,8 @@ const MachineContextSchema = z.object({
   round: z.number().int().min(0).max(2),
   inputMode: z.enum(['context', 'retrieval']),
   agentAnalysis: z.unknown().nullable(),
+  revisionFeedback: z.string().nullable(),
+  outputVersion: z.number().int().min(1),
   outputs: z.object({
     projectBrief: z.string().optional(),
     implementationPrd: z.string().optional(),
@@ -210,42 +233,124 @@ implementation in Phase 4 is just translating this diagram into code.
 
 ---
 
-## Phase 3 — Single Agent Pass (~2 days)
+## Phase 3 — Per-Document Summarization + Challenger (~3 days)
 
-- Wire Vercel AI SDK + Claude 3.7 Sonnet via Anthropic provider
-- Implement **Extractor pass** with `generateText` + `Output.object({ schema: DocumentAnalysisSchema })`
-- Implement **Challenger pass** with `generateText` + `Output.object({ schema: GapReportSchema })`
-- Tune prompts until output is reliable on the test bundle
+> **Design revision (11.06.2026):** Replaces the single-pass Extractor design.
+> The agent never reads raw document text in one LLM call. Chunks from the DB are
+> the primary read path. All analysis passes work from per-document summaries.
 
-**AI SDK v6 note:** `generateObject` is deprecated. Use `generateText` with `Output.object()`:
+### 3a — Per-document summarization (map-reduce)
+
+For each document in the session:
+
+1. **Load chunks from DB** — query `chunks` table by `documentId`, ordered by `chunkIndex`.
+2. **Map pass** — split chunks into batches (configurable, starting point: 20 chunks per
+   batch). Each batch gets a summarization LLM call producing an intermediate summary.
+   Each intermediate is stored as a row in `document_summaries` with
+   `summaryType = 'map_intermediate'` and `batchIndex` set. If the document is small
+   enough to fit in one call, skip directly to the reduce pass.
+3. **Reduce pass** — summarize all intermediates into a single final summary. Stored as
+   a new row with `summaryType = 'final'`. This is what all downstream passes consume.
+4. **Re-summarization** creates new rows — old versions are retained. Query the latest
+   final with `ORDER BY version DESC LIMIT 1`.
+
+**Why a separate table and not a column on `documents`:**
+- Map intermediates and the final are all rows in the same table — full visibility
+  into the map-reduce tree for debugging and evals
+- Re-summarization (e.g. after revision) creates a new row; history is never overwritten
+- `tokenCount` per row lets the XState guard evaluate whether all finals fit in context
+  without re-reading content
+- Keeps the `documents` row narrow — no fat text blob on a frequently-scanned table
+
+**New table — `document_summaries` (add to `src/db/schema.ts`, then `drizzle-kit push`):**
+```ts
+export const documentSummaries = pgTable('document_summaries', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  documentId:  uuid('document_id').notNull().references(() => documents.id),
+  sessionId:   uuid('session_id').notNull().references(() => agentSessions.id),
+  version:     integer('version').notNull().default(1),
+  summaryType: text('summary_type', {
+    enum: ['map_intermediate', 'final']
+  }).notNull(),
+  batchIndex:  integer('batch_index'),   // non-null for map_intermediate rows
+  content:     text('content').notNull(),
+  tokenCount:  integer('token_count').notNull(),
+  createdAt:   timestamp('created_at').notNull().defaultNow(),
+})
+```
+
+**AI SDK v6 pattern for summarization passes:**
 ```ts
 import { generateText, Output } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
 
 const { output } = await generateText({
   model: anthropic('claude-sonnet-4-5'),
-  output: Output.object({ schema: DocumentAnalysisSchema }),
-  system: systemPrompt,
-  messages: [{ role: 'user', content: documentContext }],
+  output: Output.object({ schema: DocumentSummarySchema }),
+  system: summarizerSystemPrompt,
+  messages: [{ role: 'user', content: chunksAsText }],
 })
 ```
-Documents go into `messages` as user content (not the system prompt).
-The system prompt describes the task; the documents are the input.
+Chunks go into `messages` as user content with `=== chunk N ===` headers.
+The system prompt describes the task; the chunks are the input.
 
 **Zod schemas to define in `src/shared/schemas/agent.ts`:**
 ```ts
-const RequirementSchema = z.object({
+const ItemWithSourceSchema = z.object({
   text: z.string(),
   sourceDocument: z.string(),      // required — never optional
   confidence: z.enum(['high', 'medium', 'low']),
 })
 
-const DocumentAnalysisSchema = z.object({
-  requirements: z.array(RequirementSchema),
-  constraints: z.array(RequirementSchema),
-  assumptions: z.array(RequirementSchema),
+const DocumentSummarySchema = z.object({
+  sourceDocument: z.string(),      // filename — required, never optional
+  documentType: DocumentTypeSchema,
+  summary: z.string(),             // prose summary of the document's content
+  requirements: z.array(ItemWithSourceSchema),
+  constraints: z.array(ItemWithSourceSchema),
+  assumptions: z.array(ItemWithSourceSchema),
 })
 
+export type DocumentSummary = z.infer<typeof DocumentSummarySchema>
+```
+
+**Summarization strategy — decision deferred, two options kept open:**
+
+The implementation in `src/agent/summarizer.ts` should be written so the strategy
+is swappable behind a common interface. Two viable options for V1+:
+
+- **Map-reduce (default)** — batch chunks → parallel intermediate summaries →
+  single reduce call. Parallelisable, simple. Can lose coherence at batch
+  boundaries if a key idea spans two batches.
+
+- **Hierarchical summarization** — summarise pairs of chunks recursively (like a
+  tournament bracket) until one summary remains. Better coherence across boundaries
+  than flat map-reduce. Moderate additional complexity.
+
+- **Agentic with tools** — the model is given a `query_chunks(query: string)` tool
+  and builds its understanding by issuing targeted queries to pgvector. Most flexible
+  for sparse important information in long documents. Hardest to bound — the model
+  decides how many tool calls to make.
+
+> Note: with Gemini 2.5 Pro (1M context) already in the stack as an overflow model,
+> very large single documents can bypass summarization entirely by routing there.
+> The summarization strategy applies to the typical-case document size.
+
+---
+
+### 3b — Challenger pass (works from summaries, not raw text)
+
+Once all per-document summaries are stored:
+
+1. **Load final summaries** — query `document_summaries` where `session_id = ?` and
+   `summary_type = 'final'`, ordered by `version DESC`, one per `document_id`.
+   These are already in `documentSummaries[]` in XState context from the summarization pass.
+2. **Challenger call** — pass all final summaries into a single LLM call. Each summary
+   is labelled with its `sourceDocument` and `documentType`. The Challenger compares
+   across summaries to find conflicts, gaps, and ambiguities.
+3. **Output** — `GapReport` structured object persisted to `agentAnalysis` in XState context.
+
+```ts
 const ConflictSchema = z.object({
   description: z.string(),
   documentA: z.string(),           // filename of first source
@@ -264,16 +369,28 @@ const GapReportSchema = z.object({
   })),
 })
 
-export type DocumentAnalysis = z.infer<typeof DocumentAnalysisSchema>
 export type GapReport = z.infer<typeof GapReportSchema>
 ```
 
-Run against the test corpus. Verify:
-- Zero requirements without `sourceDocument` in Extractor output
-- Challenger surfaces the planted contradiction (`documentA` and `documentB` both populated)
+**Why summaries and not raw text:** The per-document summaries already capture
+requirements, constraints, and assumptions attributed to their source. The Challenger
+reasons across summaries — it does not re-read raw chunks. This keeps the call within
+context limits and focuses reasoning on the synthesised content.
 
-**Do not proceed to Phase 4 until the Extractor and Challenger
-outputs are trustworthy. Everything downstream depends on them.**
+**Fallback for very large bundles:** If the combined size of all summaries exceeds the
+context threshold, retrieve summaries by `documentType` priority (PRD draft and transcript
+first). This fallback is handled by the XState `tokensBelowThreshold` guard, operating
+on summary token counts rather than raw document token counts.
+
+Run against the test corpus. Verify:
+- Every `DocumentSummary` has a non-empty `sourceDocument`
+- Every requirement/constraint/assumption has `sourceDocument`
+- Challenger surfaces the planted contradiction (`documentA` and `documentB` both populated)
+- Challenger surfaces at least one gap
+
+**Do not proceed to Phase 4 until `document_summaries` rows with `summary_type = 'final'`
+exist for all session documents and the Challenger surfaces the planted contradiction
+from those summaries (not from raw text).**
 
 ---
 
@@ -324,8 +441,14 @@ condition logic — it’s the hardest design problem in the codebase.**
 
 ## Phase 5 — Writer Passes (~2 days)
 
+The Writer passes consume **per-document summaries** (from `documentSummaries[]` in
+XState context) and the resolved answers from the clarifying loop — not raw document
+text. This keeps both writer calls within context limits and grounds output in the
+synthesised content.
+
 - Implement **Writer (Brief)** pass: streaming Markdown, stakeholder-readable,
-  5 minutes, no jargon, citations back to source documents
+  5 minutes, no jargon, citations back to source documents (use `sourceDocument`
+  fields from summaries for attribution)
 - Implement **Writer (PRD)** pass: meta-prompt exercise — written for Claude Code
   or Cursor, not a human. Acceptance criteria, file/module hints, non-goals,
   edge cases, recommended stack. Different structure from a human PRD.
@@ -333,6 +456,56 @@ condition logic — it’s the hardest design problem in the codebase.**
 - Store completed outputs in `outputs` table with `version = 1`
 - Wire prompt caching on document context (same context across all passes,
   pay the token cost once)
+
+---
+
+## Phase 5b — Output Export + Revision Loop (~1 day)
+
+### Export
+
+- New route: `GET /api/sessions/:id/output/:type/download-url`
+  - `type` is `project_brief` or `implementation_prd`
+  - Returns a presigned GET URL for the latest version of the output file from S3
+  - Short TTL (e.g. 15 minutes) — the URL is for immediate download, not permanent
+  - File bytes never pass through Hono
+
+**Zod schema for the route param:**
+```ts
+const OutputDownloadParamSchema = z.object({
+  id: z.string().uuid(),
+  type: z.enum(['project_brief', 'implementation_prd']),
+})
+```
+
+### Revision loop
+
+After outputs are generated, the user can submit free-form feedback and trigger
+a re-generation. The machine does not restart — it loops within the existing session.
+
+**XState additions:**
+- New state: `revising` — reachable from `complete` via `REVISION_REQUESTED`
+- `revising` may transition to `awaiting_answers` if new questions surface from
+  the revision pass, then back to `generating`, then back to `complete`
+- Each pass through `generating` increments `outputVersion` in context
+
+**New route: `POST /api/sessions/:id/revise`**
+```ts
+const ReviseRequestSchema = z.object({
+  feedback: z.string().min(1),
+})
+```
+Fires `REVISION_REQUESTED` event carrying the feedback string. Returns `202`.
+
+**Revision Writer pass:**
+- Receives: existing outputs (both Brief and PRD) + free-form feedback +
+  `documentSummaries[]` from context
+- May re-query pgvector chunks if the feedback references specific areas
+  (e.g. "the auth section needs more detail" — retrieve auth-related chunks)
+- Regenerates both outputs; increments `version` on the `outputs` table rows
+
+**Context additions (already added to `MachineContextSchema` in Phase 2):**
+- `revisionFeedback: string | null` — the latest feedback string, cleared after generation
+- `outputVersion: number` — starts at `1`, increments on each revision
 
 ---
 
@@ -364,6 +537,7 @@ const SessionIdParamSchema = z.object({
 })
 
 // SubmitAnswersSchema already defined in Phase 4
+// ReviseRequestSchema and OutputDownloadParamSchema defined in Phase 5b
 ```
 ```ts
 // src/api/routes/sessions.ts
@@ -451,32 +625,19 @@ response is a failed eval, not a passing one with a warning.
 
 ---
 
-## Phase 9 — React SPA (stretch, after Phase 8)
+## Fine-tuning phase (after Phase 8)
 
-> Only start this after the backend is solid and evals pass.
-> The UI is a presentation layer over something that already works.
+These items were raised in mentor review and deferred deliberately. Revisit
+after the core pipeline is working and evals pass.
 
-- Vite + React setup in `apps/web`
-- TanStack Router — three routes: `/`, `/sessions/:id/questions`, `/sessions/:id/output`
-- TanStack Query — mutations for upload and answer submission, queries for session status
-- assistant-ui + shadcn/ui + Tailwind — Thread/Composer for question loop,
-  dual-panel Markdown viewer for outputs
-- `hc<typeof app>` Hono RPC client — same endpoints the CLI uses
-- Download buttons for Brief and PRD (Markdown files)
+- **Streaming parse + chunk** — replace buffer-based parsing with stream-based parsing. Pipe the S3 download stream directly into the parser. Reduces memory pressure for large files and concurrent users. Requires verifying `unpdf` and `mammoth` stream support.
+- **Persistent processing queue** — `p-queue` (in-process, concurrency: 2) is already in place for V1. Upgrade to `pg-boss` (uses existing Postgres) or `BullMQ` (needs Redis) when job durability across server restarts is needed.
+- **`embedMany` batching** — `embedMany` has a request size limit. For documents producing many chunks, implement batching before calling `embedMany`.
+- **Document cleanup job** — background job to delete orphaned documents (no linked session), their chunks, and their S3 objects. Prevents storage accumulation from incomplete or abandoned sessions.
+- **Chunk metadata enrichment** — DONE in Phase 1. `locationMeta: jsonb` column on `chunks` table typed as `LocationMeta | null`: `{ pageNumber?: number, headingPath?: string, charOffset?: number }`. Chunker returns `{ content: string, locationMeta: LocationMeta }[]`. Parsers emit location hints during parsing.
+- **SSE for status updates** — replace `GET /api/sessions/:id` polling with Server-Sent Events via `POST /api/sessions/:id/stream` when building the React SPA.
 
----
-
-## Open questions to resolve during build
-
-- Exact token threshold for context vs retrieval mode (tune empirically in Phase 3)
-- Whether one clarification round is enough or two are needed (tune in Phase 4)
-- Chunking strategy: chunk size, overlap, and minimum chunk size (tune in Phase 1 against retrieval quality)
-- Whether `xstateSnapshot` serialisation covers all edge cases or needs custom reducers
-- Minimum chunk size threshold — short paragraphs produce low-quality embeddings; merge or discard chunks below a minimum length
-
----
-
-## Phase 9.5 — Full Effect Rewrite (after Phase 9 SPA, before production)
+## Phase 9 — Full Effect Rewrite (after Phase 8, before SPA)
 
 Complete the Effect migration once the full backend pipeline works end-to-end
 and evals pass. Do not start this before Phase 8 gate passes.
@@ -535,7 +696,7 @@ const AnthropicClientLayer = AnthropicClient.layerConfig({
 ```ts
 export const runtime = ManagedRuntime.make(
   Layer.mergeAll(
-    EffectStorageAdapterService.EffectStorageAdapter.layer,
+    StorageAdapter.layer,
     DatabaseService.layer,
     AnthropicService.layer,
   ),
@@ -551,14 +712,29 @@ export const runtime = ManagedRuntime.make(
 
 ---
 
-## Fine-tuning phase (after Phase 8)
+## Phase 10 — React SPA (stretch, after Phase 9)
 
-These items were raised in mentor review and deferred deliberately. Revisit
-after the core pipeline is working and evals pass.
+> Only start this after the backend is solid, evals pass, and Phase 9 Effect rewrite is complete.
+> The UI is a presentation layer over something that already works.
 
-- **Streaming parse + chunk** — replace buffer-based parsing with stream-based parsing. Pipe the S3 download stream directly into the parser. Reduces memory pressure for large files and concurrent users. Requires verifying `unpdf` and `mammoth` stream support.
-- **Persistent processing queue** — `p-queue` (in-process, concurrency: 2) is already in place for V1. Upgrade to `pg-boss` (uses existing Postgres) or `BullMQ` (needs Redis) when job durability across server restarts is needed.
-- **`embedMany` batching** — `embedMany` has a request size limit. For documents producing many chunks, implement batching before calling `embedMany`.
-- **Document cleanup job** — background job to delete orphaned documents (no linked session), their chunks, and their S3 objects. Prevents storage accumulation from incomplete or abandoned sessions.
-- **Chunk metadata enrichment** — DONE in Phase 1. `locationMeta: jsonb` column on `chunks` table typed as `LocationMeta | null`: `{ pageNumber?: number, headingPath?: string, charOffset?: number }`. Chunker returns `{ content: string, locationMeta: LocationMeta }[]`. Parsers emit location hints during parsing.
-- **SSE for status updates** — replace `GET /api/sessions/:id` polling with Server-Sent Events via `POST /api/sessions/:id/stream` when building the React SPA.
+- Vite + React setup in `apps/web`
+- TanStack Router — three routes: `/`, `/sessions/:id/questions`, `/sessions/:id/output`
+- TanStack Query — mutations for upload and answer submission, queries for session status
+- assistant-ui + shadcn/ui + Tailwind — Thread/Composer for question loop,
+  dual-panel Markdown viewer for outputs
+- `hc<typeof app>` Hono RPC client — same endpoints the CLI uses
+- Download buttons for Brief and PRD (Markdown files)
+
+---
+
+## Open questions to resolve during build
+
+- Exact token threshold for context vs retrieval mode (tune empirically in Phase 3)
+- Whether one clarification round is enough or two are needed (tune in Phase 4)
+- Chunking strategy: chunk size, overlap, and minimum chunk size (tune in Phase 1 against retrieval quality)
+- Whether `xstateSnapshot` serialisation covers all edge cases or needs custom reducers
+- Minimum chunk size threshold — short paragraphs produce low-quality embeddings; merge or discard chunks below a minimum length
+
+---
+
+

@@ -8,6 +8,8 @@
 
 A tool a project lead can drop a folder of project inputs into — a short description, supporting documents (PRD draft, RFP, design notes), and meeting transcripts — and get back two artifacts. The first is a clean **Project Brief** a stakeholder can read in five minutes to understand what the project is and what needs to be built. The second is an **Implementation PRD** structured as a prompt for a coding agent (Claude Code, Cursor, Codex), detailed enough that the agent can start work without further clarification.
 
+Both outputs are downloadable via presigned URL — file bytes are served directly from storage, not through the backend. After reviewing the outputs, the user can submit free-form revision feedback and trigger a re-generation pass. Each revision increments the output version and is stored alongside previous versions.
+
 Before producing either output, the agent analyzes the inputs, identifies gaps and contradictions, and asks the user a small set of targeted clarifying questions.
 
 ---
@@ -20,11 +22,15 @@ This is a realistic presales problem — close to what people actually do every 
 
 ## Key design decisions you'll need to make
 
-**Document ingestion strategy** — You'll get PDFs, DOCX, plain text, transcripts. Pick two or three formats and handle them well rather than trying to cover everything. Decide early whether you'll dump everything into context or chunk and retrieve.
+**Document ingestion strategy** — You'll get PDFs, DOCX, plain text, transcripts. Pick two or three formats and handle them well rather than trying to cover everything. Documents are always chunked and embedded at upload time — the chunks are the primary read path for every analysis pass.
 
-**Context vs. retrieval** — A short brief plus a few short docs fits in a context window. Add a 50-page RFP or a two-hour transcript and it doesn't. Decide where your threshold is and design for the realistic case, not the demo case.
+**Per-document summarization via map-reduce** — The analysis pipeline never reads raw document text directly into a single LLM call. Instead it reads chunks from the DB and summarizes each document independently. For large documents (many chunks), this uses a map-reduce strategy: summarize batches of chunks into intermediate summaries, then reduce those intermediates into a final per-document summary. Each summary is stored in the DB. This keeps individual LLM calls within context limits regardless of document size, and produces a compact representation that downstream passes can reason over.
+
+**Context vs. retrieval** — Per-document summaries are compact enough to fit in context together for most realistic bundles. For very large bundles (many documents, each with a long summary), the system falls back to retrieval over summaries. This guard lives in the XState machine and is the fallback path, not the primary one.
 
 **Clarifying question loop** — The agent identifies gaps, ambiguities, and conflicts, then asks the user a small number of targeted questions. Three to seven, not thirty. The agent must know when to stop. This is a genuine HITL pattern, not a chatty UX choice — make it explicit.
+
+**Conflict detection from summaries** — After per-document summaries are produced, the Challenger pass compares them. Contradictions between documents are visible at the summary level — the summaries are compact enough to reason across without retrieving raw chunks. Conflicts are surfaced to the user in the clarifying loop.
 
 **Handling source conflicts** — The transcript says X, the PRD draft says Y. Surface the conflict to the user, ask, or auto-resolve with a noted assumption? There's no single right answer, but the system needs a deliberate one.
 
