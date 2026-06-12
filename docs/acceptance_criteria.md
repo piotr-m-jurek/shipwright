@@ -40,17 +40,17 @@ it "mostly works".
 
 ### 1b — Parsing + chunking + embedding
 
-- [ ] After confirming a PDF upload, `SELECT count(*) FROM chunks WHERE session_id = '<id>'` returns > 0 — *pending real OpenAI key*
-- [ ] After confirming a DOCX upload, chunks are present with non-empty `content` — *pending real OpenAI key*
+- [ ] After confirming a PDF upload, `SELECT count(*) FROM chunks WHERE session_id = '<id>'` returns > 0 — *pending OpenAI quota*
+- [ ] After confirming a DOCX upload, chunks are present with non-empty `content` — *pending OpenAI quota*
 - [x] After confirming a plain text or Markdown upload, chunks are present (verified with mocked embeddings)
-- [ ] Every chunk row has a non-null `embedding` column — *pending real OpenAI key*
+- [ ] Every chunk row has a non-null `embedding` column — *pending OpenAI quota*
 - [x] Every chunk row has non-null `document_type`, `chunk_index`, `session_id`
-- [ ] `SELECT token_count FROM documents WHERE session_id = '<id>'` returns a positive integer — *pending real OpenAI key*
+- [ ] `SELECT token_count FROM documents WHERE session_id = '<id>'` returns a positive integer — *pending OpenAI quota*
 - [x] The uploaded file is retrievable via `StorageAdapter.download()` — not via `fs.readFile` directly
-- [ ] A semantic query against pgvector for a term present in the uploaded document returns that document's chunks in the top results — *pending real OpenAI key*
-- [ ] A semantic query for a term NOT in the document does not return that document's chunks at the top — *pending real OpenAI key*
+- [ ] A semantic query against pgvector for a term present in the uploaded document returns that document's chunks in the top results — *pending OpenAI quota*
+- [ ] A semantic query for a term NOT in the document does not return that document's chunks at the top — *pending OpenAI quota*
 
-**Gate:** Structural wiring verified. Items marked *pending real OpenAI key* to be re-verified when API key available. Proceeding to Phase 2 with this acknowledged.
+**Gate:** Structural wiring verified. Parser confirmed working for PDF (unpdf + Buffer→Uint8Array fix applied), DOCX, plain text, Markdown. Chunk pipeline produces correct output (content, charOffset, chunkIndex). Embeddings blocked by OpenAI quota exhaustion — key is present and correctly configured, billing issue only. Items marked *pending OpenAI quota* to be re-verified when quota is topped up. Proceeding to Phase 3 with this acknowledged.
 
 ---
 
@@ -201,13 +201,14 @@ it "mostly works".
 ## Phase 8 — Langfuse + Evals
 
 - [ ] After running a session, traces appear in the Langfuse dashboard
-- [ ] Each agent pass (Extractor, Challenger, Question generator, Brief writer, PRD writer) appears as a named span
+- [ ] Each agent pass (Summarizer, Challenger, Question generator, Brief writer, PRD writer) appears as a named span
 - [ ] The faithfulness eval runs and returns a score for at least one session
 - [ ] The completeness eval runs and returns a score for at least one session
-- [ ] Running the test corpus through the full pipeline: the Challenger surfaces the planted contradiction between the transcript and the PRD draft
-- [ ] Running the test corpus through the full pipeline: the buried RFP constraint appears in the Extractor output or is flagged as a gap by the Challenger
-- [ ] Running the test corpus through the full pipeline: the missing acceptance criterion is surfaced as a gap
-- [ ] The clarifying loop asks about the ambiguous notification requirement
+- [ ] Running the test corpus (5 files) through the full pipeline: Issue 1 surfaced — mobile scope conflict (prd_draft vs transcript)
+- [ ] Running the test corpus through the full pipeline: Issue 2 surfaced — EU data residency buried in rfp.md
+- [ ] Running the test corpus through the full pipeline: Issue 3 surfaced — delegation acceptance criteria gap (prd_draft vs hr_requirements.pdf)
+- [ ] Running the test corpus through the full pipeline: Issue 4 surfaced — notification channel ambiguity (prd_draft vs transcript vs hr_requirements.pdf)
+- [ ] Running the test corpus through the full pipeline: Issue 5 surfaced — SSO/auth conflict (prd_draft vs hr_requirements.pdf)
 
 ---
 

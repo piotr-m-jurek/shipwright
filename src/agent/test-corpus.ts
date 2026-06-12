@@ -11,6 +11,10 @@
  * - At least 3 distinct requirements
  * - At least one conflict with documentA and documentB populated
  * - At least one gap
+ * - Planted contradiction: mobile scope (prd_draft.md vs discovery_call_transcript.txt)
+ * - Planted contradiction: SSO auth (prd_draft.md vs hr_requirements.pdf)
+ * - Planted gap: EU data residency buried in rfp.md
+ * - Planted gap: delegation acceptance criteria missing from PRD
  */
 
 import { readFile } from "node:fs/promises";
@@ -19,25 +23,29 @@ import { config } from "dotenv";
 
 config({ path: resolve(process.cwd(), ".env") });
 
+import { Effect } from "effect";
 import { runExtractor } from "./extractor.js";
 import { runChallenger } from "./challenger.js";
+import { parseDocument } from "./parsers.js";
 import { runtime } from "../runtime.js";
 
 const CORPUS_DIR = resolve(process.cwd(), "docs/test_corpus");
 
-async function loadCorpus() {
-  const files = [
-    { filename: "project_brief.txt" },
-    { filename: "prd_draft.md" },
-    { filename: "rfp.md" },
-    { filename: "discovery_call_transcript.txt" },
-  ];
+const CORPUS_FILES = [
+  "project_brief.txt",
+  "prd_draft.md",
+  "rfp.md",
+  "discovery_call_transcript.txt",
+  "hr_requirements.pdf",
+];
 
+async function loadCorpus() {
   return Promise.all(
-    files.map(async ({ filename }) => ({
-      filename,
-      text: await readFile(resolve(CORPUS_DIR, filename), "utf-8"),
-    })),
+    CORPUS_FILES.map(async (filename) => {
+      const buffer = await readFile(resolve(CORPUS_DIR, filename));
+      const parsed = await runtime.runPromise(parseDocument(buffer, filename));
+      return { filename, text: parsed.text };
+    }),
   );
 }
 
@@ -106,8 +114,85 @@ async function main() {
     console.error("❌ GATE FAIL: No gaps found");
   }
 
+  // ── Planted issue checks ───────────────────────────────────────────────────
+
+  console.log("\n── PLANTED ISSUE CHECKS ────────────────────────────────────");
+
+  // Issue 1: mobile scope contradiction (prd_draft.md vs discovery_call_transcript.txt)
+  const mobileConflict = gapReport.conflicts.some(
+    (c) =>
+      (c.documentA.includes("prd_draft") || c.documentB.includes("prd_draft")) &&
+      (c.documentA.includes("transcript") || c.documentB.includes("transcript")) &&
+      c.description.toLowerCase().includes("mobile"),
+  );
+  console.log(
+    mobileConflict
+      ? "✓ Issue 1 FOUND: mobile scope conflict (prd_draft vs transcript)"
+      : "❌ Issue 1 MISSING: mobile scope conflict not surfaced",
+  );
+
+  // Issue 2: EU data residency buried in rfp.md
+  const euResidency =
+    [...analysis.requirements, ...analysis.constraints].some(
+      (i) => i.sourceDocument.includes("rfp") && i.text.toLowerCase().includes("eu"),
+    ) ||
+    gapReport.gaps.some((g) => g.description.toLowerCase().includes("eu") || g.description.toLowerCase().includes("residency")) ||
+    gapReport.conflicts.some((c) => c.description.toLowerCase().includes("residency"));
+  console.log(
+    euResidency
+      ? "✓ Issue 2 FOUND: EU data residency surfaced"
+      : "❌ Issue 2 MISSING: EU data residency not surfaced from rfp.md",
+  );
+
+  // Issue 3: delegation acceptance criteria missing
+  const delegationGap =
+    gapReport.gaps.some((g) => g.description.toLowerCase().includes("delegat")) ||
+    gapReport.conflicts.some((c) => c.description.toLowerCase().includes("delegat")) ||
+    gapReport.ambiguities.some((a) => a.description.toLowerCase().includes("delegat"));
+  console.log(
+    delegationGap
+      ? "✓ Issue 3 FOUND: delegation gap surfaced"
+      : "❌ Issue 3 MISSING: delegation acceptance criteria gap not surfaced",
+  );
+
+  // Issue 4: notification channel ambiguity
+  const notificationAmbiguity =
+    gapReport.ambiguities.some((a) => a.description.toLowerCase().includes("notif")) ||
+    gapReport.gaps.some((g) => g.description.toLowerCase().includes("notif")) ||
+    gapReport.conflicts.some((c) => c.description.toLowerCase().includes("notif"));
+  console.log(
+    notificationAmbiguity
+      ? "✓ Issue 4 FOUND: notification channel ambiguity surfaced"
+      : "❌ Issue 4 MISSING: notification channel ambiguity not surfaced",
+  );
+
+  // Issue 5: SSO contradiction (prd_draft.md vs hr_requirements.pdf)
+  const ssoConflict = gapReport.conflicts.some(
+    (c) =>
+      (c.documentA.includes("prd_draft") || c.documentB.includes("prd_draft")) &&
+      (c.documentA.includes("hr_requirements") || c.documentB.includes("hr_requirements")) &&
+      (c.description.toLowerCase().includes("sso") ||
+        c.description.toLowerCase().includes("auth") ||
+        c.description.toLowerCase().includes("azure")),
+  );
+  console.log(
+    ssoConflict
+      ? "✓ Issue 5 FOUND: SSO/auth conflict (prd_draft vs hr_requirements.pdf)"
+      : "❌ Issue 5 MISSING: SSO/auth conflict not surfaced",
+  );
+
+  const issuesPassed = [mobileConflict, euResidency, delegationGap, notificationAmbiguity, ssoConflict].filter(Boolean).length;
+  console.log(`\nPlanted issues surfaced: ${issuesPassed}/5`);
+  if (issuesPassed < 5) {
+    console.log("⚠  Phase 8 gate requires all 5 issues surfaced.");
+  } else {
+    console.log("✓ All planted issues surfaced — Phase 8 gate criteria met.");
+  }
+
+  // ── Full output ────────────────────────────────────────────────────────────
+
   if (gapReport.conflicts.length > 0) {
-    console.log("\nConflicts found:");
+    console.log("\n── ALL CONFLICTS ───────────────────────────────────────────");
     gapReport.conflicts.forEach((c) => {
       console.log(`  "${c.description}"`);
       console.log(`    A: ${c.documentA}`);
@@ -116,13 +201,20 @@ async function main() {
   }
 
   if (gapReport.gaps.length > 0) {
-    console.log("\nGaps found:");
-    gapReport.gaps.slice(0, 3).forEach((g) => {
+    console.log("\n── ALL GAPS ────────────────────────────────────────────────");
+    gapReport.gaps.forEach((g) => {
       console.log(`  [${g.affectedArea}] ${g.description}`);
     });
   }
 
-  console.log("\nFull output written to stdout. Done.");
+  if (gapReport.ambiguities.length > 0) {
+    console.log("\n── ALL AMBIGUITIES ─────────────────────────────────────────");
+    gapReport.ambiguities.forEach((a) => {
+      console.log(`  [${a.sourceDocument}] ${a.description}`);
+    });
+  }
+
+  console.log("\nDone.");
 }
 
 main().catch((err) => {

@@ -107,6 +107,40 @@ All 10 rules checked — no violations at Phase 0.
 ### Future consideration
 - **Replace polling with SSE or WebSocket** — `GET /api/sessions/:id` polling works for V1 but adds unnecessary request overhead. When the React SPA is built (Phase 9), consider replacing with Server-Sent Events via `POST /api/sessions/:id/stream` (already stubbed) or a WebSocket connection. SSE is simpler and sufficient — full duplex (WebSocket) is not needed since updates only flow server → client.
 
+### Bug fix — parsers.ts PDF Buffer→Uint8Array
+
+`unpdf`'s `getDocumentProxy` requires `Uint8Array`, not Node.js `Buffer`. Fixed in
+`src/agent/parsers.ts` — `getPdfParseResult` now wraps with `new Uint8Array(buffer)`
+before passing to `getDocumentProxy`. Confirmed working against `hr_requirements.pdf`.
+
+### pnpm test:corpus — 12.06.2026
+
+Updated `src/agent/test-corpus.ts`:
+- Now loads all 5 corpus files (added `hr_requirements.pdf`)
+- Uses `parseDocument` from `parsers.ts` to read files — PDF goes through `unpdf`
+  exactly as the real pipeline will, not via `fs.readFile` text mode
+- Added per-issue gate checks for all 5 planted issues
+
+Results with 5-document corpus:
+- ✓ 58 requirements, all with sourceDocument
+- ✓ 5 conflicts with documentA + documentB
+- ✓ 12 gaps found
+- ✓ Issue 1: mobile scope conflict (prd_draft vs transcript)
+- ✓ Issue 2: EU data residency surfaced from rfp.md
+- ✓ Issue 3: delegation gap (prd_draft vs hr_requirements.pdf)
+- ✓ Issue 4: notification channel ambiguity
+- ✓ Issue 5: SSO/auth conflict (prd_draft vs hr_requirements.pdf)
+- Planted issues surfaced: 5/5
+
+### OpenAI quota status
+
+OpenAI key is present and correctly configured. Embeddings blocked by quota exhaustion
+(`insufficient_quota` 429). Parse → chunk pipeline confirmed working (562 chars parsed,
+1 chunk produced, correct charOffset). Embedding gate items remain pending until quota
+is topped up. This does not block Phase 3 — the summarizer reads chunks from DB, but
+Phase 3 development can proceed using the existing mocked-embedding chunks from prior
+test runs.
+
 Gate: upload a PDF, query semantically related chunks back out.
 
 ### Schema cleanup (post-Phase 2)

@@ -53,7 +53,7 @@ const getPdfParseResult = (
 ): Effect.Effect<ParseResult, PdfParseError> =>
   pipe(
     Effect.tryPromise({
-      try: () => getDocumentProxy(buffer),
+      try: () => getDocumentProxy(new Uint8Array(buffer)),
       catch: (cause) => new PdfParseError({ cause }),
     }),
     Effect.flatMap((raw) =>
