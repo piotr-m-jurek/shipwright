@@ -9,8 +9,8 @@
 ## Critical Path
 
 ```
-Schema → Ingestion → XState design → Extractor pass →
-Clarifying loop → Writer passes → API wiring → CLI → Evals
+Schema → Ingestion → XState design → Summarizer + Challenger →
+Clarifying loop → Writer passes → Export + Revision → API wiring → CLI → Evals
 ```
 
 Everything on the critical path is load-bearing. The React SPA is not.
@@ -314,10 +314,10 @@ const DocumentSummarySchema = z.object({
 export type DocumentSummary = z.infer<typeof DocumentSummarySchema>
 ```
 
-**Summarization strategy — decision deferred, two options kept open:**
+**Summarization strategy — decision deferred, three options kept open:**
 
 The implementation in `src/agent/summarizer.ts` should be written so the strategy
-is swappable behind a common interface. Two viable options for V1+:
+is swappable behind a common interface. Three viable options for V1+:
 
 - **Map-reduce (default)** — batch chunks → parallel intermediate summaries →
   single reduce call. Parallelisable, simple. Can lose coherence at batch

@@ -39,11 +39,14 @@ returns a standard `Response` that Hono forwards directly; `useChat` on the fron
 already knows how to consume it. No custom SSE plumbing needed.
 
 **Route map:**
-- `POST /api/sessions` — create session, accept file upload (multipart)
+- `POST /api/sessions/upload-url` — generate presigned S3 PUT URL, create session record
+- `POST /api/sessions/:id/confirm-upload` — verify upload via HeadObject, start processing
 - `GET  /api/sessions/:id` — get session status + questions
 - `POST /api/sessions/:id/stream` — trigger analysis, stream progress + questions
 - `POST /api/sessions/:id/answers` — submit clarifying answers
 - `GET  /api/sessions/:id/output` — stream the two output documents
+- `GET  /api/sessions/:id/output/:type/download-url` — presigned S3 GET URL for final output
+- `POST /api/sessions/:id/revise` — submit free-form revision feedback, trigger re-generation
 
 **Rejected:** tRPC + Next.js Route Handlers — collocated with Next.js, wrong
 architecture now. NestJS — too heavy. Plain REST — gives up type safety for no
@@ -102,12 +105,14 @@ without chunking. Provider switch is wired via Vercel AI SDK from day one — on
 change.
 
 **Each pass has a purpose-built system prompt:**
-- Extractor — synthesise across documents, cite every claim to its source
-- Challenger — find gaps, contradictions, underspecified requirements; structured gap report
+- Summarizer (map) — summarise a batch of chunks from one document into an intermediate summary
+- Summarizer (reduce) — combine intermediate summaries into a single per-document summary; cite every claim to its source
+- Challenger — compare per-document summaries; find gaps, contradictions, underspecified requirements; structured gap report
 - Question generator — rank gaps by impact, select 3–7, write answerable questions
-- Writer (Brief) — stakeholder-readable, five minutes, no jargon
+- Writer (Brief) — stakeholder-readable, five minutes, no jargon; cites sourceDocument fields from summaries
 - Writer (PRD) — written for a coding agent, not a human; acceptance criteria,
   file/module hints, non-goals, edge cases, stack hints. Meta-prompting exercise.
+- Revision Writer — receives existing outputs + free-form feedback + summaries; regenerates both outputs
 
 **Zod schemas as anti-hallucination layer:** `generateObject` + Zod on the analysis
 and question-generation passes. Schemas require `sourceDocument` fields on every
@@ -221,9 +226,10 @@ no code generation step, no separate schema file. `postgres.js` as the driver �
 faster than `pg`, TypeScript-native, clean API.
 
 **Schema tables:**
-- `sessions` — id, status, inputMode (context | retrieval), xstateSnapshot, createdAt
-- `documents` — id, sessionId, filename, documentType, storagePath, rawText, tokenCount
-- `chunks` — id, documentId, sessionId, content, chunkIndex, embedding vector(1536), documentType
+- `agent_sessions` — id, status, inputMode (context | retrieval), xstateSnapshot, createdAt
+- `documents` — id, sessionId, filename, documentType, storagePath, rawText, tokenCount, mimeType, sizeBytes
+- `chunks` — id, documentId, sessionId, content, chunkIndex, embedding vector(1536), documentType, charOffset, pageNumber, headingPath
+- `document_summaries` — id, documentId, sessionId, version, summaryType (map_intermediate | final), batchIndex, content, tokenCount, createdAt
 - `messages` — id, sessionId, role, content, agentPass, createdAt
 - `questions` — id, sessionId, text, rationale, sourceDocuments, orderIndex
 - `answers` — id, questionId, sessionId, text, round

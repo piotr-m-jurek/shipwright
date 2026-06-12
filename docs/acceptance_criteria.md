@@ -58,16 +58,17 @@ it "mostly works".
 
 > This phase produces a diagram, not code. The tutor reviews the diagram.
 
-- [x] All 8 states are present: `idle`, `uploading`, `processing`, `analyzing`, `awaiting_answers`, `re_evaluating`, `generating`, `complete`
+- [x] All 9 states are present: `idle`, `uploading`, `processing`, `analyzing`, `awaiting_answers`, `re_evaluating`, `generating`, `complete`, `revising`
 - [x] `error` state is reachable from every other state — V1 deviation: `awaiting_answers` has no ERROR transition by design (session blocks until user responds; server restart handled via snapshot rehydration)
-- [x] All 8 events are defined: `UPLOAD_COMPLETE`, `ANALYSIS_DONE`, `USER_ANSWERED`, `ANSWERS_SUFFICIENT`, `ANSWERS_INSUFFICIENT`, `OUTPUT_READY`, `ERROR`, `USER_CONFIRM`
-- [x] All 3 guards are defined with clear descriptions: `hasEnoughContext`, `tokensBelowThreshold`, `roundLimitReached`
-- [x] Context shape is fully defined in `src/shared/schemas/machine.ts`: `sessionId`, `documents[]`, `questions[]`, `answers[]`, `round`, `inputMode`, `agentAnalysis`, `outputs{}`
+- [x] All 9 events are defined: `UPLOAD_COMPLETE`, `ANALYSIS_DONE`, `USER_ANSWERED`, `ANSWERS_SUFFICIENT`, `ANSWERS_INSUFFICIENT`, `OUTPUT_READY`, `ERROR`, `USER_CONFIRM`, `REVISION_REQUESTED`
+- [x] All 3 guards are defined with clear descriptions: `hasEnoughContext`, `tokensBelowThreshold` (evaluates summary token counts), `roundLimitReached`
+- [ ] Context shape is fully defined in `src/shared/schemas/machine.ts`: `sessionId`, `documents[]`, `documentSummaries[]`, `questions[]`, `answers[]`, `round`, `inputMode`, `agentAnalysis`, `revisionFeedback`, `outputVersion`, `outputs{}`
 - [x] The diagram shows `awaiting_answers` as a suspend point (waits for external `USER_ANSWERED` event)
 - [x] The diagram shows the loop: `re_evaluating` → `awaiting_answers` (when `ANSWERS_INSUFFICIENT` and round < limit) or → `generating` (when `ANSWERS_SUFFICIENT`)
 - [x] The diagram shows `roundLimitReached` guard forcing progression to `generating` even if answers are insufficient
+- [ ] The diagram shows `complete → revising` on `REVISION_REQUESTED` and `revising → generating` after revision
 
-**Gate:** PASSED. Diagram reviewed and approved. XState implementation in Phase 4 is a translation of this diagram.
+**Gate:** Diagram approved for original design. Context schema and `revising` state additions from Phase 5b design revision (11.06.2026) must be verified before Phase 4 implementation begins.
 
 ---
 
