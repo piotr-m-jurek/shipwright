@@ -90,6 +90,86 @@ stateDiagram-v2
 
 Full schema: `src/shared/schemas/machine.ts`
 
+## Processing:
+```mermaid
+flowchart TD
+    A([User opens app]) --> B[Session created\nstored in localStorage]
+    B --> C[User uploads documents\nPDF / DOCX / TXT / MD]
+
+    C --> D[POST /api/sessions/upload-url\nreturns presigned S3 URL per file]
+    D --> E[Client PUTs files directly to S3\nHono never sees file bytes]
+    E --> F[POST /api/sessions/:id/confirm-upload\nBE calls HeadObject to verify]
+
+    F --> G[XState: idle → processing\nsnapshot persisted to DB]
+
+    G --> H[process-uploaded-documents\nEffect.forEach concurrency 2]
+    H --> I[Parse from S3\nunpdf / mammoth / fs]
+    I --> J[Chunk + embed\nrecursive splitter + location metadata\nOpenAI text-embedding-3-small → pgvector]
+    J --> K[Store tokenCount on documents\nsummaryStatus = pending]
+
+    K --> L[User reviews uploaded files\nconfirms ready to analyse]
+    L --> M[USER_CONFIRM event\nmachine → analyzing]
+
+    M --> N[Summarizer — loop over all docs]
+
+    subgraph SUMMARIZE [Per-document summarization]
+        N --> O[Load chunks from DB\nordered by chunkIndex]
+        O --> P{Chunks fit\nin one call?}
+        P -- yes --> Q[Single summarization call\nchunks → DocumentSummary]
+        P -- no --> R[Map: batch N chunks\neach batch → intermediate summary]
+        R --> S[Reduce: intermediates\n→ final DocumentSummary]
+    end
+
+    Q --> T[Store summary + summaryStatus=ready\non documents table]
+    S --> T
+
+    T --> U{All docs\nsummarised?}
+    U -- no --> N
+    U -- yes --> V[ANALYSIS_DONE\nmachine → awaiting_answers]
+
+    V --> W[Challenger pass\nreads all per-doc summaries\n→ GapReport\nconflicts + gaps + ambiguities]
+
+    W --> X[Question Generator\nranks gaps by impact\nselects 3–7 questions\nstored to questions table]
+
+    X --> Y[Machine suspends\nawaiting_answers]
+    Y --> Z[User reads questions\ntypes answers in UI]
+
+    Z --> AA[POST /api/sessions/:id/answers\nUSER_ANSWERED event\nanswers persisted to DB]
+
+    AA --> AB[machine → re_evaluating\nAre answers sufficient?]
+    AB --> AC{Sufficient or\nround >= 2?}
+    AC -- insufficient and round < 2 --> AD[ANSWERS_INSUFFICIENT\nnew targeted questions]
+    AD --> Y
+    AC -- sufficient or limit reached --> AE[ANSWERS_SUFFICIENT\nmachine → generating]
+
+    AE --> AF[Writer Brief\nstreamText\nsummaries + answers → Project Brief\ncitations to sourceDocument]
+    AE --> AG[Writer PRD\nstreamText\nsummaries + answers → Implementation PRD\nwritten for coding agent]
+
+    AF --> AH[Store outputs table\ntype=project_brief version=1]
+    AG --> AI[Store outputs table\ntype=implementation_prd version=1]
+
+    AH --> AJ[OUTPUT_READY\nmachine → complete]
+    AI --> AJ
+
+    AJ --> AK[User downloads outputs\nGET /api/sessions/:id/output/:type/download-url\n→ presigned S3 GET URL\nshort TTL, bytes direct from S3]
+
+    AK --> AL{User wants\nto revise?}
+    AL -- no --> AM([Done])
+    AL -- yes --> AN[User types free-form feedback\nPOST /api/sessions/:id/revise]
+
+    AN --> AO[REVISION_REQUESTED event\nmachine → revising\nrevisionFeedback stored in context]
+
+    AO --> AP[Revision Writer pass\nexisting outputs + feedback + summaries\noptional: re-RAG chunks for specific areas]
+
+    AP --> AQ{New questions\nsurfaced?}
+    AQ -- yes --> AR[machine → awaiting_answers\nnew clarifying questions]
+    AR --> Y
+    AQ -- no --> AS[machine → generating\nregenerate both outputs\noutputVersion increments]
+
+    AS --> AT[Store outputs table\nversion=2 or higher]
+    AT --> AJ
+    ```
+
 ---
 
 ## TODO:
