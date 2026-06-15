@@ -22,6 +22,7 @@ export const sessionStatusEnum = pgEnum("session_status", [
   "re_evaluating",
   "generating",
   "complete",
+  "revising",
   "error",
   "partial_error",
 ]);
@@ -102,6 +103,55 @@ export const chunks = pgTable("chunks", {
   pageNumber: integer("page_number"),
 });
 
+export const summaryTypeEnum = pgEnum("summary_type", ["map_intermediate", "final"]);
+
+export const confidenceLevelEnum = pgEnum("confidence_level", ["high", "medium", "low"]);
+
+export const summaryItemTypeEnum = pgEnum("summary_item_type", [
+  "requirement",
+  "constraint",
+  "assumption",
+]);
+
+export const documentSummaries = pgTable("document_summaries", {
+  id: uuid("id").primaryKey().defaultRandom().notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  documentId: uuid("document_id")
+    .references(() => documents.id, { onDelete: "cascade" })
+    .notNull(),
+  sessionId: uuid("session_id")
+    .references(() => agentSessions.id, { onDelete: "cascade" })
+    .notNull(),
+  // filename of the source document — denormalised for query convenience
+  sourceDocument: text("source_document").notNull(),
+  version: integer("version").notNull().default(1),
+  summaryType: summaryTypeEnum("summary_type").notNull(),
+  // for map_intermediate rows: which chunk produced this intermediate
+  batchIndex: integer("batch_index"),
+  // prose summary of the document content
+  content: text("content").notNull(),
+  // token count of content — used by XState tokensBelowThreshold guard
+  tokenCount: integer("token_count").notNull(),
+});
+
+export type DocumentSummaryInsert = typeof documentSummaries.$inferInsert;
+export type DocumentSummarySelect = typeof documentSummaries.$inferSelect;
+
+export const summaryItems = pgTable("summary_items", {
+  id: uuid("id").primaryKey().defaultRandom().notNull(),
+  summaryId: uuid("summary_id")
+    .references(() => documentSummaries.id, { onDelete: "cascade" })
+    .notNull(),
+  itemType: summaryItemTypeEnum("item_type").notNull(),
+  text: text("text").notNull(),
+  sourceDocument: text("source_document").notNull(),
+  confidence: confidenceLevelEnum("confidence").notNull(),
+  orderIndex: integer("order_index").notNull(),
+});
+
+export type SummaryItemInsert = typeof summaryItems.$inferInsert;
+export type SummaryItemSelect = typeof summaryItems.$inferSelect;
+
 export const messageRoleEnum = pgEnum("role", ["user", "assistant", "system"]);
 
 export const messages = pgTable("messages", {
@@ -174,6 +224,8 @@ export const relations = defineRelations(
     agentSessions,
     documents,
     chunks,
+    documentSummaries,
+    summaryItems,
     messages,
     questions,
     answers,
@@ -183,6 +235,7 @@ export const relations = defineRelations(
     agentSessions: {
       documents: r.many.documents(),
       chunks: r.many.chunks(),
+      documentSummaries: r.many.documentSummaries(),
       messages: r.many.messages(),
       questions: r.many.questions(),
       answers: r.many.answers(),
@@ -191,6 +244,15 @@ export const relations = defineRelations(
     documents: {
       session: r.one.agentSessions({ from: r.documents.sessionId, to: r.agentSessions.id }),
       chunks: r.many.chunks(),
+      summaries: r.many.documentSummaries(),
+    },
+    documentSummaries: {
+      document: r.one.documents({ from: r.documentSummaries.documentId, to: r.documents.id }),
+      session: r.one.agentSessions({ from: r.documentSummaries.sessionId, to: r.agentSessions.id }),
+      items: r.many.summaryItems(),
+    },
+    summaryItems: {
+      summary: r.one.documentSummaries({ from: r.summaryItems.summaryId, to: r.documentSummaries.id }),
     },
     chunks: {
       document: r.one.documents({ from: r.chunks.documentId, to: r.documents.id }),

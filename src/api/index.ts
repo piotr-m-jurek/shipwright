@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { zValidator } from "@hono/zod-validator";
-import { EffectProcessing } from "../agent/process-uploaded-documents.js";
 import { createUploadSession } from "../agent/create-upload-session.js";
 import { ConfirmUploadRequestSchema, CreateSessionRequestSchema } from "../shared/schemas/api.js";
 import { runtime } from "../runtime.js";
 import { confirmUploadResults } from "../agent/confirm-upload-results.js";
+import { processUploadedDocuments } from "../agent/process-uploaded-documents.js";
 
 const api = new Hono();
 
@@ -34,12 +34,10 @@ api.post(
       });
     }
 
-    await runtime
-      .runPromise(EffectProcessing.processUploadedDocuments({ sessionId, uploads }))
-      .catch((error) => {
-        // Effect errors that escaped — log them
-        console.error("[confirm-upload] processUploadedDocuments failed:", error);
-      });
+    await runtime.runPromise(processUploadedDocuments({ sessionId, uploads })).catch((error) => {
+      // Effect errors that escaped — log them
+      console.error("[confirm-upload] processUploadedDocuments failed:", error);
+    });
 
     return c.json({ valid: true }, 202);
   },

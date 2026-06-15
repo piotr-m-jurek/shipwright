@@ -1,16 +1,25 @@
 import z from "zod/v4";
 
-export const RequirementSchema = z.object({
+// Item attributed to a source document — used in summaries and gap reports.
+// sourceDocument is required and never optional — this is the anti-hallucination contract.
+export const ItemWithSourceSchema = z.object({
   text: z.string(),
-  sourceDocument: z.string(), // required — never optional
+  sourceDocument: z.string(),
   confidence: z.enum(["high", "medium", "low"]),
 });
 
-export const DocumentAnalysisSchema = z.object({
-  requirements: z.array(RequirementSchema),
-  constraints: z.array(RequirementSchema),
-  assumptions: z.array(RequirementSchema),
+// Output schema for both map and reduce summarizer passes.
+// The map pass produces one of these per chunk batch.
+// The reduce pass produces one of these as the final per-document summary.
+export const DocumentSummarySchema = z.object({
+  sourceDocument: z.string(), // filename — required, never optional
+  summary: z.string(), // prose summary of the content
+  requirements: z.array(ItemWithSourceSchema),
+  constraints: z.array(ItemWithSourceSchema),
+  assumptions: z.array(ItemWithSourceSchema),
 });
+
+export type DocumentSummary = z.infer<typeof DocumentSummarySchema>;
 
 export const ConflictSchema = z.object({
   description: z.string(),
@@ -34,7 +43,6 @@ export const GapReportSchema = z.object({
   ),
 });
 
-export type DocumentAnalysis = z.infer<typeof DocumentAnalysisSchema>;
 export type GapReport = z.infer<typeof GapReportSchema>;
 
 export const ClarifyingQuestionSchema = z.object({

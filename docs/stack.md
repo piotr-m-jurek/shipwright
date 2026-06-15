@@ -229,7 +229,8 @@ faster than `pg`, TypeScript-native, clean API.
 - `agent_sessions` — id, status, inputMode (context | retrieval), xstateSnapshot, createdAt
 - `documents` — id, sessionId, filename, documentType, storagePath, rawText, tokenCount, mimeType, sizeBytes
 - `chunks` — id, documentId, sessionId, content, chunkIndex, embedding vector(1536), documentType, charOffset, pageNumber, headingPath
-- `document_summaries` — id, documentId, sessionId, version, summaryType (map_intermediate | final), batchIndex, content, tokenCount, createdAt
+- `document_summaries` — id, documentId, sessionId, sourceDocument, version, summaryType (map_intermediate | final), batchIndex, content (prose), tokenCount, createdAt
+- `summary_items` — id, summaryId → document_summaries.id, itemType (requirement | constraint | assumption), text, sourceDocument, confidence (high | medium | low), orderIndex
 - `messages` — id, sessionId, role, content, agentPass, createdAt
 - `questions` — id, sessionId, text, rationale, sourceDocuments, orderIndex
 - `answers` — id, questionId, sessionId, text, round

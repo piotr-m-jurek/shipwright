@@ -28,7 +28,7 @@
 
 **Build sequence:** Phases 1–8 → Phase 9 (Full Effect Rewrite) → Phase 10 (React SPA)
 
-**Current status:** Phase 3 REOPENED (design revision 11.06.2026 — see below) · Effect migration in progress · Phase 3 must re-pass gate before Phase 4
+**Current status:** Phase 3 COMPLETE (gate passed 15.06.2026) · Phase 4 next
 
 ---
 
@@ -257,7 +257,7 @@ XState actors call `Effect.runPromise(effect.pipe(Effect.provide(runtime)))` ins
 
 ---
 
-## Phase 3 — Per-Document Summarization + Challenger (REOPENED — design revision 11.06.2026)
+## Phase 3 — Per-Document Summarization + Challenger (COMPLETE — 15.06.2026)
 
 ### What was built
 - `src/shared/schemas/agent.ts` — `RequirementSchema`, `DocumentAnalysisSchema`, `ConflictSchema`, `GapReportSchema`, `DocumentAnalysis` and `GapReport` types
@@ -308,18 +308,39 @@ The Extractor is replaced by a per-document **map-reduce summarizer**. Key chang
 - **Output export added (Phase 5b):** `GET /api/sessions/:id/output/:type/download-url`
   returns a presigned S3 GET URL (short TTL). File bytes never pass through Hono.
 
-**What to build next (Phase 3 redo):**
-1. Add `document_summaries` table to `src/db/schema.ts` (columns: `id`, `documentId`,
-   `sessionId`, `version`, `summaryType`, `batchIndex`, `content`, `tokenCount`, `createdAt`),
-   run `drizzle-kit push`
-2. Add `DocumentSummarySchema` to `src/shared/schemas/agent.ts`
-3. Implement `src/agent/summarizer.ts` — map-reduce per document, reads chunks from DB,
-   writes intermediate and final rows to `document_summaries`
-4. Rewrite `src/agent/challenger.ts` — loads `summary_type = 'final'` rows from
-   `document_summaries`, not from raw documents
-5. Update `src/shared/schemas/machine.ts` — add `documentSummaries[]` to context schema
-   (shape: `{ id, documentId, sourceDocument, documentType, content, tokenCount }[]`)
-6. Re-run `pnpm test:corpus` — verify Phase 3 gate criteria in `acceptance_criteria.md`
+**What was built (Phase 3 in progress):**
+
+- `revising` added to `sessionStatusEnum` in `src/db/schema.ts`
+- `document_summaries` table added — stores both `map_intermediate` and `final` rows.
+  `sourceDocument` column denormalised for query convenience. `tokenCount` used by XState guard.
+- `summary_items` table added — normalised requirements/constraints/assumptions, one row per item.
+  `confidence_level` and `summary_item_type` enums added.
+- Relations wired: `documentSummaries → many summaryItems`, `summaryItems → one documentSummaries`
+- `DocumentSummarySchema` + `ItemWithSourceSchema` added to `src/shared/schemas/agent.ts`
+- `MachineContextSchema` updated: `documentSummaries[]`, `revisionFeedback`, `outputVersion` added,
+  `z.number` bug fixed, `z.literal` → `z.enum` fixed
+- `src/db/queries.ts` — `createSummaryItems`, `getFinalSummariesBySession` (JOIN with `summary_items`,
+  `reconstructSummaries` helper), `getChunksByDocumentId` all present
+- `src/agent/summarizer.ts` — rolling reduce pattern with `for...of` + `Option<DocumentSummary>`,
+  `persistSummary` shared helper (inserts summary row then batch-inserts items), `runReducePass`
+  with `formatChunk` using `Option.match`. `MapReduceSystemPrompt` written.
+  `getCurrentDocumenSummaryVersion` used for version increment on re-summarization.
+- `src/agent/challenger.ts` — rewritten to accept `ReconstructedSummary[]`, updated system prompt.
+- `src/agent/test-corpus.ts` — rewritten to use full DB pipeline (session + docs + chunks inserted,
+  `summarizeAllDocuments` called, finals loaded via JOIN, passed to `runChallenger`).
+- `createAgentSession` bug fixed — was returning array not `result[0]`.
+- Schema applied via psql directly (drizzle-kit push requires TTY for new enum confirmation).
+
+### Gate verification — 15.06.2026
+
+`pnpm test:corpus` result: 5/5 planted issues surfaced.
+- ✓ 5 final summaries in `document_summaries`
+- ✓ All have `sourceDocument`
+- ✓ Issue 1: mobile scope conflict (prd_draft vs transcript)
+- ✓ Issue 2: EU data residency surfaced from rfp.md
+- ✓ Issue 3: delegation gap surfaced
+- ✓ Issue 4: notification channel ambiguity surfaced
+- ✓ Issue 5: SSO/auth conflict (prd_draft vs hr_requirements.pdf)
 
 ---
 

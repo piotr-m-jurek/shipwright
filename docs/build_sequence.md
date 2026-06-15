@@ -262,22 +262,40 @@ For each document in the session:
   without re-reading content
 - Keeps the `documents` row narrow — no fat text blob on a frequently-scanned table
 
-**New table — `document_summaries` (add to `src/db/schema.ts`, then `drizzle-kit push`):**
+**New tables and enums (add to `src/db/schema.ts`, then `drizzle-kit push`):**
+
+`document_summaries` — one row per summarization pass (intermediate or final):
 ```ts
 export const documentSummaries = pgTable('document_summaries', {
-  id:          uuid('id').primaryKey().defaultRandom(),
-  documentId:  uuid('document_id').notNull().references(() => documents.id),
-  sessionId:   uuid('session_id').notNull().references(() => agentSessions.id),
-  version:     integer('version').notNull().default(1),
-  summaryType: text('summary_type', {
-    enum: ['map_intermediate', 'final']
-  }).notNull(),
-  batchIndex:  integer('batch_index'),   // non-null for map_intermediate rows
-  content:     text('content').notNull(),
-  tokenCount:  integer('token_count').notNull(),
-  createdAt:   timestamp('created_at').notNull().defaultNow(),
+  id:             uuid('id').primaryKey().defaultRandom(),
+  documentId:     uuid('document_id').notNull().references(() => documents.id),
+  sessionId:      uuid('session_id').notNull().references(() => agentSessions.id),
+  sourceDocument: text('source_document').notNull(),   // filename, denormalised for query convenience
+  version:        integer('version').notNull().default(1),
+  summaryType:    summaryTypeEnum('summary_type').notNull(),
+  batchIndex:     integer('batch_index'),               // chunkIndex for map_intermediate rows
+  content:        text('content').notNull(),             // prose summary
+  tokenCount:     integer('token_count').notNull(),      // token count of content — used by XState guard
+  createdAt:      timestamp('created_at').notNull().defaultNow(),
 })
 ```
+
+`summary_items` — normalised requirements/constraints/assumptions, one row per item:
+```ts
+export const summaryItems = pgTable('summary_items', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  summaryId:      uuid('summary_id').notNull().references(() => documentSummaries.id, { onDelete: 'cascade' }),
+  itemType:       summaryItemTypeEnum('item_type').notNull(),   // requirement | constraint | assumption
+  text:           text('text').notNull(),
+  sourceDocument: text('source_document').notNull(),
+  confidence:     confidenceLevelEnum('confidence').notNull(),  // high | medium | low
+  orderIndex:     integer('order_index').notNull(),             // preserves array order
+})
+```
+
+New enums: `confidence_level ('high' | 'medium' | 'low')`, `summary_item_type ('requirement' | 'constraint' | 'assumption')`.
+
+**Loading final summaries** uses a JOIN — `getFinalSummariesBySession` selects distinct-on `documentId` from `document_summaries`, left-joins `summary_items`, and reconstructs `ReconstructedSummary[]` in a helper function. `ReconstructedSummary` extends `DocumentSummary` with DB metadata (`id`, `documentId`, `sessionId`, `tokenCount`, `version`).
 
 **AI SDK v6 pattern for summarization passes:**
 ```ts
