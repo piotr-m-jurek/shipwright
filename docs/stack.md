@@ -39,6 +39,7 @@ returns a standard `Response` that Hono forwards directly; `useChat` on the fron
 already knows how to consume it. No custom SSE plumbing needed.
 
 **Route map:**
+
 - `POST /api/sessions/upload-url` — generate presigned S3 PUT URL, create session record
 - `POST /api/sessions/:id/confirm-upload` — verify upload via HeadObject, start processing
 - `GET  /api/sessions/:id` — get session status + questions
@@ -71,6 +72,7 @@ swapping to GPT-4o or Gemini is one line, not a refactor.
 
 **Design intent — DIY Mastra:**
 The goal is to build what Mastra gives you out of the box, but manually:
+
 - Vercel AI SDK `tool()` → tool definition and routing
 - XState machines → workflow orchestration and agent loop control
 - XState actors → each async LLM pass as an invoked actor
@@ -79,7 +81,7 @@ The goal is to build what Mastra gives you out of the box, but manually:
 - Postgres + Drizzle → memory and conversation history
 - pgvector + Drizzle → retrieval when context exceeds the window
 - Langfuse → observability
-This is the full Mastra bill of materials, assembled by hand.
+  This is the full Mastra bill of materials, assembled by hand.
 
 **Stretch upgrade path:** LangGraph.js if XState complexity grows beyond comfortable,
 or if the multi-agent split needs graph-native primitives. Effect-TS as an alternative
@@ -105,6 +107,7 @@ without chunking. Provider switch is wired via Vercel AI SDK from day one — on
 change.
 
 **Each pass has a purpose-built system prompt:**
+
 - Summarizer (map) — summarise a batch of chunks from one document into an intermediate summary
 - Summarizer (reduce) — combine intermediate summaries into a single per-document summary; cite every claim to its source
 - Challenger — compare per-document summaries; find gaps, contradictions, underspecified requirements; structured gap report
@@ -201,10 +204,10 @@ latency and setup complexity not worth it for V1.
 The `src/agent/summarizer.ts` interface is written so the strategy is swappable.
 No final choice made — implement and benchmark against the test corpus.
 
-| Strategy | How it works | Trade-off |
-|---|---|---|
-| **Map-reduce** | Batch N chunks → parallel intermediate summaries → single reduce call | Simple, parallelisable. Can lose coherence at batch boundaries. |
-| **Hierarchical** | Summarise pairs of chunks recursively until one summary remains | Better cross-boundary coherence. Moderate added complexity. |
+| Strategy               | How it works                                                                           | Trade-off                                                                              |
+| ---------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Map-reduce**         | Batch N chunks → parallel intermediate summaries → single reduce call                  | Simple, parallelisable. Can lose coherence at batch boundaries.                        |
+| **Hierarchical**       | Summarise pairs of chunks recursively until one summary remains                        | Better cross-boundary coherence. Moderate added complexity.                            |
 | **Agentic with tools** | Model issues `query_chunks(query)` calls to pgvector, builds understanding iteratively | Most flexible for sparse key information. Hardest to bound — model decides call count. |
 
 Note: with Gemini 2.5 Pro (1M context) already in the stack as overflow fallback,
@@ -226,6 +229,7 @@ no code generation step, no separate schema file. `postgres.js` as the driver �
 faster than `pg`, TypeScript-native, clean API.
 
 **Schema tables:**
+
 - `agent_sessions` — id, status, inputMode (context | retrieval), xstateSnapshot, createdAt
 - `documents` — id, sessionId, filename, documentType, storagePath, rawText, tokenCount, mimeType, sizeBytes
 - `chunks` — id, documentId, sessionId, content, chunkIndex, embedding vector(1536), documentType, charOffset, pageNumber, headingPath
@@ -241,6 +245,7 @@ faster than `pg`, TypeScript-native, clean API.
 directly back into running machines. No lost state, no event replay needed.
 
 **Key design decisions:**
+
 - `tokenCount` on documents is the data point the XState machine reads to decide
   context vs retrieval mode — explicit, not buried in a utility function
 - `agentPass` on messages lets you reconstruct what each agent pass saw
@@ -290,6 +295,7 @@ to the eval suite the project doc describes.
 
 **Self-hosted infra — be realistic about the cost:**
 Langfuse self-hosted is not a single container. It requires:
+
 - **Postgres** — transactional data (can share the existing project Postgres)
 - **ClickHouse** — columnar OLAP database for traces, observations, and scores.
   Required for metrics dashboards and analytical queries. Without it, you lose the
@@ -314,17 +320,17 @@ Braintrust — smaller community. Helicone — proxy-based, weak eval story.
 
 ## Final Stack Summary
 
-| Layer | Winner |
-|---|---|
-| UI | Vite + React · TanStack Router · TanStack Query · assistant-ui · shadcn/ui · Vercel AI SDK UI |
-| API | Hono + Hono RPC |
-| Agent / Orchestration | Vercel AI SDK Core + XState |
-| LLM / Prompt | Claude 3.7 Sonnet · Zod · Prompt Caching |
-| Document Processing | unpdf + mammoth (extractRawText) + Node.js fs |
-| Vector DB / Retrieval | pgvector (Postgres) + OpenAI text-embedding-3-small |
-| Database | PostgreSQL + Drizzle ORM + postgres.js |
-| File Storage | StorageAdapter · @aws-sdk/client-s3 · rustfs → Supabase Storage |
-| Observability / Evals | Langfuse (full stack: Postgres + ClickHouse + Redis + S3) |
+| Layer                 | Winner                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------- |
+| UI                    | Vite + React · TanStack Router · TanStack Query · assistant-ui · shadcn/ui · Vercel AI SDK UI |
+| API                   | Hono + Hono RPC                                                                               |
+| Agent / Orchestration | Vercel AI SDK Core + XState                                                                   |
+| LLM / Prompt          | Claude 3.7 Sonnet · Zod · Prompt Caching                                                      |
+| Document Processing   | unpdf + mammoth (extractRawText) + Node.js fs                                                 |
+| Vector DB / Retrieval | pgvector (Postgres) + OpenAI text-embedding-3-small                                           |
+| Database              | PostgreSQL + Drizzle ORM + postgres.js                                                        |
+| File Storage          | StorageAdapter · @aws-sdk/client-s3 · rustfs → Supabase Storage                               |
+| Observability / Evals | Langfuse (full stack: Postgres + ClickHouse + Redis + S3)                                     |
 
 ---
 

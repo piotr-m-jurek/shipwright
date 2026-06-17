@@ -40,17 +40,17 @@ it "mostly works".
 
 ### 1b — Parsing + chunking + embedding
 
-- [x] After confirming a PDF upload, `SELECT count(*) FROM chunks WHERE session_id = '<id>'` returns > 0 — *pending OpenAI quota*
-- [x] After confirming a DOCX upload, chunks are present with non-empty `content` — *pending OpenAI quota*
+- [x] After confirming a PDF upload, `SELECT count(*) FROM chunks WHERE session_id = '<id>'` returns > 0 — _pending OpenAI quota_
+- [x] After confirming a DOCX upload, chunks are present with non-empty `content` — _pending OpenAI quota_
 - [x] After confirming a plain text or Markdown upload, chunks are present (verified with mocked embeddings)
-- [x] Every chunk row has a non-null `embedding` column — *pending OpenAI quota*
+- [x] Every chunk row has a non-null `embedding` column — _pending OpenAI quota_
 - [x] Every chunk row has non-null `document_type`, `chunk_index`, `session_id`
-- [x] `SELECT token_count FROM documents WHERE session_id = '<id>'` returns a positive integer — *pending OpenAI quota*
+- [x] `SELECT token_count FROM documents WHERE session_id = '<id>'` returns a positive integer — _pending OpenAI quota_
 - [x] The uploaded file is retrievable via `StorageAdapter.download()` — not via `fs.readFile` directly
-- [x] A semantic query against pgvector for a term present in the uploaded document returns that document's chunks in the top results — *pending OpenAI quota*
-- [x] A semantic query for a term NOT in the document does not return that document's chunks at the top — *pending OpenAI quota*
+- [x] A semantic query against pgvector for a term present in the uploaded document returns that document's chunks in the top results — _pending OpenAI quota_
+- [x] A semantic query for a term NOT in the document does not return that document's chunks at the top — _pending OpenAI quota_
 
-**Gate:** Structural wiring verified. Parser confirmed working for PDF (unpdf + Buffer→Uint8Array fix applied), DOCX, plain text, Markdown. Chunk pipeline produces correct output (content, charOffset, chunkIndex). Embeddings blocked by OpenAI quota exhaustion — key is present and correctly configured, billing issue only. Items marked *pending OpenAI quota* to be re-verified when quota is topped up. Proceeding to Phase 3 with this acknowledged.
+**Gate:** Structural wiring verified. Parser confirmed working for PDF (unpdf + Buffer→Uint8Array fix applied), DOCX, plain text, Markdown. Chunk pipeline produces correct output (content, charOffset, chunkIndex). Embeddings blocked by OpenAI quota exhaustion — key is present and correctly configured, billing issue only. Items marked _pending OpenAI quota_ to be re-verified when quota is topped up. Proceeding to Phase 3 with this acknowledged.
 
 ---
 

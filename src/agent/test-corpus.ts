@@ -24,7 +24,7 @@ import { config } from "dotenv";
 
 config({ path: resolve(process.cwd(), ".env") });
 
-import { Effect } from "effect";
+import { ManagedRuntime } from "effect";
 import { runChallenger } from "./challenger.js";
 import { parseDocument } from "./parsers.js";
 import { summarizeAllDocuments } from "./summarizer.js";
@@ -35,17 +35,22 @@ import {
   createChunks,
   getFinalSummariesBySession,
 } from "../db/queries.js";
-import { runtime } from "../runtime.js";
+import { StorageAdapter } from "../storage/index.js";
 import { db } from "../db/index.js";
-import { agentSessions, documentSummaries } from "../db/schema.js";
-import { eq, and } from "drizzle-orm";
+
+const runtime = ManagedRuntime.make(StorageAdapter.layer);
+import { agentSessions } from "../db/schema.js";
+import { eq } from "drizzle-orm";
 
 const CORPUS_DIR = resolve(process.cwd(), "docs/test_corpus");
 
-const CORPUS_FILES: { filename: string; documentType: "transcript" | "prd_draft" | "rfp" | "notes" }[] = [
+const CORPUS_FILES: {
+  filename: string;
+  documentType: "transcript" | "prd_draft" | "rfp" | "notes";
+}[] = [
   { filename: "project_brief.txt", documentType: "notes" },
-  { filename: "prd_draft.md",      documentType: "prd_draft" },
-  { filename: "rfp.md",            documentType: "rfp" },
+  { filename: "prd_draft.md", documentType: "prd_draft" },
+  { filename: "rfp.md", documentType: "rfp" },
   { filename: "discovery_call_transcript.txt", documentType: "transcript" },
   { filename: "hr_requirements.pdf", documentType: "notes" },
 ];
@@ -77,16 +82,18 @@ async function main() {
 
       // Insert the full parsed text as a single chunk (bypasses embedder —
       // summarizer reads chunks from DB, not embeddings)
-      await createChunks([{
-        sessionId,
-        documentId: doc.id,
-        documentType,
-        content: parsed.text,
-        chunkIndex: 0,
-        charOffset: 0,
-        // embedding is required by the schema — use a zero vector for the test
-        embedding: new Array(1536).fill(0),
-      }]);
+      await createChunks([
+        {
+          sessionId,
+          documentId: doc.id,
+          documentType,
+          content: parsed.text,
+          chunkIndex: 0,
+          charOffset: 0,
+          // embedding is required by the schema — use a zero vector for the test
+          embedding: Array.from<number>({ length: 1536 }).fill(0),
+        },
+      ]);
 
       console.log(`  ✓ ${filename} (${parsed.text.length} chars)`);
     }
@@ -102,7 +109,9 @@ async function main() {
     console.log(`Final summaries in DB: ${finals.length}`);
 
     if (finals.length !== CORPUS_FILES.length) {
-      console.error(`❌ GATE FAIL: Expected ${CORPUS_FILES.length} final summaries, got ${finals.length}`);
+      console.error(
+        `❌ GATE FAIL: Expected ${CORPUS_FILES.length} final summaries, got ${finals.length}`,
+      );
     } else {
       console.log(`✓ ${finals.length} final summaries stored`);
     }
@@ -116,7 +125,9 @@ async function main() {
 
     finals.forEach((s) => {
       const itemCount = s.requirements.length + s.constraints.length + s.assumptions.length;
-      console.log(`  ${s.sourceDocument}: ${itemCount} items (${s.requirements.length} req, ${s.constraints.length} con, ${s.assumptions.length} ass)`);
+      console.log(
+        `  ${s.sourceDocument}: ${itemCount} items (${s.requirements.length} req, ${s.constraints.length} con, ${s.assumptions.length} ass)`,
+      );
     });
 
     // Run challenger
@@ -130,7 +141,9 @@ async function main() {
 
     const wellFormedConflicts = gapReport.conflicts.filter((c) => c.documentA && c.documentB);
     if (wellFormedConflicts.length > 0) {
-      console.log(`✓ Found ${wellFormedConflicts.length} conflict(s) with both documentA and documentB`);
+      console.log(
+        `✓ Found ${wellFormedConflicts.length} conflict(s) with both documentA and documentB`,
+      );
     } else {
       console.error("❌ GATE FAIL: No conflicts with both documentA and documentB");
     }
@@ -151,44 +164,64 @@ async function main() {
         (c.documentA.includes("transcript") || c.documentB.includes("transcript")) &&
         c.description.toLowerCase().includes("mobile"),
     );
-    console.log(mobileConflict
-      ? "✓ Issue 1 FOUND: mobile scope conflict (prd_draft vs transcript)"
-      : "❌ Issue 1 MISSING: mobile scope conflict not surfaced");
+    console.log(
+      mobileConflict
+        ? "✓ Issue 1 FOUND: mobile scope conflict (prd_draft vs transcript)"
+        : "❌ Issue 1 MISSING: mobile scope conflict not surfaced",
+    );
 
     // Issue 2: EU data residency buried in rfp.md
     // Checks requirements, constraints, AND assumptions — the summarizer may classify it
     // in any of these depending on phrasing. Also checks gaps, conflicts, ambiguities.
     const euResidency =
-      finals.some((s) =>
-        s.sourceDocument.includes("rfp") &&
-        [...s.requirements, ...s.constraints, ...s.assumptions].some(
-          (i) => i.text.toLowerCase().includes("eu") || i.text.toLowerCase().includes("residency") || i.text.toLowerCase().includes("european")
-        )
+      finals.some(
+        (s) =>
+          s.sourceDocument.includes("rfp") &&
+          [...s.requirements, ...s.constraints, ...s.assumptions].some(
+            (i) =>
+              i.text.toLowerCase().includes("eu") ||
+              i.text.toLowerCase().includes("residency") ||
+              i.text.toLowerCase().includes("european"),
+          ),
       ) ||
-      gapReport.gaps.some((g) => g.description.toLowerCase().includes("eu") || g.description.toLowerCase().includes("residency")) ||
+      gapReport.gaps.some(
+        (g) =>
+          g.description.toLowerCase().includes("eu") ||
+          g.description.toLowerCase().includes("residency"),
+      ) ||
       gapReport.conflicts.some((c) => c.description.toLowerCase().includes("residency")) ||
-      gapReport.ambiguities.some((a) => a.description.toLowerCase().includes("eu") || a.description.toLowerCase().includes("residency"));
-    console.log(euResidency
-      ? "✓ Issue 2 FOUND: EU data residency surfaced"
-      : "❌ Issue 2 MISSING: EU data residency not surfaced from rfp.md");
+      gapReport.ambiguities.some(
+        (a) =>
+          a.description.toLowerCase().includes("eu") ||
+          a.description.toLowerCase().includes("residency"),
+      );
+    console.log(
+      euResidency
+        ? "✓ Issue 2 FOUND: EU data residency surfaced"
+        : "❌ Issue 2 MISSING: EU data residency not surfaced from rfp.md",
+    );
 
     // Issue 3: delegation gap
     const delegationGap =
       gapReport.gaps.some((g) => g.description.toLowerCase().includes("delegat")) ||
       gapReport.conflicts.some((c) => c.description.toLowerCase().includes("delegat")) ||
       gapReport.ambiguities.some((a) => a.description.toLowerCase().includes("delegat"));
-    console.log(delegationGap
-      ? "✓ Issue 3 FOUND: delegation gap surfaced"
-      : "❌ Issue 3 MISSING: delegation acceptance criteria gap not surfaced");
+    console.log(
+      delegationGap
+        ? "✓ Issue 3 FOUND: delegation gap surfaced"
+        : "❌ Issue 3 MISSING: delegation acceptance criteria gap not surfaced",
+    );
 
     // Issue 4: notification channel ambiguity
     const notificationAmbiguity =
       gapReport.ambiguities.some((a) => a.description.toLowerCase().includes("notif")) ||
       gapReport.gaps.some((g) => g.description.toLowerCase().includes("notif")) ||
       gapReport.conflicts.some((c) => c.description.toLowerCase().includes("notif"));
-    console.log(notificationAmbiguity
-      ? "✓ Issue 4 FOUND: notification channel ambiguity surfaced"
-      : "❌ Issue 4 MISSING: notification channel ambiguity not surfaced");
+    console.log(
+      notificationAmbiguity
+        ? "✓ Issue 4 FOUND: notification channel ambiguity surfaced"
+        : "❌ Issue 4 MISSING: notification channel ambiguity not surfaced",
+    );
 
     // Issue 5: SSO conflict (prd_draft.md vs hr_requirements.pdf)
     const ssoConflict = gapReport.conflicts.some(
@@ -199,11 +232,19 @@ async function main() {
           c.description.toLowerCase().includes("auth") ||
           c.description.toLowerCase().includes("azure")),
     );
-    console.log(ssoConflict
-      ? "✓ Issue 5 FOUND: SSO/auth conflict (prd_draft vs hr_requirements.pdf)"
-      : "❌ Issue 5 MISSING: SSO/auth conflict not surfaced");
+    console.log(
+      ssoConflict
+        ? "✓ Issue 5 FOUND: SSO/auth conflict (prd_draft vs hr_requirements.pdf)"
+        : "❌ Issue 5 MISSING: SSO/auth conflict not surfaced",
+    );
 
-    const issuesPassed = [mobileConflict, euResidency, delegationGap, notificationAmbiguity, ssoConflict].filter(Boolean).length;
+    const issuesPassed = [
+      mobileConflict,
+      euResidency,
+      delegationGap,
+      notificationAmbiguity,
+      ssoConflict,
+    ].filter(Boolean).length;
     console.log(`\nPlanted issues surfaced: ${issuesPassed}/5`);
     if (issuesPassed < 5) {
       console.log("⚠  Phase 8 gate requires all 5 issues surfaced.");
@@ -234,7 +275,6 @@ async function main() {
         console.log(`  [${a.sourceDocument}] ${a.description}`);
       });
     }
-
   } finally {
     // Clean up — delete the test session and all cascade-deleted records
     await db.delete(agentSessions).where(eq(agentSessions.id, sessionId));

@@ -1,29 +1,66 @@
 import { describe, it, expect, afterAll, vi } from "vitest";
-import app from "../index.js";
+import { Context, Layer, pipe } from "effect";
+import { HttpRouter } from "effect/unstable/http";
+import { NodeHttpServer } from "@effect/platform-node";
+import { S3Client, PutObjectCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
+import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { agentSessions, chunks, documents } from "../db/schema.js";
-import { eq } from "drizzle-orm";
-import { S3Client, PutObjectCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
 import { config } from "../config.js";
+import { StorageAdapter } from "../storage/index.js";
+import { ApiRoute } from "./server.js";
+
+// ---------------------------------------------------------------------------
+// Embedder mock
+// ---------------------------------------------------------------------------
+
+vi.mock("./agent/embedder.js", async () => {
+  const { Effect } = await import("effect");
+  return {
+    embedChunks: (chunks: string[]) => Effect.succeed(chunks.map(() => Array(1536).fill(0.1))),
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Test handler setup
+// ---------------------------------------------------------------------------
+
+// Build the same route layer as the server but without NodeHttpServer or
+// StaticFiles — those are not needed for API tests.
+// HttpRouter.toWebHandler provides HttpServer internally; we supply the
+// platform services (FileSystem, Path, HttpPlatform, Etag.Generator) via
+// NodeHttpServer.layerHttpServices.
+const TestRoutes = pipe(
+  ApiRoute,
+  Layer.provide(NodeHttpServer.layerHttpServices),
+  Layer.provide(StorageAdapter.layer),
+);
+
+const { handler, dispose } = HttpRouter.toWebHandler(TestRoutes, {
+  disableLogger: true,
+});
+
+afterAll(() => dispose());
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-vi.mock("../agent/embedder.js", async () => {
-  const { Effect } = await import("effect");
-  return {
-    embedChunks: (chunks: string[]) =>
-      Effect.succeed(chunks.map(() => Array(1536).fill(0.1))),
-  };
-});
+const emptyContext = Context.empty();
 
 async function post(path: string, body: unknown) {
-  return app.request(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return handler(
+    new Request(`http://localhost${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    emptyContext as any,
+  );
+}
+
+async function get(path: string) {
+  return handler(new Request(`http://localhost${path}`), emptyContext as any);
 }
 
 async function ensureBucket() {
@@ -58,7 +95,7 @@ async function putObjectToS3(key: string, content: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Cleanup helpers
+// Cleanup
 // ---------------------------------------------------------------------------
 
 const createdSessionIds: string[] = [];
@@ -171,7 +208,6 @@ describe("POST /api/sessions/upload-url", () => {
 
 describe("POST /api/sessions/:id/confirm-upload", () => {
   it("returns 400 when s3Key does not exist in S3", async () => {
-    // Create a session + document first
     const uploadRes = await post("/api/sessions/upload-url", {
       files: [
         {
@@ -185,7 +221,6 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
     const { sessionId, uploads } = await uploadRes.json();
     createdSessionIds.push(sessionId);
 
-    // Confirm without actually uploading to S3
     const res = await post(`/api/sessions/${sessionId}/confirm-upload`, {
       uploads: [{ s3Key: uploads[0].s3Key, documentId: uploads[0].documentId }],
     });
@@ -195,7 +230,7 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
     expect(body).toHaveProperty("missingKeys");
   });
 
-  it("returns 202 when s3Key exists in S3", async () => {
+  it("returns 200 with valid:true when s3Key exists in S3", async () => {
     await ensureBucket();
 
     const uploadRes = await post("/api/sessions/upload-url", {
@@ -211,14 +246,15 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
     const { sessionId, uploads } = await uploadRes.json();
     createdSessionIds.push(sessionId);
 
-    // Actually put the file in S3
     await putObjectToS3(uploads[0].s3Key, "Hello world this is a test document.");
 
     const res = await post(`/api/sessions/${sessionId}/confirm-upload`, {
       uploads: [{ s3Key: uploads[0].s3Key, documentId: uploads[0].documentId }],
     });
 
-    expect(res.status).toBe(202);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.valid).toBe(true);
   });
 
   it("after confirm, chunks are created with embeddings", async () => {
@@ -246,7 +282,7 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
       uploads: [{ s3Key: uploads[0].s3Key, documentId: uploads[0].documentId }],
     });
 
-    // Wait for async processing
+    // Wait for async processing (forkDetach)
     await new Promise((resolve) => setTimeout(resolve, 8000));
 
     const sessionChunks = await db.select().from(chunks).where(eq(chunks.sessionId, sessionId));
@@ -280,11 +316,49 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
       uploads: [{ s3Key: uploads[0].s3Key, documentId: uploads[0].documentId }],
     });
 
-    // Wait for async processing
+    // Wait for async processing (forkDetach)
     await new Promise((resolve) => setTimeout(resolve, 8000));
 
     const [doc] = await db.select().from(documents).where(eq(documents.sessionId, sessionId));
 
     expect(doc.tokenCount).toBeGreaterThan(0);
   }, 20000);
+});
+
+describe("GET /api/sessions/:id", () => {
+  it("returns 404 for unknown session id", async () => {
+    const res = await get("/api/sessions/00000000-0000-0000-0000-000000000000");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns session data for existing session", async () => {
+    const uploadRes = await post("/api/sessions/upload-url", {
+      files: [
+        {
+          filename: "session-test.txt",
+          documentType: "notes",
+          mimeType: "text/plain",
+          sizeBytes: 100,
+        },
+      ],
+    });
+    const { sessionId } = await uploadRes.json();
+    createdSessionIds.push(sessionId);
+
+    const res = await get(`/api/sessions/${sessionId}`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveProperty("id", sessionId);
+    expect(body).toHaveProperty("status", "uploading");
+    expect(body).toHaveProperty("createdAt");
+  });
+});
+
+describe("GET /api/health", () => {
+  it("returns 200 Healthy", async () => {
+    const res = await get("/api/health");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toBe("Healthy");
+  });
 });

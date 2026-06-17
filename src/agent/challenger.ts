@@ -27,38 +27,38 @@ RULES:
 5. Priority: conflicts are the most critical, then gaps, then ambiguities.`;
 
 export const runChallenger = Effect.fn("agent/run-challenger")(function* (
-	summaries: ReconstructedSummary[],
+  summaries: ReconstructedSummary[],
 ): Effect.fn.Return<GapReport, TextGenerationError> {
-	const messages: ModelMessage[] = [
-		{
-			role: "user",
-			content: summaries.map(prepareDocument).join("\n\n"),
-		},
-	];
+  const messages: ModelMessage[] = [
+    {
+      role: "user",
+      content: summaries.map(prepareDocument).join("\n\n"),
+    },
+  ];
 
-	const results = yield* Effect.tryPromise({
-		try: () =>
-			generateText({
-				model: anthropic("claude-sonnet-4-6"),
-				output: Output.object({ schema: GapReportSchema }),
-				system: ChallengerSystemPrompt,
-				messages,
-			}),
-		catch: (cause) => new TextGenerationError({ cause }),
-	});
+  const results = yield* Effect.tryPromise({
+    try: () =>
+      generateText({
+        model: anthropic("claude-sonnet-4-6"),
+        output: Output.object({ schema: GapReportSchema }),
+        system: ChallengerSystemPrompt,
+        messages,
+      }),
+    catch: (cause) => new TextGenerationError({ cause }),
+  });
 
-	return results.output;
+  return results.output;
 });
 
 function prepareDocument(doc: ReconstructedSummary): string {
-	return [
-		`=== ${doc.sourceDocument} ===\n${doc.summary}`,
-		`Requirements:\n ${doc.requirements.map(prepareItem).join("\n")}`,
-		`Constraints:\n ${doc.constraints.map(prepareItem).join("\n")}`,
-		`Assumptions:\n ${doc.assumptions.map(prepareItem).join("\n")}`,
-	].join("\n\n");
+  return [
+    `=== ${doc.sourceDocument} ===\n${doc.summary}`,
+    `Requirements:\n ${doc.requirements.map(prepareItem).join("\n")}`,
+    `Constraints:\n ${doc.constraints.map(prepareItem).join("\n")}`,
+    `Assumptions:\n ${doc.assumptions.map(prepareItem).join("\n")}`,
+  ].join("\n\n");
 }
 
 function prepareItem(item: { confidence: string; text: string; sourceDocument: string }): string {
-	return `- [${item.confidence}] ${item.text} (source: ${item.sourceDocument})`;
+  return `- [${item.confidence}] ${item.text} (source: ${item.sourceDocument})`;
 }

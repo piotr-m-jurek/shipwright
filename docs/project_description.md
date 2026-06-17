@@ -52,14 +52,14 @@ This is a realistic presales problem — close to what people actually do every 
 
 ## Modules this project primarily exercises
 
-| Module | How |
-|--------|-----|
-| M1 | Provider SDK, structured outputs for the analysis pass, conversation history for the clarifying loop |
-| M2 | Heavy. Multiple long documents in context, summarization, prompt caching across passes, explicit meta-prompting when generating the Implementation PRD |
-| M3 | File-reading tools; optionally an MCP server for project metadata or to attach more docs mid-flow |
-| M4 | Chunking and retrieval over the input bundle when it gets long; metadata filters by document type |
-| M5 | The clarifying loop is properly agentic — model decides what to ask, when to stop, when it has enough; multi-agent split as a stretch |
-| M6 | Eval suite focused on faithfulness; prompt injection from untrusted transcripts and external docs; observability with Langfuse |
+| Module | How                                                                                                                                                    |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| M1     | Provider SDK, structured outputs for the analysis pass, conversation history for the clarifying loop                                                   |
+| M2     | Heavy. Multiple long documents in context, summarization, prompt caching across passes, explicit meta-prompting when generating the Implementation PRD |
+| M3     | File-reading tools; optionally an MCP server for project metadata or to attach more docs mid-flow                                                      |
+| M4     | Chunking and retrieval over the input bundle when it gets long; metadata filters by document type                                                      |
+| M5     | The clarifying loop is properly agentic — model decides what to ask, when to stop, when it has enough; multi-agent split as a stretch                  |
+| M6     | Eval suite focused on faithfulness; prompt injection from untrusted transcripts and external docs; observability with Langfuse                         |
 
 ---
 

@@ -17,6 +17,7 @@
 **Effect docs:** `docs/effect-smol/ai-docs/src/` — authoritative reference for Effect patterns
 
 **Key conventions:**
+
 - Effect errors: `Schema.TaggedErrorClass`, tag format `"shipwright/module/ErrorName"`
 - Effect services: `Context.Service` + static `layer`, grouped in `namespace` alongside errors
 - Effect functions: `Effect.fn("span/name")(generator, ...combinators)` — generator = core logic, combinators = transforms + error mapping
@@ -35,6 +36,7 @@
 ## Phase 0 — Scaffold (COMPLETE)
 
 ### What was built
+
 - Single `package.json` monolith (no monorepo)
 - Folder structure: `src/api/`, `src/agent/`, `src/db/`, `src/storage/`, `src/shared/`, `src/web/`
 - Hono API server embedded in Vite dev server via `@hono/vite-dev-server` (single port: 5173)
@@ -48,6 +50,7 @@
 - Hono route stubs in `src/api/index.ts` (all 5 routes from the spec)
 
 ### Key decisions
+
 - **Single Vite dev server** (not two separate servers) — Hono embedded via `@hono/vite-dev-server`
 - **Port 5433** for Postgres — local Postgres was already running on 5432
 - **rustfs** chosen over garage — simpler setup, no init ceremony
@@ -56,12 +59,15 @@
 - **TypeScript 5.8** — not 6.x (React 19 types not compatible with TS 6 pre-release)
 
 ### Deviations from build sequence
+
 - `src/web/` used instead of `src/client/` — functionally equivalent, matches build sequence intent
 
 ### Architecture rules status
+
 All 10 rules checked — no violations at Phase 0.
 
 ### Gate verification
+
 - `drizzle-kit push` succeeds
 - `SELECT * FROM sessions LIMIT 1` returns empty result
 - `SELECT extname FROM pg_extension WHERE extname = 'vector'` returns a row
@@ -72,6 +78,7 @@ All 10 rules checked — no violations at Phase 0.
 ## Phase 1 — Document Ingestion (IN PROGRESS)
 
 ### Done
+
 - `src/agent/parsers.ts` — PDF (`unpdf`), DOCX (`mammoth.extractRawText()`), Markdown, plain text
 - `src/agent/chunker.ts` — recursive character splitter, overlap, config per file type, `estimateTokenCount` via `js-tiktoken`
 - `src/agent/chunker.test.ts` — 14 tests, all passing
@@ -79,12 +86,14 @@ All 10 rules checked — no violations at Phase 0.
 - `src/shared/schemas/index.ts` — insert/select schemas derived from Drizzle via `drizzle-zod`, `ChunkMetaSchema`, `UploadRequestSchema`
 
 ### Done (continued)
+
 - `src/db/queries.ts` — `createAgentSession`, `updateAgentSession`, `createDocument`, `updateDocumentTokenCount`, `createChunks`
 - `src/storage/index.ts` — `generatePresignedPutUrl` and `headObject` added to `S3Storage`
 - `POST /api/sessions/upload-url` — validates JSON body, creates session + document records, returns presigned URLs
 - `POST /api/sessions/:id/confirm-upload` — `headObject` verification, returns `202`
 
 ### Still to build
+
 1. **Fix compile blockers** — remove `../../db/out/schema.js` import from `src/shared/schemas/index.ts`; remove duplicate `estimateTokenCount` from `chunker.ts`
 2. **Add `getDocumentById` to `src/db/queries.ts`**
 3. **Implement `src/agent/process-uploaded-documents.ts`** — sequential `for...of` processing with `p-queue` (concurrency: 2) for memory protection; on success: `updateAgentSession('processing')`; on error: `updateAgentSession('error')`
@@ -94,6 +103,7 @@ All 10 rules checked — no violations at Phase 0.
 7. **Phase 1 gate verification**
 
 ### Key decisions
+
 - **Better Auth withdrawn** — drizzle-orm v1 beta + Better Auth compatibility risk. Auth deferred until drizzle reaches stable 1.0.
 - **Presigned upload adopted** — files go directly from client to S3, not through Hono. Backend generates presigned URL, client PUTs directly, backend confirms and processes.
 - **No `sourceDocument` column on chunks** — derived via `documentId` JOIN to `documents.filename`. Simpler schema, join cost acceptable at this scale.
@@ -105,6 +115,7 @@ All 10 rules checked — no violations at Phase 0.
 - **Polling for status updates (V1)** — client polls `GET /api/sessions/:id` to track session status after `confirm-upload` returns `202`. Fire-and-forget processing updates `agentSessions.status` when done.
 
 ### Future consideration
+
 - **Replace polling with SSE or WebSocket** — `GET /api/sessions/:id` polling works for V1 but adds unnecessary request overhead. When the React SPA is built (Phase 9), consider replacing with Server-Sent Events via `POST /api/sessions/:id/stream` (already stubbed) or a WebSocket connection. SSE is simpler and sufficient — full duplex (WebSocket) is not needed since updates only flow server → client.
 
 ### Bug fix — parsers.ts PDF Buffer→Uint8Array
@@ -116,12 +127,14 @@ before passing to `getDocumentProxy`. Confirmed working against `hr_requirements
 ### pnpm test:corpus — 12.06.2026
 
 Updated `src/agent/test-corpus.ts`:
+
 - Now loads all 5 corpus files (added `hr_requirements.pdf`)
 - Uses `parseDocument` from `parsers.ts` to read files — PDF goes through `unpdf`
   exactly as the real pipeline will, not via `fs.readFile` text mode
 - Added per-issue gate checks for all 5 planted issues
 
 Results with 5-document corpus:
+
 - ✓ 58 requirements, all with sourceDocument
 - ✓ 5 conflicts with documentA + documentB
 - ✓ 12 gaps found
@@ -144,6 +157,7 @@ test runs.
 Gate: upload a PDF, query semantically related chunks back out.
 
 ### Schema cleanup (post-Phase 2)
+
 - `documents.mimeType` and `documents.sizeBytes` added — wired through from upload request
 - `chunks.charOffset` (integer), `chunks.pageNumber` (integer), `chunks.headingPath` (text[]) added
 - `xstateSnapshot` typed with inline `XStateSnapshot` type to avoid circular dependency with `machine.ts`
@@ -157,15 +171,18 @@ Gate: upload a PDF, query semantically related chunks back out.
 ## Phase 2 — XState Machine Design (COMPLETE)
 
 ### Diagram
+
 Stored in `README.md`. Approved after gate review.
 
 ### Key decisions
+
 - **Single `error` state** (tutor's recommendation, not used — per-state error substates kept in student's design)
 - **`USER_CONFIRM` added as 8th event** — explicit user confirmation before analysis starts; machine doesn't auto-transition from `processing` to `analyzing`
 - **`awaiting_answers` has no ERROR transition in V1** — session blocks until user responds; server restart handled via snapshot rehydration
 - **Context shape** defined in `src/shared/schemas/machine.ts` as `MachineContextSchema` — used both as TypeScript type and for snapshot validation at rehydration
 
 ### Gate
+
 PASSED.
 
 ---
@@ -173,12 +190,14 @@ PASSED.
 ## Effect-TS Migration (between Phase 3 and Phase 4)
 
 ### Reference
+
 - `docs/effect-smol/` — effect-smol repo as git subtree (run `pnpm docs:effect-update` to pull latest)
 - `docs/effect-smol/ai-docs/src/01_effect/02_services/` — `Context.Service` and `Layer` patterns
 - `docs/effect-smol/ai-docs/src/01_effect/03_errors/` — typed errors with `Schema.TaggedErrorClass`
 - `docs/effect-smol/ai-docs/src/03_integration/10_managed-runtime.ts` — `ManagedRuntime` + Hono bridge
 
 ### Philosophy
+
 - XState stays — owns the state machine (transitions, guards, suspend/resume)
 - Effect wraps side-effecting work inside XState actors via `Effect.runPromise`
 - `ManagedRuntime` is the bridge between Effect's Layer/Service world and Hono's async handlers
@@ -190,16 +209,17 @@ PASSED.
 
 Full rewrite of storage as an Effect `Context.Service`. All six operations implemented:
 
-| Method | Error type |
-|---|---|
-| `upload` | `UploadError` |
-| `download` | `DownloadError` |
-| `downloadPartialObject` | `DownloadError` |
-| `remove` | `DeleteError` |
-| `generatePresignedUrl` | `PresignedUrlError` |
-| `headObject` | `HeadObjectError` |
+| Method                  | Error type          |
+| ----------------------- | ------------------- |
+| `upload`                | `UploadError`       |
+| `download`              | `DownloadError`     |
+| `downloadPartialObject` | `DownloadError`     |
+| `remove`                | `DeleteError`       |
+| `generatePresignedUrl`  | `PresignedUrlError` |
+| `headObject`            | `HeadObjectError`   |
 
 Key patterns used:
+
 - `Layer.effect` + `Effect.gen` — `S3Client` constructed once, closed over by all methods
 - `Effect.fn("span/name")(generator, ...combinators)` — generator handles core logic, combinators handle transformation and error mapping
 - `Effect.tryPromise({ try, catch })` — wraps AWS SDK calls with typed errors
@@ -214,7 +234,9 @@ The old `S3Storage` class (Promise-based) kept alongside `StorageAdapter` during
 See next section below for integration guidance.
 
 ### Full rewrite planned (Phase 9)
+
 See `docs/build_sequence.md` Phase 9 for the complete plan. Key items:
+
 - `DatabaseService` — wrap all Drizzle queries as Effect service, enable mock DB in tests
 - `@effect/ai-anthropic` — replace Vercel AI SDK with Effect's typed AI layer
 - Parsers + embedder as Effect services
@@ -224,18 +246,17 @@ See `docs/build_sequence.md` Phase 9 for the complete plan. Key items:
 ### Remaining migration steps (current)
 
 **Step 2 — Create `ManagedRuntime` in `src/runtime.ts`**
-```ts
-import { Layer, ManagedRuntime } from "effect"
-import { EffectStorageAdapter } from "./storage/index.js"
 
-export const appMemoMap = Layer.makeMemoMapUnsafe()
-export const runtime = ManagedRuntime.make(
-  EffectStorageAdapter.layer,
-  { memoMap: appMemoMap }
-)
+```ts
+import { Layer, ManagedRuntime } from "effect";
+import { EffectStorageAdapter } from "./storage/index.js";
+
+export const appMemoMap = Layer.makeMemoMapUnsafe();
+export const runtime = ManagedRuntime.make(EffectStorageAdapter.layer, { memoMap: appMemoMap });
 ```
 
 **Step 3 — Hono routes use `runtime.runPromise`**
+
 ```ts
 app.post('/sessions/upload-url', async (c) => {
   const result = await runtime.runPromise(
@@ -253,6 +274,7 @@ Replace `try/catch` + `p-queue` with `Effect.fn` + `Effect.forEach(..., { concur
 **Step 5 — Rewrite extractor and challenger with `Effect.fn`**
 
 ### XState + Effect bridge
+
 XState actors call `Effect.runPromise(effect.pipe(Effect.provide(runtime)))` inside `invoke.src`. XState owns all state transitions. Effect owns typed errors and DI inside each actor.
 
 ---
@@ -260,6 +282,7 @@ XState actors call `Effect.runPromise(effect.pipe(Effect.provide(runtime)))` ins
 ## Phase 3 — Per-Document Summarization + Challenger (COMPLETE — 15.06.2026)
 
 ### What was built
+
 - `src/shared/schemas/agent.ts` — `RequirementSchema`, `DocumentAnalysisSchema`, `ConflictSchema`, `GapReportSchema`, `DocumentAnalysis` and `GapReport` types
 - `src/agent/extractor.ts` — `runExtractor(documents)` using `generateText` + `Output.object({ schema: DocumentAnalysisSchema })` via `@ai-sdk/anthropic`
 - `src/agent/challenger.ts` — `runChallenger(documents, analysis)` using `generateText` + `Output.object({ schema: GapReportSchema })`
@@ -268,6 +291,7 @@ XState actors call `Effect.runPromise(effect.pipe(Effect.provide(runtime)))` ins
 - Documents passed as `messages` user content with `=== filename ===` headers for source attribution
 
 ### Gate verification (pnpm test:corpus output)
+
 - ✓ 30 requirements found (≥3)
 - ✓ All items have sourceDocument
 - ✓ 3 conflicts found with both documentA and documentB
@@ -275,6 +299,7 @@ XState actors call `Effect.runPromise(effect.pipe(Effect.provide(runtime)))` ins
 - Planted contradiction surfaced: `prd_draft.md` (mobile out of scope) vs `discovery_call_transcript.txt` (CEO hard requirement for mobile)
 
 ### Gate
+
 Previously PASSED on the old single-pass Extractor design. **REOPENED** — the design
 has changed. Gate must be re-verified against the new acceptance criteria (Phase 3a + 3b).
 
@@ -334,6 +359,7 @@ The Extractor is replaced by a per-document **map-reduce summarizer**. Key chang
 ### Gate verification — 15.06.2026
 
 `pnpm test:corpus` result: 5/5 planted issues surfaced.
+
 - ✓ 5 final summaries in `document_summaries`
 - ✓ All have `sourceDocument`
 - ✓ Issue 1: mobile scope conflict (prd_draft vs transcript)
@@ -341,6 +367,61 @@ The Extractor is replaced by a per-document **map-reduce summarizer**. Key chang
 - ✓ Issue 3: delegation gap surfaced
 - ✓ Issue 4: notification channel ambiguity surfaced
 - ✓ Issue 5: SSO/auth conflict (prd_draft vs hr_requirements.pdf)
+
+---
+
+## Architecture Decision — Target Stack (16.06.2026)
+
+Agreed target architecture for the full-stack setup, replacing the current Hono + Vite dev server approach.
+
+### Backend
+
+- **Effect `HttpApiBuilder`** replaces Hono entirely. No Hono in the final stack.
+- **Better Auth** handles sessions + OAuth (GitHub/Google). Mounted as a fetch passthrough at `/api/auth/*` — `auth.handler` is a plain `(Request) => Promise<Response>`, so it drops into an `HttpRouter` catch-all with no adapter needed.
+- **Auth middleware** via `HttpApiMiddleware` — injects typed `CurrentUser` into handler context. Handlers that require auth won't compile without it.
+- **`HttpApi` schema** (`src/api/schema.ts`) is a shared module with zero server imports — imported by both the server (to register handlers) and the frontend (to generate a typed client). Schema changes propagate end-to-end at compile time.
+- **Drizzle** stays. Better Auth gets its own DB connection (passed via `drizzleAdapter`), sharing the same Postgres pool.
+
+### Frontend
+
+- **Vite frontend-only** — no `@hono/vite-dev-server`, no API handling in Vite.
+- **`@effect/atom-react`** (`4.0.0-beta.83`) for state — atoms backed by `HttpApiClient` calls. Replaces React Query + Zustand in one model. Risk: still beta; fallback is plain `useState`/`useEffect` with `HttpApiClient` if stability becomes a problem.
+- **`HttpApiClient.make(Api)`** generates a typed client from the shared `HttpApi` definition. No OpenAPI codegen step.
+
+### Dev setup
+
+```
+make dev
+  ├── docker compose up -d            (postgres + rustfs)
+  ├── tsx --watch src/server.ts        (Effect API, port 3000)
+  └── vite                            (frontend only, port 5173, proxies /api → 3000)
+```
+
+`concurrently` used for the two-process `dev` target. Individual `make infra`, `make migrate`, `make test` targets alongside.
+
+`vite.config.ts` gains:
+
+```ts
+server: { proxy: { "/api": "http://localhost:3000" } },
+preview: { proxy: { "/api": "http://localhost:3000" } },
+```
+
+### Production serving
+
+Single `node src/server.js` process. The Effect server serves both the API and the `dist/` static files via `HttpServerResponse.file` + SPA fallback (`HttpRouter.get("*", ...)` catching `SystemError`/`BadArgument` from missing files → `index.html`). No nginx required.
+
+### What this replaces / supersedes
+
+- Removes: `@hono/vite-dev-server` plugin from `vite.config.ts`
+- Removes: Hono from `src/api/index.ts` and `src/index.ts`
+- Removes: `ManagedRuntime` bridge in `src/runtime.ts` (Effect `HttpApiBuilder` owns the whole request lifecycle)
+- Keeps: Drizzle, Effect agent logic, XState, all DB schema unchanged
+- Keeps: `src/server.ts` as the single entry point (currently experimental, becomes canonical)
+
+### Open questions before implementation
+
+1. `@effect/atom-react` beta risk — decide at Phase 10 (React SPA) whether to commit or fall back to plain hooks.
+2. Better Auth + Drizzle v1 beta compatibility — originally deferred (see Phase 1 key decisions). Re-evaluate when drizzle reaches stable 1.0 or when auth becomes a build sequence requirement.
 
 ---
 

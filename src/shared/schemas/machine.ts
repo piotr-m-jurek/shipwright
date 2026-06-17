@@ -17,11 +17,11 @@ export const MachineContextSchema = z.object({
   // All downstream passes (Challenger, Writers) consume these — never raw text.
   documentSummaries: z.array(
     z.object({
-      id: z.uuid(),                   // document_summaries.id
+      id: z.uuid(), // document_summaries.id
       documentId: z.uuid(),
-      sourceDocument: z.string(),     // documents.filename
+      sourceDocument: z.string(), // documents.filename
       documentType: DocumentTypeSchema,
-      content: z.string(),            // final summary content
+      content: z.string(), // final summary content
       tokenCount: z.number().int().positive(),
     }),
   ),

@@ -1,4 +1,3 @@
-
 import { getEncoding } from "js-tiktoken";
 
 export function estimateTokenCount(text: string): number {

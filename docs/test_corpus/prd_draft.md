@@ -25,6 +25,7 @@ payroll team manually cross-references approved leave with payroll runs.
 ## Core features
 
 ### Leave submission
+
 - Employee selects leave type (annual, sick, parental, other)
 - Employee selects date range with a calendar picker
 - System checks remaining entitlement and warns if insufficient balance
@@ -32,12 +33,14 @@ payroll team manually cross-references approved leave with payroll runs.
 - Submission triggers notification to line manager
 
 ### Approval workflow
+
 - Manager receives notification of pending request
 - Manager can approve, reject, or request more information
 - Employee notified of decision
 - Approved leave reflected in team calendar immediately
 
 ### HR dashboard
+
 - Overview of all pending requests across the organisation
 - Team calendar view showing who is off when
 - Leave balance report per employee
@@ -45,6 +48,7 @@ payroll team manually cross-references approved leave with payroll runs.
 - Export to CSV for payroll integration
 
 ### Integrations
+
 - BambooHR sync: employee records, reporting lines, leave entitlements
 - Payroll export: approved leave data in payroll-compatible CSV format
 
@@ -62,7 +66,7 @@ payroll team manually cross-references approved leave with payroll runs.
 ## Open questions
 
 - What happens when a manager is on leave and cannot approve requests?
-  *(no answer yet)*
+  _(no answer yet)_
 - Should the system enforce minimum notice periods per leave type?
 - Who approves HR administrators' own leave requests?
 
@@ -78,18 +82,21 @@ payroll team manually cross-references approved leave with payroll runs.
 
 ## Acceptance criteria
 
-*(incomplete — to be filled before development)*
+_(incomplete — to be filled before development)_
 
 ### Leave submission
+
 - [ ] Employee can submit a leave request in under 3 clicks
 - [ ] System rejects requests where remaining balance is insufficient
 - [ ] Submission confirmation shown to employee within 2 seconds
 
 ### Approval workflow
+
 - [ ] Manager receives notification within 5 minutes of submission
 - [ ] Approved leave appears on team calendar within 1 minute of approval
 
 ### HR dashboard
+
 - [ ] HR can filter requests by team, leave type, and date range
 - [ ] CSV export contains all fields required by payroll team
 
@@ -97,4 +104,4 @@ payroll team manually cross-references approved leave with payroll runs.
 
 ## Stack notes
 
-*(TBD)*
+_(TBD)_

@@ -252,7 +252,10 @@ export const relations = defineRelations(
       items: r.many.summaryItems(),
     },
     summaryItems: {
-      summary: r.one.documentSummaries({ from: r.summaryItems.summaryId, to: r.documentSummaries.id }),
+      summary: r.one.documentSummaries({
+        from: r.summaryItems.summaryId,
+        to: r.documentSummaries.id,
+      }),
     },
     chunks: {
       document: r.one.documents({ from: r.chunks.documentId, to: r.documents.id }),

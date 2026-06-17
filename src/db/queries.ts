@@ -33,7 +33,10 @@ export type ReconstructedSummary = DocumentSummary & {
 export class DocumentNotFoundError extends Error {}
 
 export async function createAgentSession(data: InsertAgentSession): Promise<SelectAgentSession> {
-  const [result] = await db.insert(agentSessions).values(data).returning();
+  const [result] = await db
+    .insert(agentSessions)
+    .values(data as any)
+    .returning();
 
   // TODO: figure out the typing: json seems to be returned as unknown instead of Json type
   return result as unknown as SelectAgentSession;
@@ -50,6 +53,15 @@ export async function updateAgentSession(
     .returning();
 
   return result as SelectAgentSession;
+}
+
+export async function getAgentSesionById(agentSessionId: string) {
+  const [result] = await db
+    .select()
+    .from(agentSessions)
+    .where(eq(agentSessions.id, agentSessionId));
+
+  return result;
 }
 
 export async function createDocument(data: InsertDocument): Promise<SelectDocument> {

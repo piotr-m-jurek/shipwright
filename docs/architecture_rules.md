@@ -211,14 +211,14 @@ calls go through the typed `hc<typeof app>` client.
 
 ```ts
 // ✅ Allowed
-const client = hc<typeof app>('http://localhost:3000')
-const res = await client.api.sessions.$post({ form: { file } })
+const client = hc<typeof app>("http://localhost:3000");
+const res = await client.api.sessions.$post({ form: { file } });
 
 // ❌ Blocked
-const res = await fetch('http://localhost:3000/api/sessions', {
-  method: 'POST',
+const res = await fetch("http://localhost:3000/api/sessions", {
+  method: "POST",
   body: formData,
-})
+});
 ```
 
 **Why:** Manual fetch calls lose type safety. The Hono RPC client ensures that
@@ -233,10 +233,10 @@ explicit TypeScript type.
 
 ```ts
 // ✅ Allowed
-xstateSnapshot: jsonb('xstate_snapshot').$type<MachineContext | null>()
+xstateSnapshot: jsonb("xstate_snapshot").$type<MachineContext | null>();
 
 // ❌ Blocked
-xstateSnapshot: jsonb('xstate_snapshot') // infers as unknown
+xstateSnapshot: jsonb("xstate_snapshot"); // infers as unknown
 ```
 
 **Why:** An untyped jsonb column means any code reading it must cast or
@@ -253,11 +253,11 @@ before passing to any parser.
 
 ```ts
 // ✅ Allowed — verify content matches claimed type
-const type = await fileTypeFromStream(partialStream)
-if (type?.mime !== expectedMime) throw new UnsupportedFileTypeError()
+const type = await fileTypeFromStream(partialStream);
+if (type?.mime !== expectedMime) throw new UnsupportedFileTypeError();
 
 // ❌ Blocked — trust extension alone
-if (filename.endsWith('.txt')) parseAsText(buffer)
+if (filename.endsWith(".txt")) parseAsText(buffer);
 ```
 
 **Why:** A binary file renamed to `.txt` will crash or produce garbage output

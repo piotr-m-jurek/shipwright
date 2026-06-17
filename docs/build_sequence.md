@@ -26,6 +26,7 @@ In development: Hono runs on port 3000, Vite dev server on port 5173. In product
 Vite builds to `dist/`, Hono serves it as static files.
 
 **Project structure:**
+
 ```
 src/
   api/        — Hono server, routes, middleware
@@ -57,6 +58,7 @@ type boundaries are established and won't need to change.
 ### 1a — File upload via presigned URLs
 
 **Flow:**
+
 ```
 FE → POST /api/sessions/upload-url  → BE returns { sessionId, presignedUrl, s3Key }
 FE → PUT presignedUrl (direct to S3/rustfs, no BE in the middle)
@@ -81,6 +83,7 @@ File bytes never touch the server. No memory pressure, no timeout risk on large
 files, no streaming plumbing. S3 handles the upload; Hono handles the logic.
 
 **File type verification:**
+
 - At URL generation time: validate MIME type from client metadata
 - After `HeadObject` confirmation: `file-type` check on a small byte range from S3
   before handing to the parser — reject if MIME type does not match actual content
@@ -92,7 +95,7 @@ files, no streaming plumbing. S3 handles the upload; Hono handles the logic.
 - **PDF** — `unpdf`
 - **DOCX** — `mammoth` via `extractRawText()` only, never `convertToHtml()`
 - **Plain text / Markdown** — `fs/promises`
-Image support (PNG, JPEG, WebP via Claude Vision) — deferred to a later iteration.
+  Image support (PNG, JPEG, WebP via Claude Vision) — deferred to a later iteration.
 
 ---
 
@@ -106,20 +109,22 @@ Image support (PNG, JPEG, WebP via Claude Vision) — deferred to a later iterat
 - **`p-queue` with `concurrency: 2`** wraps the full parse → chunk → embed → store pipeline per document. Prevents memory exhaustion under concurrent uploads. Module-level singleton in `src/agent/process-uploaded-documents.ts`.
 
 **Zod schemas to define in `src/shared/schemas/documents.ts`:**
+
 ```ts
-const DocumentTypeSchema = z.enum(['transcript', 'prd_draft', 'rfp', 'notes', 'image', 'other'])
+const DocumentTypeSchema = z.enum(["transcript", "prd_draft", "rfp", "notes", "image", "other"]);
 
 const UploadRequestSchema = z.object({
   documentType: DocumentTypeSchema,
-})
+});
 
 const ChunkMetaSchema = z.object({
   sourceDocument: z.string(),
   documentType: DocumentTypeSchema,
   chunkIndex: z.number().int().nonnegative(),
   sessionId: z.string().uuid(),
-})
+});
 ```
+
 Validate the upload endpoint body with `@hono/zod-validator` using `UploadRequestSchema`.
 Parse chunk metadata through `ChunkMetaSchema` before insertion — catches missing
 fields before they silently enter the vector store.
@@ -138,6 +143,7 @@ state, transition, guard, and event. The diagram is the architecture —
 getting it wrong costs days of refactoring.
 
 **States:**
+
 ```
 idle → uploading → processing → analyzing →
 awaiting_answers → re_evaluating → generating → complete → revising
@@ -149,6 +155,7 @@ feedback. May loop through `awaiting_answers` again if new questions surface, th
 back to `generating`. Each pass through `generating` increments `outputVersion`.
 
 **Events:**
+
 ```
 UPLOAD_COMPLETE, ANALYSIS_DONE, USER_ANSWERED,
 ANSWERS_SUFFICIENT, ANSWERS_INSUFFICIENT, OUTPUT_READY, ERROR,
@@ -164,6 +171,7 @@ HITL decision — the user can review what was uploaded before committing to ana
 generated outputs. Carries `{ feedback: string }`. Transitions `complete → revising`.
 
 **Guards:**
+
 ```
 hasEnoughContext       — tokenCount below threshold → stuff context directly
 tokensBelowThreshold  — decides context vs retrieval mode (on summary token counts)
@@ -171,6 +179,7 @@ roundLimitReached     — caps clarifying loop at 2 rounds
 ```
 
 **Context shape** (what flows through the machine):
+
 ```
 sessionId, documents[], documentSummaries[], questions[], answers[], round,
 inputMode (context | retrieval), agentAnalysis, outputs{}
@@ -183,36 +192,45 @@ the Challenger and Writer passes consume — never raw document text. Each entry
 in context without re-reading content.
 
 **Define the context shape as a Zod schema in `src/shared/schemas/machine.ts`:**
+
 ```ts
 const MachineContextSchema = z.object({
   sessionId: z.string().uuid(),
-  documents: z.array(z.object({
-    id: z.string().uuid(),
-    filename: z.string(),
-    documentType: DocumentTypeSchema,
-    tokenCount: z.number().int().positive(),
-  })),
-  documentSummaries: z.array(z.object({
-    id: z.string().uuid(),              // document_summaries.id
-    documentId: z.string().uuid(),
-    sourceDocument: z.string(),         // documents.filename
-    documentType: DocumentTypeSchema,
-    content: z.string(),                // final summary content
-    tokenCount: z.number().int().positive(),
-  })),
-  questions: z.array(z.object({
-    id: z.string().uuid(),
-    text: z.string(),
-    rationale: z.string(),
-    sourceDocuments: z.array(z.string()),
-  })),
-  answers: z.array(z.object({
-    questionId: z.string().uuid(),
-    text: z.string(),
-    round: z.number().int(),
-  })),
+  documents: z.array(
+    z.object({
+      id: z.string().uuid(),
+      filename: z.string(),
+      documentType: DocumentTypeSchema,
+      tokenCount: z.number().int().positive(),
+    }),
+  ),
+  documentSummaries: z.array(
+    z.object({
+      id: z.string().uuid(), // document_summaries.id
+      documentId: z.string().uuid(),
+      sourceDocument: z.string(), // documents.filename
+      documentType: DocumentTypeSchema,
+      content: z.string(), // final summary content
+      tokenCount: z.number().int().positive(),
+    }),
+  ),
+  questions: z.array(
+    z.object({
+      id: z.string().uuid(),
+      text: z.string(),
+      rationale: z.string(),
+      sourceDocuments: z.array(z.string()),
+    }),
+  ),
+  answers: z.array(
+    z.object({
+      questionId: z.string().uuid(),
+      text: z.string(),
+      round: z.number().int(),
+    }),
+  ),
   round: z.number().int().min(0).max(2),
-  inputMode: z.enum(['context', 'retrieval']),
+  inputMode: z.enum(["context", "retrieval"]),
   agentAnalysis: z.unknown().nullable(),
   revisionFeedback: z.string().nullable(),
   outputVersion: z.number().int().min(1),
@@ -220,10 +238,11 @@ const MachineContextSchema = z.object({
     projectBrief: z.string().optional(),
     implementationPrd: z.string().optional(),
   }),
-})
+});
 
-export type MachineContext = z.infer<typeof MachineContextSchema>
+export type MachineContext = z.infer<typeof MachineContextSchema>;
 ```
+
 This schema does two things: it is the TypeScript type source of truth for the
 machine context, and it validates the `xstateSnapshot` when rehydrating from
 Postgres — catching snapshot corruption before it causes a silent bad state.
@@ -255,6 +274,7 @@ For each document in the session:
    final with `ORDER BY version DESC LIMIT 1`.
 
 **Why a separate table and not a column on `documents`:**
+
 - Map intermediates and the final are all rows in the same table — full visibility
   into the map-reduce tree for debugging and evals
 - Re-summarization (e.g. after revision) creates a new row; history is never overwritten
@@ -265,32 +285,40 @@ For each document in the session:
 **New tables and enums (add to `src/db/schema.ts`, then `drizzle-kit push`):**
 
 `document_summaries` — one row per summarization pass (intermediate or final):
+
 ```ts
-export const documentSummaries = pgTable('document_summaries', {
-  id:             uuid('id').primaryKey().defaultRandom(),
-  documentId:     uuid('document_id').notNull().references(() => documents.id),
-  sessionId:      uuid('session_id').notNull().references(() => agentSessions.id),
-  sourceDocument: text('source_document').notNull(),   // filename, denormalised for query convenience
-  version:        integer('version').notNull().default(1),
-  summaryType:    summaryTypeEnum('summary_type').notNull(),
-  batchIndex:     integer('batch_index'),               // chunkIndex for map_intermediate rows
-  content:        text('content').notNull(),             // prose summary
-  tokenCount:     integer('token_count').notNull(),      // token count of content — used by XState guard
-  createdAt:      timestamp('created_at').notNull().defaultNow(),
-})
+export const documentSummaries = pgTable("document_summaries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  documentId: uuid("document_id")
+    .notNull()
+    .references(() => documents.id),
+  sessionId: uuid("session_id")
+    .notNull()
+    .references(() => agentSessions.id),
+  sourceDocument: text("source_document").notNull(), // filename, denormalised for query convenience
+  version: integer("version").notNull().default(1),
+  summaryType: summaryTypeEnum("summary_type").notNull(),
+  batchIndex: integer("batch_index"), // chunkIndex for map_intermediate rows
+  content: text("content").notNull(), // prose summary
+  tokenCount: integer("token_count").notNull(), // token count of content — used by XState guard
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
 ```
 
 `summary_items` — normalised requirements/constraints/assumptions, one row per item:
+
 ```ts
-export const summaryItems = pgTable('summary_items', {
-  id:             uuid('id').primaryKey().defaultRandom(),
-  summaryId:      uuid('summary_id').notNull().references(() => documentSummaries.id, { onDelete: 'cascade' }),
-  itemType:       summaryItemTypeEnum('item_type').notNull(),   // requirement | constraint | assumption
-  text:           text('text').notNull(),
-  sourceDocument: text('source_document').notNull(),
-  confidence:     confidenceLevelEnum('confidence').notNull(),  // high | medium | low
-  orderIndex:     integer('order_index').notNull(),             // preserves array order
-})
+export const summaryItems = pgTable("summary_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  summaryId: uuid("summary_id")
+    .notNull()
+    .references(() => documentSummaries.id, { onDelete: "cascade" }),
+  itemType: summaryItemTypeEnum("item_type").notNull(), // requirement | constraint | assumption
+  text: text("text").notNull(),
+  sourceDocument: text("source_document").notNull(),
+  confidence: confidenceLevelEnum("confidence").notNull(), // high | medium | low
+  orderIndex: integer("order_index").notNull(), // preserves array order
+});
 ```
 
 New enums: `confidence_level ('high' | 'medium' | 'low')`, `summary_item_type ('requirement' | 'constraint' | 'assumption')`.
@@ -298,38 +326,41 @@ New enums: `confidence_level ('high' | 'medium' | 'low')`, `summary_item_type ('
 **Loading final summaries** uses a JOIN — `getFinalSummariesBySession` selects distinct-on `documentId` from `document_summaries`, left-joins `summary_items`, and reconstructs `ReconstructedSummary[]` in a helper function. `ReconstructedSummary` extends `DocumentSummary` with DB metadata (`id`, `documentId`, `sessionId`, `tokenCount`, `version`).
 
 **AI SDK v6 pattern for summarization passes:**
+
 ```ts
-import { generateText, Output } from 'ai'
-import { anthropic } from '@ai-sdk/anthropic'
+import { generateText, Output } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 const { output } = await generateText({
-  model: anthropic('claude-sonnet-4-5'),
+  model: anthropic("claude-sonnet-4-5"),
   output: Output.object({ schema: DocumentSummarySchema }),
   system: summarizerSystemPrompt,
-  messages: [{ role: 'user', content: chunksAsText }],
-})
+  messages: [{ role: "user", content: chunksAsText }],
+});
 ```
+
 Chunks go into `messages` as user content with `=== chunk N ===` headers.
 The system prompt describes the task; the chunks are the input.
 
 **Zod schemas to define in `src/shared/schemas/agent.ts`:**
+
 ```ts
 const ItemWithSourceSchema = z.object({
   text: z.string(),
-  sourceDocument: z.string(),      // required — never optional
-  confidence: z.enum(['high', 'medium', 'low']),
-})
+  sourceDocument: z.string(), // required — never optional
+  confidence: z.enum(["high", "medium", "low"]),
+});
 
 const DocumentSummarySchema = z.object({
-  sourceDocument: z.string(),      // filename — required, never optional
+  sourceDocument: z.string(), // filename — required, never optional
   documentType: DocumentTypeSchema,
-  summary: z.string(),             // prose summary of the document's content
+  summary: z.string(), // prose summary of the document's content
   requirements: z.array(ItemWithSourceSchema),
   constraints: z.array(ItemWithSourceSchema),
   assumptions: z.array(ItemWithSourceSchema),
-})
+});
 
-export type DocumentSummary = z.infer<typeof DocumentSummarySchema>
+export type DocumentSummary = z.infer<typeof DocumentSummarySchema>;
 ```
 
 **Summarization strategy — decision deferred, three options kept open:**
@@ -371,23 +402,27 @@ Once all per-document summaries are stored:
 ```ts
 const ConflictSchema = z.object({
   description: z.string(),
-  documentA: z.string(),           // filename of first source
-  documentB: z.string(),           // filename of second source
-})
+  documentA: z.string(), // filename of first source
+  documentB: z.string(), // filename of second source
+});
 
 const GapReportSchema = z.object({
   conflicts: z.array(ConflictSchema),
-  gaps: z.array(z.object({
-    description: z.string(),
-    affectedArea: z.string(),
-  })),
-  ambiguities: z.array(z.object({
-    description: z.string(),
-    sourceDocument: z.string(),
-  })),
-})
+  gaps: z.array(
+    z.object({
+      description: z.string(),
+      affectedArea: z.string(),
+    }),
+  ),
+  ambiguities: z.array(
+    z.object({
+      description: z.string(),
+      sourceDocument: z.string(),
+    }),
+  ),
+});
 
-export type GapReport = z.infer<typeof GapReportSchema>
+export type GapReport = z.infer<typeof GapReportSchema>;
 ```
 
 **Why summaries and not raw text:** The per-document summaries already capture
@@ -401,6 +436,7 @@ first). This fallback is handled by the XState `tokensBelowThreshold` guard, ope
 on summary token counts rather than raw document token counts.
 
 Run against the test corpus. Verify:
+
 - Every `DocumentSummary` has a non-empty `sourceDocument`
 - Every requirement/constraint/assumption has `sourceDocument`
 - Challenger surfaces the planted contradiction (`documentA` and `documentB` both populated)
@@ -424,31 +460,38 @@ from those summaries (not from raw text).**
   (enables server restart recovery)
 
 **Zod schemas to add to `src/shared/schemas/agent.ts`:**
+
 ```ts
 const ClarifyingQuestionSchema = z.object({
   text: z.string(),
-  rationale: z.string(),           // why this question matters
+  rationale: z.string(), // why this question matters
   sourceDocuments: z.array(z.string()), // which docs surface this gap
-  priority: z.enum(['high', 'medium', 'low']),
-})
+  priority: z.enum(["high", "medium", "low"]),
+});
 
 const ClarifyingQuestionsSchema = z.object({
   questions: z.array(ClarifyingQuestionSchema).min(3).max(7),
-  stopReason: z.enum(['sufficient_gaps', 'round_limit']).optional(),
-})
+  stopReason: z.enum(["sufficient_gaps", "round_limit"]).optional(),
+});
 
-export type ClarifyingQuestions = z.infer<typeof ClarifyingQuestionsSchema>
+export type ClarifyingQuestions = z.infer<typeof ClarifyingQuestionsSchema>;
 ```
 
 **Zod schema for the answers payload in `src/shared/schemas/api.ts`:**
+
 ```ts
 const SubmitAnswersSchema = z.object({
-  answers: z.array(z.object({
-    questionId: z.string().uuid(),
-    text: z.string().min(1),
-  })).min(1),
-})
+  answers: z
+    .array(
+      z.object({
+        questionId: z.string().uuid(),
+        text: z.string().min(1),
+      }),
+    )
+    .min(1),
+});
 ```
+
 Validate `POST /api/sessions/:id/answers` with `@hono/zod-validator` using
 `SubmitAnswersSchema` — rejects empty answer submissions before they reach XState.
 
@@ -488,11 +531,12 @@ synthesised content.
   - File bytes never pass through Hono
 
 **Zod schema for the route param:**
+
 ```ts
 const OutputDownloadParamSchema = z.object({
   id: z.string().uuid(),
-  type: z.enum(['project_brief', 'implementation_prd']),
-})
+  type: z.enum(["project_brief", "implementation_prd"]),
+});
 ```
 
 ### Revision loop
@@ -501,20 +545,24 @@ After outputs are generated, the user can submit free-form feedback and trigger
 a re-generation. The machine does not restart — it loops within the existing session.
 
 **XState additions:**
+
 - New state: `revising` — reachable from `complete` via `REVISION_REQUESTED`
 - `revising` may transition to `awaiting_answers` if new questions surface from
   the revision pass, then back to `generating`, then back to `complete`
 - Each pass through `generating` increments `outputVersion` in context
 
 **New route: `POST /api/sessions/:id/revise`**
+
 ```ts
 const ReviseRequestSchema = z.object({
   feedback: z.string().min(1),
-})
+});
 ```
+
 Fires `REVISION_REQUESTED` event carrying the feedback string. Returns `202`.
 
 **Revision Writer pass:**
+
 - Receives: existing outputs (both Brief and PRD) + free-form feedback +
   `documentSummaries[]` from context
 - May re-query pgvector chunks if the feedback references specific areas
@@ -522,6 +570,7 @@ Fires `REVISION_REQUESTED` event carrying the feedback string. Returns `202`.
 - Regenerates both outputs; increments `version` on the `outputs` table rows
 
 **Context additions (already added to `MachineContextSchema` in Phase 2):**
+
 - `revisionFeedback: string | null` — the latest feedback string, cleared after generation
 - `outputVersion: number` — starts at `1`, increments on each revision
 
@@ -537,26 +586,32 @@ Fires `REVISION_REQUESTED` event carrying the feedback string. Returns `202`.
 - Hono RPC types fully exported — `hc<typeof app>` client ready for consumers
 
 **Zod + `@hono/zod-validator` on every route that accepts a body:**
+
 ```ts
 // src/shared/schemas/api.ts
 const UploadUrlRequestSchema = z.object({
   filename: z.string(),
   mimeType: z.string(),
-  sizeBytes: z.number().int().positive().max(100 * 1024 * 1024), // 100MB hard limit
+  sizeBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(100 * 1024 * 1024), // 100MB hard limit
   documentType: DocumentTypeSchema,
-})
+});
 
 const ConfirmUploadSchema = z.object({
   s3Key: z.string().min(1),
-})
+});
 
 const SessionIdParamSchema = z.object({
   id: z.string().uuid(),
-})
+});
 
 // SubmitAnswersSchema already defined in Phase 4
 // ReviseRequestSchema and OutputDownloadParamSchema defined in Phase 5b
 ```
+
 ```ts
 // src/api/routes/sessions.ts
 app.post('/api/sessions/upload-url',
@@ -576,6 +631,7 @@ app.post('/api/sessions/:id/answers',
   async (c) => { ... }
 )
 ```
+
 Routes without a validated body still validate the `:id` param. A malformed UUID
 never reaches the DB or the XState machine.
 
@@ -616,28 +672,32 @@ This is the integration test.**
 - Verify clarifying loop stop condition fires at the right time
 
 **Zod schema for LLM-as-judge responses in `src/shared/schemas/evals.ts`:**
+
 ```ts
 const EvalResultSchema = z.object({
   score: z.number().min(0).max(1),
   reasoning: z.string(),
   pass: z.boolean(),
   citations: z.array(z.string()).optional(), // which parts of source supported score
-})
+});
 
 const FaithfulnessEvalSchema = z.object({
-  hallucinatedRequirements: z.array(z.object({
-    text: z.string(),
-    reason: z.string(),           // why this was deemed hallucinated
-  })),
+  hallucinatedRequirements: z.array(
+    z.object({
+      text: z.string(),
+      reason: z.string(), // why this was deemed hallucinated
+    }),
+  ),
   result: EvalResultSchema,
-})
+});
 
 const ConflictDetectionEvalSchema = z.object({
-  conflictsSurfaced: z.array(z.string()),   // descriptions of found conflicts
-  plantedConflictFound: z.boolean(),        // deterministic check
+  conflictsSurfaced: z.array(z.string()), // descriptions of found conflicts
+  plantedConflictFound: z.boolean(), // deterministic check
   result: EvalResultSchema,
-})
+});
 ```
+
 Parse every LLM-as-judge response through these schemas. An unparseable judge
 response is a failed eval, not a passing one with a warning.
 
@@ -667,15 +727,21 @@ Define a `DatabaseService` as `Context.Service` wrapping all functions from
 `Promise<T>`.
 
 ```ts
-export class DatabaseService extends Context.Service<DatabaseService, {
-  createAgentSession(data: InsertAgentSession): Effect.Effect<SelectAgentSession, DbError>
-  createDocument(data: InsertDocument): Effect.Effect<SelectDocument, DbError>
-  getDocumentById(id: string): Effect.Effect<SelectDocument, DbError | DocumentNotFoundError>
-  // ... all other queries
-}>()("shipwright/db/DatabaseService") {
-  static readonly layer = Layer.effect(DatabaseService, Effect.sync(() => {
-    // implement using db from src/db/index.ts
-  }))
+export class DatabaseService extends Context.Service<
+  DatabaseService,
+  {
+    createAgentSession(data: InsertAgentSession): Effect.Effect<SelectAgentSession, DbError>;
+    createDocument(data: InsertDocument): Effect.Effect<SelectDocument, DbError>;
+    getDocumentById(id: string): Effect.Effect<SelectDocument, DbError | DocumentNotFoundError>;
+    // ... all other queries
+  }
+>()("shipwright/db/DatabaseService") {
+  static readonly layer = Layer.effect(
+    DatabaseService,
+    Effect.sync(() => {
+      // implement using db from src/db/index.ts
+    }),
+  );
 }
 ```
 
@@ -688,13 +754,13 @@ Install `@effect/ai-anthropic@4.0.0-beta.78`. Migrate extractor and challenger
 from Vercel AI SDK to Effect's provider-agnostic AI layer:
 
 ```ts
-import { AnthropicClient, AnthropicLanguageModel } from "@effect/ai-anthropic"
-import { LanguageModel } from "effect/unstable/ai"
-import { FetchHttpClient } from "effect/unstable/http"
+import { AnthropicClient, AnthropicLanguageModel } from "@effect/ai-anthropic";
+import { LanguageModel } from "effect/unstable/ai";
+import { FetchHttpClient } from "effect/unstable/http";
 
 const AnthropicClientLayer = AnthropicClient.layerConfig({
-  apiKey: Config.redacted("ANTHROPIC_API_KEY")
-}).pipe(Layer.provide(FetchHttpClient.layer))
+  apiKey: Config.redacted("ANTHROPIC_API_KEY"),
+}).pipe(Layer.provide(FetchHttpClient.layer));
 ```
 
 - `LanguageModel.generateObject({ schema: EffectSchemas.DocumentAnalysisSchema, ... })`
@@ -713,13 +779,9 @@ const AnthropicClientLayer = AnthropicClient.layerConfig({
 
 ```ts
 export const runtime = ManagedRuntime.make(
-  Layer.mergeAll(
-    StorageAdapter.layer,
-    DatabaseService.layer,
-    AnthropicService.layer,
-  ),
-  { memoMap: appMemoMap }
-)
+  Layer.mergeAll(StorageAdapter.layer, DatabaseService.layer, AnthropicService.layer),
+  { memoMap: appMemoMap },
+);
 ```
 
 ### 5. Delete legacy code
@@ -754,5 +816,3 @@ export const runtime = ManagedRuntime.make(
 - Minimum chunk size threshold — short paragraphs produce low-quality embeddings; merge or discard chunks below a minimum length
 
 ---
-
-

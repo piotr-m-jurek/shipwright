@@ -1,10 +1,10 @@
 import { createAgentSession, createDocument } from "../db/queries.js";
+import { CreateAgentSessionRequest } from "../shared/schemas/api.js";
 import { StorageAdapter } from "../storage/index.js";
-import { CreateSessionRequest } from "../shared/schemas/api.js";
 import { Effect } from "effect";
 
 export const createUploadSession = Effect.fn("agent/createUploadSession")(function* (
-  files: CreateSessionRequest["files"],
+  files: CreateAgentSessionRequest["files"],
 ) {
   const storage = yield* StorageAdapter;
   const session = yield* Effect.promise(() => createAgentSession({ status: "uploading" }));

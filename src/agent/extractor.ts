@@ -1,7 +1,8 @@
 import { generateText, ModelMessage, Output } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { DocumentAnalysisSchema } from "../shared/schemas/agent.js";
+import { DocumentSummarySchema } from "../shared/schemas/agent.js";
 import { Effect } from "effect";
+import { TextGenerationError } from "./errors.js";
 
 const ExtractorSystemPrompt = `You are an expert requirements analyst. Your job is to extract every requirement, constraint, and assumption from a set of project documents.
 
@@ -35,7 +36,7 @@ export const runExtractor = Effect.fn("agent/runExtractor")(function* (documents
     try: () =>
       generateText({
         model: anthropic("claude-sonnet-4-6"),
-        output: Output.object({ schema: DocumentAnalysisSchema }),
+        output: Output.object({ schema: DocumentSummarySchema }),
         system: ExtractorSystemPrompt,
         messages: [message],
       }),

@@ -4,16 +4,16 @@ An AI agent that ingests a messy bundle of project inputs — briefs, PRD drafts
 
 ## Stack
 
-| Layer | Technology |
-|---|---|
-| API | Hono + Hono RPC |
-| Agent / Orchestration | Vercel AI SDK Core + XState |
-| LLM | Claude 3.7 Sonnet (Anthropic via Vercel AI SDK) |
-| Document Processing | unpdf + mammoth + Node.js fs |
-| Vector DB | PostgreSQL + pgvector + Drizzle ORM |
-| Embeddings | OpenAI text-embedding-3-small |
-| File Storage | StorageAdapter + @aws-sdk/client-s3 + rustfs (local) |
-| Observability | Langfuse |
+| Layer                 | Technology                                           |
+| --------------------- | ---------------------------------------------------- |
+| API                   | Hono + Hono RPC                                      |
+| Agent / Orchestration | Vercel AI SDK Core + XState                          |
+| LLM                   | Claude 3.7 Sonnet (Anthropic via Vercel AI SDK)      |
+| Document Processing   | unpdf + mammoth + Node.js fs                         |
+| Vector DB             | PostgreSQL + pgvector + Drizzle ORM                  |
+| Embeddings            | OpenAI text-embedding-3-small                        |
+| File Storage          | StorageAdapter + @aws-sdk/client-s3 + rustfs (local) |
+| Observability         | Langfuse                                             |
 
 ## Build progress
 
@@ -91,7 +91,8 @@ stateDiagram-v2
 Full schema: `src/shared/schemas/machine.ts`
 
 ## Processing:
-```mermaid
+
+````mermaid
 flowchart TD
     A([User opens app]) --> B[Session created\nstored in localStorage]
     B --> C[User uploads documents\nPDF / DOCX / TXT / MD]
@@ -182,7 +183,7 @@ flowchart TD
 
 - [ ] refine prompts using rules from anthropic course
 - [ ] refine testing corpus using rules from anthropic course - prompt evals
-- [ ] concurrency works for now, but later on, we might need a real queue - 
+- [ ] concurrency works for now, but later on, we might need a real queue -
 - [ ] find out if RAG was not ommited in the plan - where do we retrieve chunks? where llm is answering our questions based on the acquired knowledge
 
   - extractor
@@ -204,7 +205,7 @@ flowchart TD
     - graphRAG
 - **optional** graph RAG
   - complicated
-  - 
+  -
 ---
 
 03.07.2026
@@ -212,7 +213,7 @@ flowchart TD
 - [ ] consider data transfer object for db instead of raw dogging db queries in /db/queries.ts
 - [ ] `agent/parsers.ts` - use `extname` from node to double check file extension (a .txt file can actually be a binary that's gonna run unexpectedly somewhere in the process)
 - [ ] chunker.ts - make sure we don't split into too small chunks. what if we have very short paragraphs?
-- [ ] chunker.ts - return not just list of chunks, but also metadata about those chunks, for pdf -> page number, maybe for markdown -> paragraph list, for all 
+- [ ] chunker.ts - return not just list of chunks, but also metadata about those chunks, for pdf -> page number, maybe for markdown -> paragraph list, for all
   - imagine the situation that something is on one page in a very long chapter of very long paragraph, metadata needed
 - [ ] content and embedding are technically the same thing
 - [ ] try typing jsons in drizzle schema with $type() method on builder
@@ -249,7 +250,7 @@ flowchart TD
     - [policy system in effect](https://lucas-barake.github.io/building-a-composable-policy-system/)
 
   - upload size
-    - 100MB what if multiple users do it? 
+    - 100MB what if multiple users do it?
       - ALBO stream FE -> BE -> S3 - jazda bez trzymanki i można zepsuć
       - ALBO presigned URLs - client -> Bucket
         - public, or session guarded
@@ -270,10 +271,10 @@ flowchart TD
 ---
 
 - [ ] better error handling in `storage/index.ts`
-- [ ] embedMany in `src/agent/embedder.ts` has a default batch limit, after which it throws, 
+- [ ] embedMany in `src/agent/embedder.ts` has a default batch limit, after which it throws,
 remember for later
 - [ ] `src/shared/schemas/api.ts` has some wild types. figure out the way and nomenclature of typing endpoints
-  - {Resource}{Action}{Role} 
+  - {Resource}{Action}{Role}
   - Resource - what the endpoint operates on
   - Action - the operation (Create, Confirm, Upload)
   - Role - Request for input, Response for output
@@ -283,3 +284,4 @@ remember for later
   - type safe routes
   - mixing types between backend and frontend
   - use effect-atom on the frontend for fun
+````

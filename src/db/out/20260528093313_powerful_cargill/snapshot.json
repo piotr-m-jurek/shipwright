@@ -2,45 +2,28 @@
   "version": "8",
   "dialect": "postgres",
   "id": "0c02240d-d050-467f-951d-59efe4cab06c",
-  "prevIds": [
-    "00000000-0000-0000-0000-000000000000"
-  ],
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
   "ddl": [
     {
-      "values": [
-        "transcript",
-        "prd_draft",
-        "rfp",
-        "notes"
-      ],
+      "values": ["transcript", "prd_draft", "rfp", "notes"],
       "name": "document_type",
       "entityType": "enums",
       "schema": "public"
     },
     {
-      "values": [
-        "context",
-        "retrieval"
-      ],
+      "values": ["context", "retrieval"],
       "name": "input_mode",
       "entityType": "enums",
       "schema": "public"
     },
     {
-      "values": [
-        "user",
-        "assistant",
-        "system"
-      ],
+      "values": ["user", "assistant", "system"],
       "name": "role",
       "entityType": "enums",
       "schema": "public"
     },
     {
-      "values": [
-        "project_brief",
-        "implementation_prd"
-      ],
+      "values": ["project_brief", "implementation_prd"],
       "name": "output_type",
       "entityType": "enums",
       "schema": "public"
@@ -794,14 +777,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "session_id"
-      ],
+      "columns": ["session_id"],
       "schemaTo": "public",
       "tableTo": "sessions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "answers_session_id_sessions_id_fkey",
@@ -811,14 +790,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "question_id"
-      ],
+      "columns": ["question_id"],
       "schemaTo": "public",
       "tableTo": "questions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "answers_question_id_questions_id_fkey",
@@ -828,14 +803,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "document_id"
-      ],
+      "columns": ["document_id"],
       "schemaTo": "public",
       "tableTo": "documents",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "chunks_document_id_documents_id_fkey",
@@ -845,14 +816,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "session_id"
-      ],
+      "columns": ["session_id"],
       "schemaTo": "public",
       "tableTo": "sessions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "chunks_session_id_sessions_id_fkey",
@@ -862,14 +829,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "session_id"
-      ],
+      "columns": ["session_id"],
       "schemaTo": "public",
       "tableTo": "sessions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "documents_session_id_sessions_id_fkey",
@@ -879,14 +842,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "session_id"
-      ],
+      "columns": ["session_id"],
       "schemaTo": "public",
       "tableTo": "sessions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "messages_session_id_sessions_id_fkey",
@@ -896,14 +855,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "session_id"
-      ],
+      "columns": ["session_id"],
       "schemaTo": "public",
       "tableTo": "sessions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "outputs_session_id_sessions_id_fkey",
@@ -913,14 +868,10 @@
     },
     {
       "nameExplicit": false,
-      "columns": [
-        "session_id"
-      ],
+      "columns": ["session_id"],
       "schemaTo": "public",
       "tableTo": "sessions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "name": "questions_session_id_sessions_id_fkey",
@@ -929,9 +880,7 @@
       "table": "questions"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "answers_pkey",
       "schema": "public",
@@ -939,9 +888,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "chunks_pkey",
       "schema": "public",
@@ -949,9 +896,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "documents_pkey",
       "schema": "public",
@@ -959,9 +904,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "messages_pkey",
       "schema": "public",
@@ -969,9 +912,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "outputs_pkey",
       "schema": "public",
@@ -979,9 +920,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "questions_pkey",
       "schema": "public",
@@ -989,9 +928,7 @@
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "sessions_pkey",
       "schema": "public",

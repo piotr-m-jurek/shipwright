@@ -45,14 +45,14 @@ export const GapReportSchema = z.object({
 
 export type GapReport = z.infer<typeof GapReportSchema>;
 
-export const ClarifyingQuestionSchema = z.object({
+const ClarifyingQuestionSchema = z.object({
   text: z.string(),
   rationale: z.string(),
   sourceDocuments: z.array(z.string()),
   priority: z.enum(["high", "medium", "low"]),
 });
 
-const ClarifyingQuestionsSchema = z.object({
+export const ClarifyingQuestionsSchema = z.object({
   questions: z.array(ClarifyingQuestionSchema).min(3).max(7),
   stopReason: z.enum(["sufficient_gaps", "round_limit"]).optional(),
 });
