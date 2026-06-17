@@ -22,12 +22,13 @@ export class PostAgentSessionAnswersResponse extends Schema.Class<PostAgentSessi
 
 export class PostAgentSessionAnswersRequest extends Schema.Class<PostAgentSessionAnswersRequest>(
   "PostAgentSessionAnswersRequest",
-)({ answers: Schema.Array(Schema.String) }) {}
+)({
+  answers: Schema.Array(Schema.Struct({ questionId: Schema.String, text: Schema.String })),
+}) {}
 
 export class CreateAgentSessionRequest extends Schema.Class<CreateAgentSessionRequest>(
   "CreateAgentSessionRequest",
-)({
-  files: Schema.Array(
+)({ files: Schema.Array(
     Schema.Struct({
       filename: Schema.String,
       documentType: Schema.Literals(["transcript", "prd_draft", "rfp", "notes"]), // INFO: DocumentTypeEnum from db/schema

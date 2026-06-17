@@ -4,18 +4,21 @@ import { ParseResult } from "./parsers.js";
 
 type ChunkConfig = {
   chunkSize: number;
+  minChunkSize: number;
   overlap: number;
   separators: string[];
 };
 
 const MARKDOWN_CONFIG: ChunkConfig = {
   chunkSize: 1800,
+  minChunkSize: 100,
   overlap: 200,
   separators: ["\n## ", "\n### ", "\n\n", "\n", ". ", " ", ""],
 };
 
 const TEXT_CONFIG: ChunkConfig = {
   chunkSize: 1800,
+  minChunkSize: 100,
   overlap: 200,
   separators: ["\n\n", "\n", ". ", " ", ""],
 };
@@ -35,19 +38,31 @@ export function chunkDocument(file: ParseResult, config?: Partial<ChunkConfig>):
       const chunks = splitText(input.text, mergedConfig, MARKDOWN_CONFIG.separators, []);
       const headingIndex = buildHeadingIndex(input.text);
 
-      return addOffsets(chunks, input.text, mergedConfig.overlap, { headingIndex });
+      return pipe(
+        chunks,
+        //
+        addOffsets(input.text, mergedConfig.overlap, { headingIndex }),
+      );
     }),
     Match.when({ type: "pdf" }, (input) => {
       const mergedConfig = { ...TEXT_CONFIG, ...config };
       const chunks = splitText(input.pages.join("\n\n"), mergedConfig, TEXT_CONFIG.separators, []);
       const pageBoundaries = buildPageBoundaries(input.pages, PDF_PAGES_SEPARATOR);
-      return addOffsets(chunks, input.text, mergedConfig.overlap, { pageBoundaries });
+      return pipe(
+        chunks,
+        mergeShortChunks(mergedConfig.minChunkSize),
+        addOffsets(input.text, mergedConfig.overlap, { pageBoundaries }),
+      );
     }),
     Match.orElse((input) => {
       const mergedConfig = { ...TEXT_CONFIG, ...config };
       const chunks = splitText(input.text, mergedConfig, TEXT_CONFIG.separators, []);
 
-      return addOffsets(chunks, input.text, mergedConfig.overlap);
+      return pipe(
+        chunks,
+        mergeShortChunks(mergedConfig.minChunkSize),
+        addOffsets(input.text, mergedConfig.overlap),
+      );
     }),
   );
 }
@@ -78,38 +93,39 @@ function buildHeadingIndex(text: string): HeadingEntry[] {
 }
 
 function addOffsets(
-  chunks: string[],
   originalText: string,
   overlap: number,
   extras?: {
     pageBoundaries?: number[]; // PDF — precomputed before calling
     headingIndex?: { offset: number; path: string[] }[]; // Markdown — precomputed before calling
   },
-): ChunkResult[] {
-  const { results } = chunks.reduce<{ results: ChunkResult[]; searchFrom: number }>(
-    (acc, content) => {
-      const charOffset = originalText.indexOf(content, acc.searchFrom);
-      const pageNumber = extras?.pageBoundaries
-        ? extras.pageBoundaries.findLastIndex((b) => b <= charOffset) + 1
-        : undefined;
+): (chunks: string[]) => ChunkResult[] {
+  return (chunks) => {
+    const { results } = chunks.reduce<{ results: ChunkResult[]; searchFrom: number }>(
+      (acc, content) => {
+        const charOffset = originalText.indexOf(content, acc.searchFrom);
+        const pageNumber = extras?.pageBoundaries
+          ? extras.pageBoundaries.findLastIndex((b) => b <= charOffset) + 1
+          : undefined;
 
-      const headingPath = extras?.headingIndex
-        ? extras.headingIndex.findLast((h) => h.offset <= charOffset)?.path
-        : undefined;
+        const headingPath = extras?.headingIndex
+          ? extras.headingIndex.findLast((h) => h.offset <= charOffset)?.path
+          : undefined;
 
-      const results = acc.results.concat({
-        content,
-        charOffset,
-        pageNumber,
-        headingPath,
-      });
-      const searchFrom = charOffset + content.length - overlap;
+        const results = acc.results.concat({
+          content,
+          charOffset,
+          pageNumber,
+          headingPath,
+        });
+        const searchFrom = charOffset + content.length - overlap;
 
-      return { results, searchFrom };
-    },
-    { results: [], searchFrom: 0 },
-  );
-  return results;
+        return { results, searchFrom };
+      },
+      { results: [], searchFrom: 0 },
+    );
+    return results;
+  };
 }
 
 function splitText(
@@ -139,27 +155,30 @@ function splitText(
       ({ acc, buffer }, part) => {
         const candidate = buffer ? buffer + separatorsRemaining[0] + part : part;
 
-        match({
-          candidateFits: candidate.length <= config.chunkSize,
-          bufferHasContent: buffer.length > 0,
-          partTooBig: part.length > config.chunkSize,
-        })
-          .with({ candidateFits: true }, () => {
+        pipe(
+          Match.value({
+            candidateFits: candidate.length <= config.chunkSize,
+            bufferHasContent: buffer.length > 0,
+            partTooBig: part.length > config.chunkSize,
+          }),
+          Match.when({ candidateFits: true }, () => {
             buffer = candidate;
-          })
-          .with({ candidateFits: false, bufferHasContent: true, partTooBig: true }, () => {
+          }),
+
+          Match.when({ candidateFits: false, bufferHasContent: true, partTooBig: true }, () => {
             acc.push(buffer);
             splitText(part, config, separatorsRemaining.slice(1), acc);
             buffer = "";
-          })
-          .with({ candidateFits: false, bufferHasContent: true, partTooBig: false }, () => {
+          }),
+          Match.when({ candidateFits: false, bufferHasContent: true, partTooBig: false }, () => {
             acc.push(buffer);
             buffer = part;
-          })
-          .with({ candidateFits: false, bufferHasContent: false }, () => {
+          }),
+          Match.when({ candidateFits: false, bufferHasContent: false }, () => {
             splitText(part, config, separatorsRemaining.slice(1), acc);
-          })
-          .exhaustive();
+          }),
+          // TODO: Add exhaustiveness
+        );
         return { acc, buffer };
       },
       { acc, buffer: "" },
@@ -169,4 +188,17 @@ function splitText(
     result.push(remaining);
   }
   return acc;
+}
+
+function mergeShortChunks(minSize: number): (chunks: string[]) => string[] {
+  return (chunks) =>
+    chunks.reduce<string[]>((acc, chunk) => {
+      if (chunk.length < minSize && acc.length > 0) {
+        // Merge into the previous chunk
+        acc[acc.length - 1] = acc[acc.length - 1] + " " + chunk;
+      } else {
+        acc.push(chunk);
+      }
+      return acc;
+    }, []);
 }
