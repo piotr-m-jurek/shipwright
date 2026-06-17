@@ -11,8 +11,4 @@ await migrate(drizzle({ client: migrationClient }), config.db.migrationConfig);
 
 const client = postgres(config.db.url, { max: 1 });
 
-export const db = drizzle({
-  client,
-  relations,
-  schema,
-});
+export const db = drizzle({ client, relations, schema });

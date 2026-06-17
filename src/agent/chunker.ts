@@ -1,6 +1,6 @@
+import { Match, pipe } from "effect";
 import { PDF_PAGES_SEPARATOR } from "./index.js";
 import { ParseResult } from "./parsers.js";
-import { match } from "ts-pattern";
 
 type ChunkConfig = {
   chunkSize: number;
@@ -28,26 +28,28 @@ export type ChunkResult = {
 };
 
 export function chunkDocument(file: ParseResult, config?: Partial<ChunkConfig>): ChunkResult[] {
-  return match(file)
-    .with({ type: "markdown" }, (input) => {
+  return pipe(
+    Match.value(file),
+    Match.when({ type: "markdown" }, (input) => {
       const mergedConfig = { ...MARKDOWN_CONFIG, ...config };
       const chunks = splitText(input.text, mergedConfig, MARKDOWN_CONFIG.separators, []);
       const headingIndex = buildHeadingIndex(input.text);
 
       return addOffsets(chunks, input.text, mergedConfig.overlap, { headingIndex });
-    })
-    .with({ type: "pdf" }, (input) => {
+    }),
+    Match.when({ type: "pdf" }, (input) => {
       const mergedConfig = { ...TEXT_CONFIG, ...config };
       const chunks = splitText(input.pages.join("\n\n"), mergedConfig, TEXT_CONFIG.separators, []);
       const pageBoundaries = buildPageBoundaries(input.pages, PDF_PAGES_SEPARATOR);
       return addOffsets(chunks, input.text, mergedConfig.overlap, { pageBoundaries });
-    })
-    .otherwise((input) => {
+    }),
+    Match.orElse((input) => {
       const mergedConfig = { ...TEXT_CONFIG, ...config };
       const chunks = splitText(input.text, mergedConfig, TEXT_CONFIG.separators, []);
 
       return addOffsets(chunks, input.text, mergedConfig.overlap);
-    });
+    }),
+  );
 }
 
 function buildPageBoundaries(pages: string[], separator: string): number[] {
