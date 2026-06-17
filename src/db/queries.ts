@@ -155,96 +155,87 @@ export async function getCurrentDocumenSummaryVersion({
 export async function getFinalSummariesBySession(
   sessionId: string,
 ): Promise<ReconstructedSummary[]> {
-  // Select the latest final summary per document, joined with all its items.
-  // DISTINCT ON picks the highest version per documentId (ordered desc by version).
-  // summaryItems.orderIndex preserves the original array order of items.
-  const rows = await db
+  // Two separate queries to avoid the DISTINCT ON + leftJoin collapse bug.
+  // DISTINCT ON with a JOIN collapses to one row per documentId, so item arrays
+  // would only ever have 0-1 entries. Instead: query summaries, then items separately.
+
+  // 1. Latest final summary per document for this session.
+  const summaryRows = await db
     .selectDistinctOn([documentSummaries.documentId], {
-      // summary columns
-      summaryId: documentSummaries.id,
+      id: documentSummaries.id,
       documentId: documentSummaries.documentId,
       sessionId: documentSummaries.sessionId,
       sourceDocument: documentSummaries.sourceDocument,
       summary: documentSummaries.content,
       tokenCount: documentSummaries.tokenCount,
       version: documentSummaries.version,
-      // item columns
-      itemId: summaryItems.id,
-      itemType: summaryItems.itemType,
-      itemText: summaryItems.text,
-      itemSourceDocument: summaryItems.sourceDocument,
-      itemConfidence: summaryItems.confidence,
-      itemOrderIndex: summaryItems.orderIndex,
     })
     .from(documentSummaries)
-    .leftJoin(summaryItems, eq(summaryItems.summaryId, documentSummaries.id))
     .where(
       and(eq(documentSummaries.sessionId, sessionId), eq(documentSummaries.summaryType, "final")),
     )
-    .orderBy(
-      asc(documentSummaries.documentId),
-      desc(documentSummaries.version),
-      asc(summaryItems.orderIndex),
-    );
+    .orderBy(asc(documentSummaries.documentId), desc(documentSummaries.version));
 
-  return reconstructSummaries(rows);
+  if (summaryRows.length === 0) return [];
+
+  const summaryIds = summaryRows.map((r) => r.id);
+
+  // 2. All items belonging to those summaries, ordered for correct reconstruction.
+  const itemRows = await db
+    .select()
+    .from(summaryItems)
+    .where(
+      summaryIds.length === 1
+        ? eq(summaryItems.summaryId, summaryIds[0]!)
+        : summaryItems.summaryId.in(summaryIds),
+    )
+    .orderBy(asc(summaryItems.summaryId), asc(summaryItems.orderIndex));
+
+  return reconstructSummaries(summaryRows, itemRows);
 }
 
-type SummaryRow = {
-  summaryId: string;
-  documentId: string;
-  sessionId: string;
-  sourceDocument: string;
-  summary: string;
-  tokenCount: number;
-  version: number;
-  itemId: string | null;
-  itemType: SummaryItemSelect["itemType"] | null;
-  itemText: string | null;
-  itemSourceDocument: string | null;
-  itemConfidence: SummaryItemSelect["confidence"] | null;
-  itemOrderIndex: number | null;
-};
-
-function reconstructSummaries(rows: SummaryRow[]): ReconstructedSummary[] {
-  const map = new Map<string, ReconstructedSummary>();
-
-  for (const row of rows) {
-    if (map.has(row.summaryId)) {
-      continue;
+function reconstructSummaries(
+  summaryRows: {
+    id: string;
+    documentId: string;
+    sessionId: string;
+    sourceDocument: string;
+    summary: string;
+    tokenCount: number;
+    version: number;
+  }[],
+  itemRows: SummaryItemSelect[],
+): ReconstructedSummary[] {
+  // Index items by summaryId for O(1) lookup.
+  const itemsBySummaryId = new Map<string, SummaryItemSelect[]>();
+  for (const item of itemRows) {
+    const list = itemsBySummaryId.get(item.summaryId);
+    if (list) {
+      list.push(item);
+    } else {
+      itemsBySummaryId.set(item.summaryId, [item]);
     }
-    map.set(row.summaryId, {
-      id: row.summaryId,
+  }
+
+  return summaryRows.map((row) => {
+    const items = itemsBySummaryId.get(row.id) ?? [];
+    return {
+      id: row.id,
       documentId: row.documentId,
       sessionId: row.sessionId,
       sourceDocument: row.sourceDocument,
       summary: row.summary,
       tokenCount: row.tokenCount,
       version: row.version,
-      requirements: [],
-      constraints: [],
-      assumptions: [],
-    });
-
-    // left join produces null item columns when a summary has no items
-    if (
-      row.itemId &&
-      row.itemType &&
-      row.itemText &&
-      row.itemSourceDocument &&
-      row.itemConfidence
-    ) {
-      const entry = map.get(row.summaryId)!;
-      const item = {
-        text: row.itemText,
-        sourceDocument: row.itemSourceDocument,
-        confidence: row.itemConfidence,
-      };
-      if (row.itemType === "requirement") entry.requirements.push(item);
-      else if (row.itemType === "constraint") entry.constraints.push(item);
-      else if (row.itemType === "assumption") entry.assumptions.push(item);
-    }
-  }
-
-  return Array.from(map.values());
+      requirements: items
+        .filter((i) => i.itemType === "requirement")
+        .map((i) => ({ text: i.text, sourceDocument: i.sourceDocument, confidence: i.confidence })),
+      constraints: items
+        .filter((i) => i.itemType === "constraint")
+        .map((i) => ({ text: i.text, sourceDocument: i.sourceDocument, confidence: i.confidence })),
+      assumptions: items
+        .filter((i) => i.itemType === "assumption")
+        .map((i) => ({ text: i.text, sourceDocument: i.sourceDocument, confidence: i.confidence })),
+    };
+  });
 }

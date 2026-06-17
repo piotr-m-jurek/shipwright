@@ -1,5 +1,8 @@
 import z from "zod/v4";
-import { documentTypeLiteral } from "../../db/out/schema.js";
+import { documentTypeEnum } from "../../db/schema.js";
+
+// Extract the enum values from the Drizzle enum directly — stays in sync with schema.ts.
+const documentTypeLiteral = documentTypeEnum.enumValues;
 
 const DocumentTypeSchema = z.enum(documentTypeLiteral);
 

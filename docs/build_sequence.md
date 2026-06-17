@@ -20,29 +20,32 @@ Build in order. Resist the urge to set up the frontend before the agent loop wor
 
 ## Phase 0 — Scaffold (~1 day)
 
-**Single project, single `package.json`.** No monorepo, no workspaces. Hono and
-Vite live in the same project — shared types require no ceremony, just import them.
-In development: Hono runs on port 3000, Vite dev server on port 5173. In production:
-Vite builds to `dist/`, Hono serves it as static files.
+**Single project, single `package.json`.** No monorepo, no workspaces. The Effect
+HTTP server and Vite frontend live in the same project. In development: Effect server
+runs on port 3000, Vite dev server on port 5173. In production: Vite builds to
+`dist/`, the Effect server serves it as static files.
 
-**Project structure:**
+**Project structure (actual):**
 
 ```
 src/
-  api/        — Hono server, routes, middleware
-  agent/      — XState machines, Vercel AI SDK passes
-  db/         — Drizzle schema, migrations
-  storage/    — StorageAdapter interface + implementations
-  web/        — Vite + React frontend (empty for now)
-  shared/     — types shared between api and web
+  server/     — Effect HttpApi server, endpoint definitions, handlers
+  agent/      — XState machines, Vercel AI SDK passes, summarizer, challenger
+  db/         — Drizzle schema, migrations, query functions
+  storage/    — StorageAdapter Effect Context.Service + S3 implementation
+  web/        — Vite + React frontend
+  shared/     — schemas and types shared across layers
+    domain/   — domain error classes
+    schemas/  — Zod schemas (agent.ts, machine.ts), Effect schemas (api.ts)
+    lib/      — utilities
 ```
 
 - Docker Compose: Postgres + pgvector + rustfs (S3-compatible local storage)
 - Langfuse: use Langfuse Cloud free tier during development; full self-hosted
   stack (Postgres + ClickHouse + Redis + S3) when needed — defer this complexity
 - Drizzle schema — all tables including `vector(1536)` column on `chunks`
-- Hono skeleton with route stubs + Hono RPC types exported from `src/api/`
-- `StorageAdapter` interface defined in `src/storage/` with `rustfs` implementation
+- Effect HttpApi server skeleton with endpoint stubs in `src/server/`
+- `StorageAdapter` as Effect `Context.Service` in `src/storage/`
 - Environment variable setup (`.env.example` committed, `.env` gitignored)
 
 **End state:** nothing runs, but the project structure, data contract, and
@@ -528,7 +531,7 @@ synthesised content.
   - `type` is `project_brief` or `implementation_prd`
   - Returns a presigned GET URL for the latest version of the output file from S3
   - Short TTL (e.g. 15 minutes) — the URL is for immediate download, not permanent
-  - File bytes never pass through Hono
+  - File bytes never pass through the server — client uploads directly to S3
 
 **Zod schema for the route param:**
 
@@ -576,67 +579,25 @@ Fires `REVISION_REQUESTED` event carrying the feedback string. Returns `202`.
 
 ---
 
-## Phase 6 — Hono API + Streaming (~2 days)
+## Phase 6 — Effect HttpApi wiring (~2 days)
 
-- Wire XState machine to all session routes
-- Streaming routes return `toDataStreamResponse()` directly — no custom SSE
+- Wire XState machine to all session route handlers in `src/server/server.ts`
 - Session rehydration: on request, load `xstateSnapshot` from Postgres, validate
   through `MachineContextSchema`, restore the XState machine
-- CORS middleware (`hono/cors`) for SPA origin
-- Hono RPC types fully exported — `hc<typeof app>` client ready for consumers
+- All handlers are Effect generators — no Promise bridges
+- Request/response schemas are `Schema.Class` definitions in `src/shared/schemas/api.ts`
+  (Effect Schema, not Zod — Zod schemas are for LLM output validation only)
+- OpenAPI schema auto-generated at `/openapi.json` by `HttpApiBuilder`
 
-**Zod + `@hono/zod-validator` on every route that accepts a body:**
+**Endpoint payload schemas in `src/shared/schemas/api.ts`:**
 
-```ts
-// src/shared/schemas/api.ts
-const UploadUrlRequestSchema = z.object({
-  filename: z.string(),
-  mimeType: z.string(),
-  sizeBytes: z
-    .number()
-    .int()
-    .positive()
-    .max(100 * 1024 * 1024), // 100MB hard limit
-  documentType: DocumentTypeSchema,
-});
-
-const ConfirmUploadSchema = z.object({
-  s3Key: z.string().min(1),
-});
-
-const SessionIdParamSchema = z.object({
-  id: z.string().uuid(),
-});
-
-// SubmitAnswersSchema already defined in Phase 4
-// ReviseRequestSchema and OutputDownloadParamSchema defined in Phase 5b
-```
-
-```ts
-// src/api/routes/sessions.ts
-app.post('/api/sessions/upload-url',
-  zValidator('json', UploadUrlRequestSchema),
-  async (c) => { ... }
-)
-
-app.post('/api/sessions/:id/confirm-upload',
-  zValidator('param', SessionIdParamSchema),
-  zValidator('json', ConfirmUploadSchema),
-  async (c) => { ... }
-)
-
-app.post('/api/sessions/:id/answers',
-  zValidator('param', SessionIdParamSchema),
-  zValidator('json', SubmitAnswersSchema),
-  async (c) => { ... }
-)
-```
-
-Routes without a validated body still validate the `:id` param. A malformed UUID
-never reaches the DB or the XState machine.
+All payload fields are `Schema.Class` instances — Effect HttpApi validates them
+automatically before the handler runs. A malformed UUID or missing field never
+reaches the XState machine.
 
 **End state:** a fully functional HTTP API. CLI and React SPA are
-both just clients on top of this.
+both just clients on top of this. The server exposes `/openapi.json` — the frontend
+client is generated from it.
 
 ---
 

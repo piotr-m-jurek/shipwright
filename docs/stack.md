@@ -29,19 +29,25 @@ CopilotKit — too opinionated, heavier than needed.
 
 ---
 
-### 2. 🔌 API — Hono + Hono RPC
+### 2. 🔌 API — Effect HttpApi (`effect/unstable/httpapi`)
 
-**Why:** Standalone Hono server gives a clean separation between the React SPA and
-backend agent logic. Hono RPC (`hc<typeof app>`) provides end-to-end type safety
-without tRPC overhead — routes are defined once in Hono, the generated client is
-fully typed on the frontend. Vercel AI SDK's `streamText().toDataStreamResponse()`
-returns a standard `Response` that Hono forwards directly; `useChat` on the frontend
-already knows how to consume it. No custom SSE plumbing needed.
+**Why:** The codebase is Effect-first throughout. Effect's `HttpApiBuilder` provides
+typed endpoint definitions, automatic OpenAPI/Scalar documentation generation, and
+integrates directly with the Effect runtime — no bridge layer needed between the HTTP
+server and the rest of the Effect pipeline. Route handlers are plain Effect generators;
+the `Layer` system wires dependencies. This is a deliberate deviation from the original
+Hono plan, made after the storage and agent layers were already Effect services.
+
+**Deviation from original plan:** The original design specified Hono + Hono RPC. The
+switch to Effect HttpApi was made because the entire backend is Effect — using Hono
+would require a bridge between Effect services and Promise-based Hono handlers. Effect
+HttpApi eliminates that boundary entirely. The frontend type safety story changes: instead
+of `hc<typeof app>`, the OpenAPI schema is used to generate a typed client.
 
 **Route map:**
 
 - `POST /api/sessions/upload-url` — generate presigned S3 PUT URL, create session record
-- `POST /api/sessions/:id/confirm-upload` — verify upload via HeadObject, start processing
+- `POST /api/sessions/:id/confirm-upload` — verify upload via HeadObject, start processing async
 - `GET  /api/sessions/:id` — get session status + questions
 - `POST /api/sessions/:id/stream` — trigger analysis, stream progress + questions
 - `POST /api/sessions/:id/answers` — submit clarifying answers
@@ -49,9 +55,13 @@ already knows how to consume it. No custom SSE plumbing needed.
 - `GET  /api/sessions/:id/output/:type/download-url` — presigned S3 GET URL for final output
 - `POST /api/sessions/:id/revise` — submit free-form revision feedback, trigger re-generation
 
-**Rejected:** tRPC + Next.js Route Handlers — collocated with Next.js, wrong
-architecture now. NestJS — too heavy. Plain REST — gives up type safety for no
-benefit.
+**Server structure:** `src/server/server.ts` — `HttpApiGroup` defines endpoint schemas,
+`HttpApiBuilder.group` implements handlers, `NodeRuntime.runMain` launches the server.
+`StorageAdapter.layer` and future `DatabaseService.layer` are provided via `Layer.provide`.
+
+**Rejected:** Hono + Hono RPC — requires Promise bridge to Effect services, loses
+type-level integration with the Effect runtime. NestJS — too heavy. Plain REST — no
+type safety.
 
 ---
 
@@ -83,10 +93,11 @@ The goal is to build what Mastra gives you out of the box, but manually:
 - Langfuse → observability
   This is the full Mastra bill of materials, assembled by hand.
 
-**Stretch upgrade path:** LangGraph.js if XState complexity grows beyond comfortable,
-or if the multi-agent split needs graph-native primitives. Effect-TS as an alternative
-philosophy — typed error channels and structured concurrency replace XState's state
-model, at the cost of a steeper learning curve.
+**Effect-TS integration:** Effect wraps all side-effecting work inside XState actors
+via `Effect.runPromise`. The full backend is Effect — storage, DB, LLM calls, parsing,
+chunking, summarization. XState owns state transitions and the HITL suspend/resume
+pattern. Effect owns typed errors, dependency injection, and structured concurrency
+within each actor. This is the chosen architecture, not a stretch goal.
 
 **Rejected:** LangChain.js — leaky abstractions. Mastra — pre-assembles exactly what
 we want to learn to assemble. Raw loop control without XState — works for V1 single
@@ -220,13 +231,21 @@ weaker production story.
 
 ---
 
-### 7. 🗄️ Database — PostgreSQL + Drizzle ORM + postgres.js
+### 7. 🗄️ Database — PostgreSQL + Drizzle ORM + postgres.js + Effect DatabaseService
 
 **Why:** PostgreSQL hosts both relational data and pgvector embeddings — one service,
 one migration pipeline, one connection string. Drizzle ORM is TypeScript-first:
 schema defined in TypeScript, `vector()` column type maps directly to pgvector,
 no code generation step, no separate schema file. `postgres.js` as the driver —
 faster than `pg`, TypeScript-native, clean API.
+
+**Effect DB layer migration (in progress):** All Drizzle query functions in
+`src/db/queries.ts` will be wrapped in a `DatabaseService` Effect `Context.Service`.
+Each query returns `Effect<T, DbError>` instead of `Promise<T>`. This eliminates
+`Effect.tryPromise` wrappers at every call site, enables test layers with mock DB,
+and keeps the full backend in one consistent Effect pipeline. Migration happens
+incrementally alongside the phase build — raw promise queries in `queries.ts` are
+replaced with Effect service methods as each phase is built.
 
 **Schema tables:**
 
@@ -323,13 +342,13 @@ Braintrust — smaller community. Helicone — proxy-based, weak eval story.
 | Layer                 | Winner                                                                                        |
 | --------------------- | --------------------------------------------------------------------------------------------- |
 | UI                    | Vite + React · TanStack Router · TanStack Query · assistant-ui · shadcn/ui · Vercel AI SDK UI |
-| API                   | Hono + Hono RPC                                                                               |
-| Agent / Orchestration | Vercel AI SDK Core + XState                                                                   |
+| API                   | Effect HttpApi (`effect/unstable/httpapi`) · NodeRuntime                                      |
+| Agent / Orchestration | Vercel AI SDK Core + XState + Effect (typed errors, DI, concurrency)                         |
 | LLM / Prompt          | Claude 3.7 Sonnet · Zod · Prompt Caching                                                      |
 | Document Processing   | unpdf + mammoth (extractRawText) + Node.js fs                                                 |
 | Vector DB / Retrieval | pgvector (Postgres) + OpenAI text-embedding-3-small                                           |
-| Database              | PostgreSQL + Drizzle ORM + postgres.js                                                        |
-| File Storage          | StorageAdapter · @aws-sdk/client-s3 · rustfs → Supabase Storage                               |
+| Database              | PostgreSQL + Drizzle ORM + postgres.js + Effect DatabaseService (in progress)                 |
+| File Storage          | StorageAdapter (Effect Context.Service) · @aws-sdk/client-s3 · rustfs → Supabase Storage     |
 | Observability / Evals | Langfuse (full stack: Postgres + ClickHouse + Redis + S3)                                     |
 
 ---

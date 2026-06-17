@@ -45,7 +45,7 @@ export const GapReportSchema = z.object({
 
 export type GapReport = z.infer<typeof GapReportSchema>;
 
-const ClarifyingQuestionSchema = z.object({
+export const ClarifyingQuestionSchema = z.object({
   text: z.string(),
   rationale: z.string(),
   sourceDocuments: z.array(z.string()),

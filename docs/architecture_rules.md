@@ -115,66 +115,79 @@ current. Stale snapshots cause incorrect state restoration.
 
 ---
 
-## Rule 6 — generateObject for structured passes, streamText for writing passes
+## Rule 6 — Output.object() for structured passes, streamText for writing passes
 
-The choice between `generateObject` and `streamText` is not arbitrary.
+The choice of output mode is not arbitrary.
 
-- `generateObject` → Extractor, Challenger, Question generator (structured JSON output)
+- `generateText` + `Output.object({ schema })` → Summarizer, Challenger, Question generator (structured JSON output)
 - `streamText` → Brief writer, PRD writer (streaming Markdown to the client)
 
-```
-// ✅ Allowed
-const analysis = await generateObject({ model, schema: DocumentAnalysisSchema, ... })
+```ts
+// ✅ Allowed — structured output
+const { output } = await generateText({
+  model, output: Output.object({ schema: DocumentSummarySchema }), ...
+})
+
+// ✅ Allowed — streaming prose
 const stream = streamText({ model, system: briefPrompt, ... })
 
-// ❌ Blocked
+// ❌ Blocked — manual JSON parsing from bare generateText
 const { text } = await generateText({ model, ... })
-const parsed = JSON.parse(text) // manual JSON parsing from generateText
+const parsed = JSON.parse(text)
 ```
 
-**Why:** `generateObject` enforces the schema contract. `generateText` with manual
-JSON parsing has no validation and will silently produce invalid data.
+**Why:** `Output.object()` enforces the schema contract at the Vercel AI SDK level.
+Manual JSON parsing has no validation and will silently produce invalid data.
+Note: `generateObject` is deprecated in AI SDK v6 — use `generateText` + `Output.object()`.
 
 ---
 
-## Rule 7 — toDataStreamResponse is the only streaming transport
+## Rule 7 — Effect HttpApi handles all HTTP transport
 
-All streaming HTTP responses must use Vercel AI SDK's `toDataStreamResponse()`.
-No custom SSE, no `ReadableStream` constructed by hand, no `res.write()` loops.
+All HTTP endpoints are defined via Effect `HttpApiGroup`/`HttpApiEndpoint` and
+implemented via `HttpApiBuilder.group`. No raw `http.createServer`, no manual
+response construction, no custom SSE outside of Effect's streaming primitives.
 
-```
+```ts
 // ✅ Allowed
-const stream = streamText({ model, ... })
-return stream.toDataStreamResponse()
+class Api extends HttpApi.make("api").add(SystemApiGroup) {}
+const handlers = HttpApiBuilder.group(Api, "system", (h) =>
+  h.handle("myEndpoint", () => Effect.succeed(MyResponse.make({ ... })))
+)
 
-// ❌ Blocked
-res.setHeader('Content-Type', 'text/event-stream')
-res.write(`data: ${chunk}\n\n`) // manual SSE
+// ❌ Blocked — raw http or manual response construction
+res.setHeader("Content-Type", "text/event-stream")
+res.write(`data: ${chunk}\n\n`)
 ```
 
-**Why:** `useChat` on the frontend expects the Vercel AI SDK data stream protocol.
-Custom SSE will not be parsed correctly by the frontend.
+**Why:** The entire backend is Effect. All handlers are Effect generators; dependency
+injection flows through `Layer`. Manual response construction bypasses the Effect
+runtime and breaks type safety at the HTTP boundary.
 
 ---
 
-## Rule 8 — Never call agent passes directly from Hono routes
+## Rule 8 — Never call agent passes directly from HTTP handlers
 
-Agent passes (Extractor, Challenger, etc.) must only be invoked from within XState
-actors. Hono routes send events to the XState machine — they never call agent
-functions directly.
+Agent passes (Summarizer, Challenger, Question generator, Writers) must only be
+invoked from within XState actors. HTTP handlers send events to the XState machine —
+they never call agent functions directly.
 
-```
-// ✅ Allowed — route sends event, machine calls the agent
-app.post('/api/sessions/:id/stream', async (c) => {
-  machine.send({ type: 'START_ANALYSIS' })
-  return new Response(...)
-})
+```ts
+// ✅ Allowed — handler sends event, machine calls the agent
+h.handle("submitAnswers", ({ payload }) =>
+  Effect.gen(function* () {
+    yield* sendMachineEvent(sessionId, { type: "USER_ANSWERED", answers: payload.answers })
+    return SubmitAnswersResponse.make({ ok: true })
+  })
+)
 
-// ❌ Blocked — route calls agent directly, bypassing the machine
-app.post('/api/sessions/:id/stream', async (c) => {
-  const result = await runExtractor(docs) // bypasses XState
-  return c.json(result)
-})
+// ❌ Blocked — handler calls agent directly, bypassing the machine
+h.handle("stream", () =>
+  Effect.gen(function* () {
+    const result = yield* runSummarizer(docs) // bypasses XState
+    return result
+  })
+)
 ```
 
 **Why:** The XState machine is the source of truth for session state. Bypassing it
@@ -204,25 +217,28 @@ adds unnecessary latency and DB load.
 
 ---
 
-## Rule 10 — The Hono RPC client (hc) is the only HTTP client on the frontend
+## Rule 10 — Frontend uses a typed API client generated from the OpenAPI schema
 
-Frontend code must not construct `fetch` calls to the Hono API manually. All API
-calls go through the typed `hc<typeof app>` client.
+Frontend code must not construct `fetch` calls manually. All API calls go through
+a typed client derived from the Effect HttpApi OpenAPI schema (via `openapi-fetch`
+or equivalent). The schema is exposed at `/openapi.json`.
 
 ```ts
-// ✅ Allowed
-const client = hc<typeof app>("http://localhost:3000");
-const res = await client.api.sessions.$post({ form: { file } });
+// ✅ Allowed — typed client from OpenAPI schema
+import createClient from "openapi-fetch"
+import type { paths } from "./generated/api"
+const client = createClient<paths>({ baseUrl: "http://localhost:3000" })
+const { data } = await client.POST("/api/sessions/upload-url", { body: { files } })
 
-// ❌ Blocked
-const res = await fetch("http://localhost:3000/api/sessions", {
+// ❌ Blocked — raw fetch
+const res = await fetch("http://localhost:3000/api/sessions/upload-url", {
   method: "POST",
-  body: formData,
-});
+  body: JSON.stringify({ files }),
+})
 ```
 
-**Why:** Manual fetch calls lose type safety. The Hono RPC client ensures that
-request and response shapes are verified at compile time.
+**Why:** Manual fetch calls lose type safety. The typed client ensures request and
+response shapes are verified at compile time against the same schema the server uses.
 
 ---
 

@@ -10,27 +10,27 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Context, Layer, Schema, Effect } from "effect";
 
 export class UploadError extends Schema.TaggedErrorClass<UploadError>()(
-  "shipwreck/storage/UploadError",
+  "shipwright/storage/UploadError",
   { cause: Schema.Defect() },
 ) {}
 
 export class DownloadError extends Schema.TaggedErrorClass<DownloadError>()(
-  "shipwreck/storage/DownloadError",
+  "shipwright/storage/DownloadError",
   { cause: Schema.Defect(), message: Schema.optional(Schema.String) },
 ) {}
 
 export class DeleteError extends Schema.TaggedErrorClass<DeleteError>()(
-  "shipwreck/storage/DeleteError",
+  "shipwright/storage/DeleteError",
   { cause: Schema.Defect() },
 ) {}
 
 export class PresignedUrlError extends Schema.TaggedErrorClass<PresignedUrlError>()(
-  "shipwreck/storage/PresignedUrlError",
+  "shipwright/storage/PresignedUrlError",
   { cause: Schema.Defect() },
 ) {}
 
 export class HeadObjectError extends Schema.TaggedErrorClass<HeadObjectError>()(
-  "shipwreck/storage/HeadObjectError",
+  "shipwright/storage/HeadObjectError",
   { cause: Schema.Defect() },
 ) {}
 
@@ -48,13 +48,10 @@ export class StorageAdapter extends Context.Service<
     ): Effect.Effect<string, PresignedUrlError>;
     headObject(key: string): Effect.Effect<boolean, HeadObjectError>;
   }
->()("shipwreck/storage/EffectStorageAdapter") {
+>()("shipwright/storage/StorageAdapter") {
   static readonly layer = Layer.effect(
     StorageAdapter,
     Effect.gen(function* () {
-      yield* Effect.void;
-      // TODO ^ temporary for the sake of
-
       const client = new S3Client({
         endpoint: config.storage.endpoint,
         credentials: {

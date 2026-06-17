@@ -9,25 +9,32 @@
 
 **Project:** AI agent that ingests messy project docs → asks clarifying questions → produces Project Brief + Implementation PRD.
 
-**Stack:** Hono + Vite (single server, port 5173) · Drizzle + pgvector (port 5433) · rustfs S3 (port 9000) · Vercel AI SDK + Claude · Effect v4 beta · XState (Phase 4+)
+**Stack:** Effect HttpApi server (port 3000) · Vite SPA (port 5173) · Drizzle + pgvector (port 5433) · rustfs S3 (port 9000) · Vercel AI SDK + Claude · Effect v4 beta · XState (Phase 4+)
 
 **Run:** `docker compose up -d && pnpm dev`
 **Tests:** `pnpm test` · `pnpm test:corpus` (needs real ANTHROPIC_API_KEY)
-**Schema:** `pnpm db:push`
+**Schema:** `pnpm db:push` (or direct psql for new enum additions — drizzle-kit requires TTY)
 **Effect docs:** `docs/effect-smol/ai-docs/src/` — authoritative reference for Effect patterns
 
 **Key conventions:**
 
 - Effect errors: `Schema.TaggedErrorClass`, tag format `"shipwright/module/ErrorName"`
-- Effect services: `Context.Service` + static `layer`, grouped in `namespace` alongside errors
-- Effect functions: `Effect.fn("span/name")(generator, ...combinators)` — generator = core logic, combinators = transforms + error mapping
-- Zod schemas: top-level exports, used with Vercel AI SDK `Output.object({ schema })`
-- Effect schemas: `namespace EffectSchemas { ... }`, used with Effect pipelines
-- Route handlers: thin `runtime.runPromise(...)` wrappers (not yet wired — Step 2 of Effect migration)
+- Effect services: `Context.Service` + static `layer`
+- Effect functions: `Effect.fn("span/name")(generator, ...combinators)`
+- Zod schemas: agent layer only — `Output.object({ schema })` for LLM structured output
+- Effect schemas: HTTP layer — `Schema.Class` definitions in `src/shared/schemas/api.ts`
+- Route handlers: `HttpApiBuilder.group` Effect generators — no Promise bridges
 - Documents go into `messages` user content with `=== filename ===` headers, not system prompt
-- `drizzle-kit push` required after every schema change
+- Schema changes requiring new enums: apply via psql directly, then update `src/db/schema.ts`
 
-**Build sequence:** Phases 1–8 → Phase 9 (Full Effect Rewrite) → Phase 10 (React SPA)
+**Architecture deviation from original plan:**
+- **API layer**: Effect HttpApi (`effect/unstable/httpapi`) instead of Hono + Hono RPC.
+  Reason: entire backend is Effect — no bridge layer needed. See `docs/stack.md` §2.
+- **DB layer**: migrating to Effect `DatabaseService` incrementally (storage done, queries next).
+  Phase 9 "Full Effect Rewrite" is now an ongoing migration, not a single phase.
+- **`src/api/` folder**: does not exist — server is in `src/server/`.
+
+**Build sequence:** Phases 1–8 → Phase 9 (Effect DB migration, ongoing) → Phase 10 (React SPA)
 
 **Current status:** Phase 3 COMPLETE (gate passed 15.06.2026) · Phase 4 next
 
@@ -448,3 +455,46 @@ Items raised in mentor review. Categorised by urgency.
 - **`embedChunks` batch limit** — `embedMany` has a default request size limit. For large documents with many chunks, implement batching with a configurable batch size before calling `embedMany`.
 - **Document cleanup background job** — schedule a job to delete orphaned documents (documents not connected to any existing session) and their chunks + S3 objects. Prevents storage accumulation from incomplete sessions.
 - **SSE / WebSocket for status updates** — current polling on `GET /api/sessions/:id` works for V1. Replace with SSE via `POST /api/sessions/:id/stream` when building the React SPA (Phase 9). Full duplex (WebSocket) not needed — updates only flow server → client.
+
+---
+
+## Codebase audit cleanup — 17.06.2026
+
+Full audit of `src/` vs docs completed. The following fixes were applied:
+
+### Code fixes
+- **`src/agent/extractor.ts` deleted** — dead code. Imported `DocumentAnalysisSchema` that no
+  longer exists, used `TextGenerationError` without importing it, violated Rule 13 (raw text to LLM).
+- **`src/db/queries.ts` — `reconstructSummaries` bug fixed** — `DISTINCT ON` + `leftJoin`
+  collapsed to one row per document, so `requirements`/`constraints`/`assumptions` arrays were
+  always 0–1 items. Fixed by using two separate queries (summaries, then items) and grouping
+  in TypeScript.
+- **`src/shared/schemas/agent.ts`** — `ClarifyingQuestionsSchema` and `ClarifyingQuestionSchema`
+  now exported. Phase 4 (`question-generator.ts`) requires them.
+- **`src/shared/schemas/machine.ts`** — stale import from `db/out/schema.ts` replaced with
+  import from `db/schema.ts` directly (`documentTypeEnum.enumValues`).
+- **`src/storage/index.ts`** — `"shipwreck/..."` typo fixed to `"shipwright/..."` in all error
+  tags and the service identifier. Dead `yield* Effect.void` stub removed.
+- **`src/agent/errors.ts`** — error tags now follow `"shipwright/module/ErrorName"` convention.
+- **`src/agent/estimate-token-count.ts`** — encoder is now a module-level singleton (was
+  re-instantiated on every call, loading WASM each time).
+
+### Docs updates
+- **`docs/stack.md`** — API layer updated from "Hono + Hono RPC" to "Effect HttpApi". DB layer
+  section updated to document Effect DatabaseService migration. Agent/Orchestration section updated
+  to describe Effect's actual role. Final Stack Summary table updated.
+- **`docs/architecture_rules.md`** — Rules 6, 7, 8, 10 updated to reflect Effect HttpApi and
+  AI SDK v6 (`Output.object()` instead of deprecated `generateObject`).
+- **`docs/build_sequence.md`** — Phase 0 project structure updated to actual layout. Phase 6
+  updated from "Hono API" to "Effect HttpApi wiring".
+- **`docs/progress.md`** (this file) — Quick-start stack description updated, architecture
+  deviations documented explicitly.
+
+### Still outstanding (not fixed in this session)
+- `src/agent/parsers.ts` — uses `fileTypeFromBuffer` instead of `fileTypeFromStream` (Rule 12
+  violation). Fix: connect to `downloadPartialObject` for first-N-bytes verification.
+- `src/agent/chunker.ts` — no minimum chunk size guard (build sequence requirement).
+- `src/server/server.ts` — broken relative import paths (`./db/`, `./storage/`, `./shared/`
+  don't resolve correctly from `src/server/`). Fix when wiring Phase 4.
+- `src/shared/schemas/api.ts` — `PostAgentSessionAnswersRequest.answers` is `string[]` not
+  `{questionId, text}[]`. Fix in Phase 4 when implementing the answers endpoint.
