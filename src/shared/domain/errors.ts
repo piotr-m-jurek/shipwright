@@ -23,3 +23,22 @@ export class ConfirmUploadError extends Schema.TaggedErrorClass<ConfirmUploadErr
   {},
   { httpApiStatus: 500 },
 ) {}
+
+
+export class SessionStateError extends Schema.TaggedErrorClass<SessionStateError>()(
+  "SessionStateError",
+  { message: Schema.String },
+  { httpApiStatus: 409 },
+) {}
+
+export class AnalysisPipelineError extends Schema.TaggedErrorClass<AnalysisPipelineError>()(
+  "AnalysisPipelineError",
+  {},
+  { httpApiStatus: 500 },
+) {}
+
+export class ConfirmAnalysisError extends Schema.TaggedErrorClass<ConfirmAnalysisError>()(
+  "ConfirmAnalysisError",
+  {},
+  { httpApiStatus: 500 },
+) {}

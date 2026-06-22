@@ -148,10 +148,22 @@ getting it wrong costs days of refactoring.
 **States:**
 
 ```
-idle → uploading → processing → analyzing →
+idle → uploading → processing → summarizing → analyzing →
 awaiting_answers → re_evaluating → generating → complete → revising
 + error (reachable from any state)
 ```
+
+`summarizing` — added in Phase 4 design revision. The summarizer runs here, after
+`processing` but before `USER_CONFIRM`. This is the correct placement for the
+`tokensBelowThreshold` guard: by the time the user confirms, `documentSummaries[]`
+is populated with real token counts, so the guard can evaluate whether all summaries
+fit in context.
+
+**Previous design (V1 deviation — in use until Phase 4 redesign):** `processing →
+analyzing` on `USER_CONFIRM`, with summarization happening inside the analysis pipeline
+after the guard fires. This means `documentSummaries[]` is empty when the guard runs
+and always defaults to `context` mode. Acceptable for V1 corpus sizes. Correct fix is
+the `summarizing` state above.
 
 `revising` — reachable from `complete` when the user submits free-form revision
 feedback. May loop through `awaiting_answers` again if new questions surface, then
@@ -160,15 +172,23 @@ back to `generating`. Each pass through `generating` increments `outputVersion`.
 **Events:**
 
 ```
-UPLOAD_COMPLETE, ANALYSIS_DONE, USER_ANSWERED,
+UPLOAD_COMPLETE, SUMMARIZATION_DONE, ANALYSIS_DONE, USER_ANSWERED,
 ANSWERS_SUFFICIENT, ANSWERS_INSUFFICIENT, OUTPUT_READY, ERROR,
 USER_CONFIRM, REVISION_REQUESTED
 ```
 
+`UPLOAD_COMPLETE` — fired after `confirm-upload` succeeds. Transitions `idle → uploading`.
+Server fires this immediately; the machine does not wait for the user.
+
+`SUMMARIZATION_DONE` — fired when all per-document summaries are stored. Transitions
+`summarizing → processing`. At this point `documentSummaries[]` is populated and the
+guard can evaluate correctly.
+
 `USER_CONFIRM` — explicit user confirmation required before analysis starts.
 The machine does not transition from `processing` to `analyzing` automatically
-after upload completes. The user must confirm they are ready. This is a deliberate
-HITL decision — the user can review what was uploaded before committing to analysis.
+after summarization completes. The user must confirm they are ready. This is a deliberate
+HITL decision — the user can review what was uploaded and summarised before committing
+to analysis. Fired by `POST /api/sessions/:id/confirm`.
 
 `REVISION_REQUESTED` — fired when the user submits free-form feedback on the
 generated outputs. Carries `{ feedback: string }`. Transitions `complete → revising`.
@@ -176,10 +196,14 @@ generated outputs. Carries `{ feedback: string }`. Transitions `complete → rev
 **Guards:**
 
 ```
-hasEnoughContext       — tokenCount below threshold → stuff context directly
 tokensBelowThreshold  — decides context vs retrieval mode (on summary token counts)
+                         evaluates context.documentSummaries[].tokenCount sum
+                         only meaningful after SUMMARIZATION_DONE
 roundLimitReached     — caps clarifying loop at 2 rounds
 ```
+
+`hasEnoughContext` — removed. `tokensBelowThreshold` covers this role operating on
+summary token counts rather than raw document token counts.
 
 **Context shape** (what flows through the machine):
 
@@ -188,11 +212,10 @@ sessionId, documents[], documentSummaries[], questions[], answers[], round,
 inputMode (context | retrieval), agentAnalysis, outputs{}
 ```
 
-`documentSummaries[]` — the latest `final` row per document from the `document_summaries`
-table, loaded into XState context before the `analyzing` state is entered. These are what
+`documentSummaries[]` — populated when `SUMMARIZATION_DONE` fires. These are what
 the Challenger and Writer passes consume — never raw document text. Each entry carries
-`tokenCount` so the `tokensBelowThreshold` guard can evaluate whether all summaries fit
-in context without re-reading content.
+`tokenCount` so the `tokensBelowThreshold` guard can correctly evaluate whether all
+summaries fit in context at the `USER_CONFIRM` transition.
 
 **Define the context shape as a Zod schema in `src/shared/schemas/machine.ts`:**
 
@@ -453,55 +476,61 @@ from those summaries (not from raw text).**
 
 ## Phase 4 — The Clarifying Loop (~3 days)
 
-- Implement **Question generation pass** with `generateObject` + `ClarifyingQuestionsSchema`
-- Wire XState machine: machine suspends on `awaiting_answers` state
-- Hono route accepts user answers → fires `USER_ANSWERED` event → machine resumes
-- Stop condition guards: `ANSWERS_SUFFICIENT` proceeds to generating,
-  `ANSWERS_INSUFFICIENT` loops (capped at 2 rounds by `roundLimitReached` guard)
-- Persist questions to `questions` table, answers to `answers` table
-- Persist `xstateSnapshot` to `sessions` table on every transition
-  (enables server restart recovery)
+### Pipeline split (design revision — Phase 4)
 
-**Zod schemas to add to `src/shared/schemas/agent.ts`:**
+The analysis pipeline is split into two phases separated by a `USER_CONFIRM` gate:
 
-```ts
-const ClarifyingQuestionSchema = z.object({
-  text: z.string(),
-  rationale: z.string(), // why this question matters
-  sourceDocuments: z.array(z.string()), // which docs surface this gap
-  priority: z.enum(["high", "medium", "low"]),
-});
+**Phase A — Summarization** (automatic after confirm-upload):
+1. `POST /api/sessions/:id/confirm` fires `UPLOAD_COMPLETE` and starts summarization async
+2. `summarizeAllDocuments(sessionId)` runs — stores all `final` rows in `document_summaries`
+3. Machine fires `SUMMARIZATION_DONE` → transitions `uploading → processing`
+4. `documentSummaries[]` is loaded into XState context
+5. Machine waits in `processing` for explicit user confirmation
 
-const ClarifyingQuestionsSchema = z.object({
-  questions: z.array(ClarifyingQuestionSchema).min(3).max(7),
-  stopReason: z.enum(["sufficient_gaps", "round_limit"]).optional(),
-});
+**Phase B — Analysis** (triggered by user confirming they are ready):
+1. User calls `POST /api/sessions/:id/confirm` again (or a dedicated second step)
+2. `USER_CONFIRM` fires → `tokensBelowThreshold` guard evaluates `documentSummaries[].tokenCount`
+3. Machine transitions `processing → analyzing`
+4. Challenger + Question Generator run → `ANALYSIS_DONE` fires with questions
+5. Machine suspends at `awaiting_answers`
 
-export type ClarifyingQuestions = z.infer<typeof ClarifyingQuestionsSchema>;
-```
+**Why this split matters:** `tokensBelowThreshold` needs real summary token counts to
+decide `context` vs `retrieval` mode. Those counts only exist after summarization completes.
+Placing `USER_CONFIRM` after summarization gives the guard real data to evaluate.
 
-**Zod schema for the answers payload in `src/shared/schemas/api.ts`:**
-
-```ts
-const SubmitAnswersSchema = z.object({
-  answers: z
-    .array(
-      z.object({
-        questionId: z.string().uuid(),
-        text: z.string().min(1),
-      }),
-    )
-    .min(1),
-});
-```
-
-Validate `POST /api/sessions/:id/answers` with `@hono/zod-validator` using
-`SubmitAnswersSchema` — rejects empty answer submissions before they reach XState.
-
-**This is the core of the project. Expect iteration on the stop
-condition logic — it’s the hardest design problem in the codebase.**
+**V1 deviation (current implementation):** Summarization runs inside the analysis pipeline
+after the guard fires. `documentSummaries[]` is empty when the guard runs and always defaults
+to `context` mode. Acceptable for V1 corpus sizes. The split above is the correct design
+and should be implemented before large-bundle testing.
 
 ---
+
+### Implement
+
+- **`src/agent/question-generator.ts`** — `runQuestionGenerator(gapReport, summaries)` using
+  `generateText` + `Output.object({ schema: ClarifyingQuestionsSchema })`
+- **`src/agent/machine.ts`** — all states, transitions, guards, snapshot persistence wired
+- **`src/agent/session-actor.ts`**:
+  - `getOrRestoreActor(sessionId)` — loads from DB snapshot on server restart
+  - `wireSnapshotPersistence(actor, sessionId)` — `actor.subscribe` persists on every transition (Rule 5)
+  - `runAnalysisPipeline(sessionId)` — summarizer → challenger → question generator → `ANALYSIS_DONE`
+  - `submitAnswers(sessionId, answers)` — persists answers, fires `USER_ANSWERED`, evaluates sufficiency
+- **New route: `POST /api/sessions/:id/confirm`** — triggers pipeline, returns 202 immediately;
+  client polls `GET /sessions/:id` for status and questions
+- **`POST /api/sessions/:id/answers`** — validates payload, fires `USER_ANSWERED`
+- **Stop condition**: `ANSWERS_SUFFICIENT` → `generating`, `ANSWERS_INSUFFICIENT` → loop,
+  `roundLimitReached` → force to `generating` at round ≥ 2
+- **Persist** questions to `questions` table before machine suspends;
+  answers to `answers` table after `USER_ANSWERED`
+- **Persist `xstateSnapshot`** via `updateAgentSessionSnapshot` on every transition
+
+**Schemas (already implemented):**
+
+- `ClarifyingQuestionSchema`, `ClarifyingQuestionsSchema` — `src/shared/schemas/agent.ts`
+- `PostAgentSessionAnswersRequest` — `src/shared/schemas/api.ts`: `answers: Array<{ questionId: string, text: string }>`
+
+**This is the core of the project. Expect iteration on the stop
+condition logic — it's the hardest design problem in the codebase.**
 
 ## Phase 5 — Writer Passes (~2 days)
 

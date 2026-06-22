@@ -6,7 +6,8 @@
     "moduleResolution": "nodenext",
     "module": "nodenext",
     "target": "esnext",
-    "plugins": [{ "name": "@effect/language-service" }]
+    "plugins": [{ "name": "@effect/language-service" }],
+    "skipLibCheck": true
   },
   "exclude": ["docs/", "node_modules", "dist"]
 }

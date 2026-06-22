@@ -184,7 +184,7 @@ export const runReducePass = Effect.fn("agent/runReducePass")(function* (
   const result = yield* Effect.tryPromise({
     try: () =>
       generateText({
-        model: anthropic("claude-sonnet-4-6"),
+        model: anthropic("claude-haiku-4-5"),
         output: Output.object({ schema: DocumentSummarySchema }),
         system: MapReduceSystemPrompt,
         messages,

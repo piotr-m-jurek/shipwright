@@ -39,7 +39,7 @@ export const runChallenger = Effect.fn("agent/run-challenger")(function* (
   const results = yield* Effect.tryPromise({
     try: () =>
       generateText({
-        model: anthropic("claude-sonnet-4-6"),
+        model: anthropic("claude-haiku-4-5"),
         output: Output.object({ schema: GapReportSchema }),
         system: ChallengerSystemPrompt,
         messages,

@@ -12,17 +12,20 @@ import {
   ConfirmUploadRequest,
   ConfirmUploadResponse,
   GetAgentSessionResponse,
-  GetAgentSessionProgressRequest,
   GetAgentSessionProgressResponse,
   PostAgentSessionAnswersRequest,
   PostAgentSessionAnswersResponse,
   GetAgentSessionFinalOutputResponse,
+  ConfirmAnalysisResponse,
 } from "../../shared/schemas/api.js";
 import {
   CreateAgentSessionError,
   MissingUploads,
   ConfirmUploadError,
   AgentSessionNotFound,
+  SessionStateError,
+  AnalysisPipelineError,
+  ConfirmAnalysisError,
 } from "../../shared/domain/errors.js";
 
 class SystemApiGroup extends HttpApiGroup.make("system")
@@ -40,7 +43,6 @@ class SystemApiGroup extends HttpApiGroup.make("system")
       success: ConfirmUploadResponse,
       error: [MissingUploads, ConfirmUploadError],
     }),
-
     HttpApiEndpoint.get("getAgentSessionById", "/sessions/:id", {
       params: { id: Schema.String },
       success: GetAgentSessionResponse,
@@ -49,18 +51,21 @@ class SystemApiGroup extends HttpApiGroup.make("system")
         HttpApiSchema.asNoContent({ decode: () => new AgentSessionNotFound() }),
       ),
     }),
+    HttpApiEndpoint.post("confirmAnalysis", "/sessions/:id/confirm", {
+      params: { id: Schema.String },
+      success: ConfirmAnalysisResponse,
+      error: ConfirmAnalysisError,
+    }),
     HttpApiEndpoint.post("getSessionProgress", "/sessions/:id/stream", {
-      // INFO: This is where the progress and questions are posted
-      params: GetAgentSessionProgressRequest,
+      params: { id: Schema.String },
       success: GetAgentSessionProgressResponse,
-      error: HttpApiSchema.NoContent, // TODO:
+      error: AnalysisPipelineError,
     }),
     HttpApiEndpoint.post("submitSessionAnswers", "/sessions/:id/answers", {
-      // INFO: This is where you post answers, and get something in return
       params: { id: Schema.String },
       payload: PostAgentSessionAnswersRequest,
       success: PostAgentSessionAnswersResponse,
-      error: HttpApiSchema.NoContent, // TODO:
+      error: [SessionStateError, AnalysisPipelineError],
     }),
     HttpApiEndpoint.get("getSessionFinalOutput", "/sessions/:id/output", {
       // INFO: This is where you post answers, and get something in return

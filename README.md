@@ -92,7 +92,7 @@ Full schema: `src/shared/schemas/machine.ts`
 
 ## Processing:
 
-````mermaid
+```mermaid
 flowchart TD
     A([User opens app]) --> B[Session created\nstored in localStorage]
     B --> C[User uploads documents\nPDF / DOCX / TXT / MD]
@@ -169,13 +169,33 @@ flowchart TD
 
     AS --> AT[Store outputs table\nversion=2 or higher]
     AT --> AJ
-    ```
+```
 
 ---
 
 ## TODO:
 - rustfs requires more configuration in docker compose
   - https://docs.rustfs.com/installation/docker/#docker-compose-installation
+
+
+---
+18.06.2026
+
+- [ ] durable workflows - resume processability (any step, process-uploaded-documents, summarize etc.) when the server dies, and is revived
+- [ ] summary UI - what If it was a text that you can highlight right click and instruct the agent to correct, or sth.
+  - this is important for UX in Agentic world
+
+- agent sessions could have a title based on the summary, amount of files, file titles (or assigned by user)
+- dashboard with all user sessions to come back and revise
+- after finishing the PRD generation, nice to have an option to upload more files, that change the summaries - redoing the whole summary with additional input, or whole new summary, not just iteratively added
+
+- LLM costs, multi agent split, or AGENT ORCHESTRATION in general - to know what to use in certain situations
+
+infra: 
+- switch to monorepo
+- microservices and a queue
+- durability ~~better~~ different than saving xState to DB
+- workflow durability - to have the workflows start from where they stopped
 
 ---
 

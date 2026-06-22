@@ -45,10 +45,11 @@ pnpm db:push                apply schema changes (new enums: use psql directly �
 - **API layer:** Effect HttpApi (`effect/unstable/httpapi`) instead of Hono + Hono RPC. The entire backend is Effect — no bridge layer needed. See `docs/stack.md` §2.
 - **DB layer:** migrating to Effect `DatabaseService` incrementally (storage done, queries next). Phase 9 "Full Effect Rewrite" is an ongoing migration, not a single phase.
 - **Folder:** `src/api/` does not exist — server is in `src/server/`.
+- **`summarizing` state deferred (Phase 4):** The `tokensBelowThreshold` guard correctly needs `documentSummaries[]` populated before it fires, which requires a `summarizing` state between `uploading` and `processing`, with `SUMMARIZATION_DONE` fired after all summaries are stored. V1 implementation runs summarization inside the analysis pipeline after `USER_CONFIRM`, so the guard always sees empty `documentSummaries[]` and defaults to `context` mode. Acceptable for V1 corpus sizes. Correct fix documented in `build_sequence.md` Phase 4 and tracked in `acceptance_criteria.md` Phase 4 as a known deviation.
 
 **Build sequence:** Phases 1–8 → Phase 9 (Effect migration, ongoing) → Phase 10 (React SPA)
 
-**Current status:** Phase 3 COMPLETE (gate passed 15.06.2026) — Phase 4 is next.
+**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE (gate passed 17.06.2026) · Phase 5 next
 
 ---
 

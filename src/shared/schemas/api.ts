@@ -2,15 +2,33 @@ import { pipe, Schema } from "effect";
 
 export class GetAgentSessionResponse extends Schema.Class<GetAgentSessionResponse>(
   "GetAgentSessionResponse",
-)({ id: Schema.String, createdAt: Schema.DateFromString, status: Schema.String }) {}
+)({
+  id: Schema.String,
+  createdAt: Schema.DateFromString,
+  status: Schema.String,
+  questions: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      text: Schema.String,
+      rationale: Schema.String,
+      sourceDocuments: Schema.Array(Schema.String),
+      orderIndex: Schema.Int,
+    }),
+  ),
+}) {}
 
 export class GetAgentSessionFinalOutputResponse extends Schema.Class<GetAgentSessionFinalOutputResponse>(
   "GetAgentSessionFinalOutputResponse",
 )({}) {}
 
+export class ConfirmAnalysisResponse extends Schema.Class<ConfirmAnalysisResponse>(
+  "ConfirmAnalysisResponse",
+)({ started: Schema.Boolean }) {}
+
+
 export class GetAgentSessionProgressResponse extends Schema.Class<GetAgentSessionProgressResponse>(
   "GetAgentSessionProgressResponse",
-)({}) {}
+)({ started: Schema.Boolean }) {}
 
 export class GetAgentSessionProgressRequest extends Schema.Class<GetAgentSessionProgressRequest>(
   "GetAgentSessionProgressRequest",
@@ -18,7 +36,7 @@ export class GetAgentSessionProgressRequest extends Schema.Class<GetAgentSession
 
 export class PostAgentSessionAnswersResponse extends Schema.Class<PostAgentSessionAnswersResponse>(
   "PostAgentSessionAnswersResponse",
-)({}) {}
+)({ sufficient: Schema.Boolean, round: Schema.Int }) {}
 
 export class PostAgentSessionAnswersRequest extends Schema.Class<PostAgentSessionAnswersRequest>(
   "PostAgentSessionAnswersRequest",
@@ -28,7 +46,8 @@ export class PostAgentSessionAnswersRequest extends Schema.Class<PostAgentSessio
 
 export class CreateAgentSessionRequest extends Schema.Class<CreateAgentSessionRequest>(
   "CreateAgentSessionRequest",
-)({ files: Schema.Array(
+)({
+  files: Schema.Array(
     Schema.Struct({
       filename: Schema.String,
       documentType: Schema.Literals(["transcript", "prd_draft", "rfp", "notes"]), // INFO: DocumentTypeEnum from db/schema

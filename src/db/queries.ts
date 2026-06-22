@@ -1,4 +1,4 @@
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, inArray } from "drizzle-orm";
 import type {
   InsertAgentSession,
   InsertChunk,
@@ -15,11 +15,18 @@ import {
   documents,
   documentSummaries,
   summaryItems,
+  questions,
+  answers,
   DocumentSummaryInsert,
   DocumentSummarySelect,
   SummaryItemInsert,
   SummaryItemSelect,
 } from "./schema.js";
+
+export type QuestionInsert = typeof questions.$inferInsert;
+export type QuestionSelect = typeof questions.$inferSelect;
+export type AnswerInsert = typeof answers.$inferInsert;
+export type AnswerSelect = typeof answers.$inferSelect;
 
 // Reconstructed summary — summary row joined with its items, shaped as DocumentSummary
 export type ReconstructedSummary = DocumentSummary & {
@@ -53,6 +60,17 @@ export async function updateAgentSession(
     .returning();
 
   return result as SelectAgentSession;
+}
+
+export async function updateAgentSessionSnapshot(
+  sessionId: string,
+  status: SelectAgentSession["status"],
+  xstateSnapshot: unknown,
+): Promise<void> {
+  await db
+    .update(agentSessions)
+    .set({ status, xstateSnapshot: xstateSnapshot as any })
+    .where(eq(agentSessions.id, sessionId));
 }
 
 export async function getAgentSesionById(agentSessionId: string) {
@@ -187,7 +205,7 @@ export async function getFinalSummariesBySession(
     .where(
       summaryIds.length === 1
         ? eq(summaryItems.summaryId, summaryIds[0]!)
-        : summaryItems.summaryId.in(summaryIds),
+        : inArray(summaryItems.summaryId, summaryIds),
     )
     .orderBy(asc(summaryItems.summaryId), asc(summaryItems.orderIndex));
 
@@ -238,4 +256,34 @@ function reconstructSummaries(
         .map((i) => ({ text: i.text, sourceDocument: i.sourceDocument, confidence: i.confidence })),
     };
   });
+}
+
+// ── Questions ──────────────────────────────────────────────────────────────
+
+export async function createQuestions(data: QuestionInsert[]): Promise<QuestionSelect[]> {
+  if (data.length === 0) {
+    return [];
+  }
+  return db.insert(questions).values(data).returning();
+}
+
+export async function getQuestionsBySessionId(sessionId: string): Promise<QuestionSelect[]> {
+  return db
+    .select()
+    .from(questions)
+    .where(eq(questions.sessionId, sessionId))
+    .orderBy(asc(questions.orderIndex));
+}
+
+// ── Answers ────────────────────────────────────────────────────────────────
+
+export async function createAnswers(data: AnswerInsert[]): Promise<AnswerSelect[]> {
+  if (data.length === 0) {
+    return [];
+  }
+  return db.insert(answers).values(data).returning();
+}
+
+export async function getAnswersBySessionId(sessionId: string): Promise<AnswerSelect[]> {
+  return db.select().from(answers).where(eq(answers.sessionId, sessionId));
 }
