@@ -2,7 +2,7 @@
 
 > **Project:** Project Description Agent
 > **Stack ref:** project_description_agent_stack_v1.2.md
-> **Architecture:** monolith — single project, single package.json
+> **Architecture:** pnpm workspaces monorepo — apps/api, apps/web, packages/shared
 
 ---
 
@@ -10,10 +10,11 @@
 
 ```
 Schema → Ingestion → XState design → Summarizer + Challenger →
-Clarifying loop → Writer passes → Export + Revision → API wiring → CLI → Evals
+Clarifying loop → Writer passes → Export + Revision → API wiring →
+Monorepo → Evals → Effect rewrite → React SPA → RAG
 ```
 
-Everything on the critical path is load-bearing. The React SPA is not.
+Everything on the critical path is load-bearing. The CLI is cut.
 Build in order. Resist the urge to set up the frontend before the agent loop works.
 
 ---
@@ -24,6 +25,10 @@ Build in order. Resist the urge to set up the frontend before the agent loop wor
 HTTP server and Vite frontend live in the same project. In development: Effect server
 runs on port 3000, Vite dev server on port 5173. In production: Vite builds to
 `dist/`, the Effect server serves it as static files.
+
+> **Deviation (Phase 7):** The monolith is restructured into a pnpm workspaces
+> monorepo at Phase 7. The Phase 0 structure below describes the starting point
+> only. See Phase 7 for the target layout.
 
 **Project structure (actual):**
 
@@ -630,38 +635,100 @@ client is generated from it.
 
 ---
 
-## Phase 7 — CLI (~1 day)
+## Phase 7 — Monorepo Restructure (~1 day)
 
-- `clack` prompts for the three-phase wizard:
-  - Phase 1: file path input(s) → `POST /api/sessions/upload-url` → upload
-    directly to S3 → `POST /api/sessions/:id/confirm-upload` → poll status
-  - Phase 2: spinner during analysis → display questions → text prompts for answers
-  - Phase 3: spinner → stream output to terminal
-- First full end-to-end run of the complete pipeline
+> **Deviation from original plan:** Phase 7 was a CLI. The CLI is cut — the React
+> SPA (Phase 10) is the user-facing client. This phase converts the monolith into
+> a pnpm workspaces monorepo to support independent frontend and backend packages
+> and clean shared-type boundaries.
 
-**Expect to fix 3–5 things that seemed fine in isolation.
-This is the integration test.**
+### Target structure
+
+```
+apps/
+  api/          — everything currently in src/ (server, agent, db, storage)
+    src/
+      server/
+      agent/
+      db/
+      storage/
+    package.json
+    tsconfig.json
+  web/          — React SPA (new, built in Phase 10)
+    src/
+    package.json
+    tsconfig.json
+packages/
+  shared/       — src/shared/ extracted here
+    src/
+      domain/
+      schemas/
+      lib/
+    package.json
+    tsconfig.json
+docker-compose.yml   — stays at repo root
+.env / .env.example  — stays at repo root
+drizzle.config.ts    — stays at repo root (points into apps/api)
+package.json         — workspace root, no src code
+pnpm-workspace.yaml  — declares apps/* and packages/*
+```
+
+### What moves
+
+- `src/server/`, `src/agent/`, `src/db/`, `src/storage/` → `apps/api/src/`
+- `src/shared/` → `packages/shared/src/`
+- All existing test gate scripts (`test-phase4-gate.ts`, `test-phase5-gate.ts`,
+  `test-phase5b-gate.ts`) move into `apps/api/tests/gates/` — they are not
+  deleted. The gates folder is the precursor to a proper e2e test suite (Phase 10+).
+- `src/config.ts` → `apps/api/src/config.ts`
+- Root `package.json` becomes the workspace root — no direct source dependencies.
+  All runtime dependencies move into `apps/api/package.json`.
+  Shared types move into `packages/shared/package.json`.
+
+### Import path changes
+
+- All imports of `../../shared/...` in `apps/api` become `@shipwright/shared/...`
+- `packages/shared` exports via `package.json` `exports` field:
+  `"."`, `"./schemas"`, `"./domain"`, `"./lib"`
+
+### What does not move
+
+- `docker-compose.yml`, `.env.example`, `drizzle.config.ts` — repo root
+- Drizzle migrations output — stays alongside `apps/api/src/db/`
+
+### Why monorepo now
+
+- `packages/shared` will be imported by both `apps/api` and `apps/web` —
+  having it as a proper workspace package makes this a single source of truth
+  with no copy-paste or symlink hacks
+- `apps/web` gets its own dependency tree — no React/Vite pollution in the
+  API package
+- pnpm workspace protocol (`workspace:*`) ensures the shared package is always
+  the local version, never accidentally resolved from npm
+
+**Gate:** `pnpm -r build` passes from repo root. `pnpm --filter @shipwright/api start` starts the server on port 3000. All gate tests in `apps/api/tests/gates/` still pass.
 
 ---
 
 ## Phase 8 — Langfuse + Evals (~2 days)
 
+> **Reordering note:** This phase runs after the monorepo restructure (Phase 7)
+> and before the Effect rewrite (Phase 9). Reason: tracing is easier to wire
+> into the clean Effect pipeline that Phase 9 produces than into Promise chains.
+> Running evals here also gives a baseline to verify the rewrite doesn't regress
+> output quality.
+
 - Wire `@langfuse/vercel` — wraps Vercel AI SDK calls with trace/span context
 - Note: if using Langfuse Cloud free tier (recommended for dev), just add API keys.
   Self-hosted requires Postgres + ClickHouse + Redis + S3 — defer until needed.
-- Build synthetic test corpus:
-  - A one-paragraph project description
-  - A half-finished PRD draft
-  - A fake RFP with constraints buried in it
-  - A discovery call transcript with tangents and at least one contradiction
-    with the PRD (planted deliberately)
+- Test corpus already built in Phase 3 (`docs/test_corpus/`). Use it here.
 - Run **faithfulness eval**: no hallucinated requirements (LLM-as-judge)
 - Run **completeness eval**: nothing important dropped (LLM-as-judge)
 - Run **conflict detection eval**: contradiction between transcript and PRD
   is correctly surfaced (deterministic check)
 - Verify clarifying loop stop condition fires at the right time
 
-**Zod schema for LLM-as-judge responses in `src/shared/schemas/evals.ts`:**
+**Zod schema for LLM-as-judge responses in `packages/shared/src/schemas/evals.ts`:**
 
 ```ts
 const EvalResultSchema = z.object({
@@ -691,29 +758,23 @@ const ConflictDetectionEvalSchema = z.object({
 Parse every LLM-as-judge response through these schemas. An unparseable judge
 response is a failed eval, not a passing one with a warning.
 
+**Gate:** All 4/4 planted issues surfaced. Faithfulness eval passes (score ≥ 0.9).
+Completeness eval passes. Conflict detection: `plantedConflictFound: true`.
+
 ---
 
-## Fine-tuning phase (after Phase 8)
+## Phase 9 — Full Effect Rewrite (~2 days)
 
-These items were raised in mentor review and deferred deliberately. Revisit
-after the core pipeline is working and evals pass.
+> **Reordering note:** This was Phase 9 in the original sequence. It now runs
+> after Langfuse/Evals (Phase 8) and before the React SPA (Phase 10). The evals
+> baseline from Phase 8 lets you verify the rewrite doesn't regress output quality.
 
-- **Streaming parse + chunk** — replace buffer-based parsing with stream-based parsing. Pipe the S3 download stream directly into the parser. Reduces memory pressure for large files and concurrent users. Requires verifying `unpdf` and `mammoth` stream support.
-- **Persistent processing queue** — `p-queue` (in-process, concurrency: 2) is already in place for V1. Upgrade to `pg-boss` (uses existing Postgres) or `BullMQ` (needs Redis) when job durability across server restarts is needed.
-- **`embedMany` batching** — `embedMany` has a request size limit. For documents producing many chunks, implement batching before calling `embedMany`.
-- **Document cleanup job** — background job to delete orphaned documents (no linked session), their chunks, and their S3 objects. Prevents storage accumulation from incomplete or abandoned sessions.
-- **Chunk metadata enrichment** — DONE in Phase 1. `locationMeta: jsonb` column on `chunks` table typed as `LocationMeta | null`: `{ pageNumber?: number, headingPath?: string, charOffset?: number }`. Chunker returns `{ content: string, locationMeta: LocationMeta }[]`. Parsers emit location hints during parsing.
-- **SSE for status updates** — replace `GET /api/sessions/:id` polling with Server-Sent Events via `POST /api/sessions/:id/stream` when building the React SPA.
-
-## Phase 9 — Full Effect Rewrite (after Phase 8, before SPA)
-
-Complete the Effect migration once the full backend pipeline works end-to-end
-and evals pass. Do not start this before Phase 8 gate passes.
+Complete the Effect migration. Do not start this before Phase 8 gate passes.
 
 ### 1. `DatabaseService` — wrap all Drizzle queries
 
 Define a `DatabaseService` as `Context.Service` wrapping all functions from
-`src/db/queries.ts`. Each query returns `Effect<T, DbError>` instead of
+`apps/api/src/db/queries.ts`. Each query returns `Effect<T, DbError>` instead of
 `Promise<T>`.
 
 ```ts
@@ -729,7 +790,7 @@ export class DatabaseService extends Context.Service<
   static readonly layer = Layer.effect(
     DatabaseService,
     Effect.sync(() => {
-      // implement using db from src/db/index.ts
+      // implement using db from apps/api/src/db/index.ts
     }),
   );
 }
@@ -738,34 +799,13 @@ export class DatabaseService extends Context.Service<
 Benefits: eliminates all `Effect.tryPromise(...)` wrappers in the pipeline,
 enables test layers with mock DB (no real Postgres needed for unit tests).
 
-### 2. `@effect/ai-anthropic` — typed AI layer
-
-Install `@effect/ai-anthropic@4.0.0-beta.78`. Migrate extractor and challenger
-from Vercel AI SDK to Effect's provider-agnostic AI layer:
-
-```ts
-import { AnthropicClient, AnthropicLanguageModel } from "@effect/ai-anthropic";
-import { LanguageModel } from "effect/unstable/ai";
-import { FetchHttpClient } from "effect/unstable/http";
-
-const AnthropicClientLayer = AnthropicClient.layerConfig({
-  apiKey: Config.redacted("ANTHROPIC_API_KEY"),
-}).pipe(Layer.provide(FetchHttpClient.layer));
-```
-
-- `LanguageModel.generateObject({ schema: EffectSchemas.DocumentAnalysisSchema, ... })`
-  replaces `generateText` + `Output.object({ schema: ZodSchema })`
-- `AiError` with typed `reason` replaces generic `TextGenerationError`
-- `ExecutionPlan` enables provider fallback (Claude → GPT-4o) declaratively
-- Effect `Schema.Class` (already in `EffectSchemas` namespace) used throughout
-
-### 3. Parsers + embedder as Effect services
+### 2. Parsers + embedder as Effect services
 
 - `parseDocument` → `Effect.fn` returning `Effect<ParseResult, ParseError>`
 - `embedChunks` → `Effect.fn` returning `Effect<number[][], EmbedError>`
-- Eliminates remaining `Effect.tryPromise` wrappers in `process-uploaded-documents.ts`
+- Eliminates remaining `Effect.tryPromise` wrappers in `process-uploaded-documents.ts` and `parsers.ts`
 
-### 4. Merge all layers in `runtime.ts`
+### 3. Merge all layers in `runtime.ts`
 
 ```ts
 export const runtime = ManagedRuntime.make(
@@ -774,26 +814,137 @@ export const runtime = ManagedRuntime.make(
 );
 ```
 
-### 5. Delete legacy code
+### 4. Delete legacy code
 
-- `S3Storage` class (Promise-based) and `StorageAdapter` interface
-- Remaining `Effect.tryPromise` wrappers that wrapped now-Effect functions
-- Old Zod schemas in `agent.ts` if fully replaced by `EffectSchemas`
+- Raw Promise query functions in `queries.ts` once fully superseded
+- All remaining `Effect.tryPromise` wrappers that wrapped now-Effect functions
+- Old loose async functions in `session-actor.ts`
+
+**Note:** `@effect/ai-anthropic` is NOT in scope for this phase. Rule 1 (Vercel AI SDK
+is the only LLM interface) stays intact. The Effect rewrite concerns DB, storage,
+parsers, and embedder — not LLM calls.
+
+**Gate:** Zero `Effect.tryPromise` occurrences in `apps/api/src/agent/` and
+`apps/api/src/db/`. `pnpm --filter @shipwright/api test` passes. Evals from
+Phase 8 still pass (output quality not regressed).
 
 ---
 
-## Phase 10 — React SPA (stretch, after Phase 9)
+## Fine-tuning phase (after Phase 11)
+
+These items were raised in mentor review and deferred deliberately. Revisit
+after the core pipeline is working and evals pass.
+
+- **Streaming parse + chunk** — replace buffer-based parsing with stream-based parsing. Pipe the S3 download stream directly into the parser. Reduces memory pressure for large files and concurrent users. Requires verifying `unpdf` and `mammoth` stream support.
+- **Persistent processing queue** — `p-queue` (in-process, concurrency: 2) is already in place for V1. Upgrade to `pg-boss` (uses existing Postgres) or `BullMQ` (needs Redis) when job durability across server restarts is needed.
+- **`embedMany` batching** — `embedMany` has a request size limit. For documents producing many chunks, implement batching before calling `embedMany`.
+- **Document cleanup job** — background job to delete orphaned documents (no linked session), their chunks, and their S3 objects. Prevents storage accumulation from incomplete or abandoned sessions.
+- **Chunk metadata enrichment** — DONE in Phase 1. `locationMeta: jsonb` column on `chunks` table typed as `LocationMeta | null`: `{ pageNumber?: number, headingPath?: string, charOffset?: number }`. Chunker returns `{ content: string, locationMeta: LocationMeta }[]`. Parsers emit location hints during parsing.
+- **SSE for status updates** — replace `GET /api/sessions/:id` polling with Server-Sent Events via `POST /api/sessions/:id/stream` when building the React SPA.
+- **Semantic chunking** — split at meaning boundaries rather than character count for better retrieval quality in Phase 11.
+- **Hybrid search** — add BM25 full-text search alongside pgvector cosine similarity and rerank results. Better precision for exact term lookups. Useful after Phase 11a is working.
+- **`query_chunks` call frequency tuning** — after Phase 11b is live, review Langfuse traces for passes that never call the tool despite the feature being available. Adjust system prompts to make retrieval opt-in vs opt-out explicit.
+
+## Phase 10 — React SPA (after Phase 9)
 
 > Only start this after the backend is solid, evals pass, and Phase 9 Effect rewrite is complete.
 > The UI is a presentation layer over something that already works.
 
-- Vite + React setup in `apps/web`
+- Vite + React setup in `apps/web` (already scaffolded in Phase 7 monorepo)
 - TanStack Router — three routes: `/`, `/sessions/:id/questions`, `/sessions/:id/output`
 - TanStack Query — mutations for upload and answer submission, queries for session status
 - assistant-ui + shadcn/ui + Tailwind — Thread/Composer for question loop,
   dual-panel Markdown viewer for outputs
-- `hc<typeof app>` Hono RPC client — same endpoints the CLI uses
-- Download buttons for Brief and PRD (Markdown files)
+- **Typed API client via `openapi-fetch`** — generated from `/openapi.json` (Rule 10).
+  No `hc<typeof app>` Hono RPC — the server is Effect HttpApi, not Hono.
+  Generate types: `openapi-typescript http://localhost:3000/openapi.json -o src/generated/api.ts`
+- Download buttons for Brief and PRD wired to the `GET /output/:type/download-url` endpoint
+- CORS enabled on the Effect HttpApi server for `localhost:5173` (deferred from Phase 6)
+- `packages/shared` imported directly — no duplicated type definitions in the frontend
+
+**Gate:** Full end-to-end run in the browser — upload files, answer questions,
+view both outputs, download Markdown files. Zero raw `fetch()` calls in `apps/web/src/`.
+
+---
+
+## Phase 11 — RAG: Retrieval Mode + Agentic Chunks (~2 days)
+
+> **New phase** — not in the original build sequence. Addresses the two known V1
+> deviations: the `tokensBelowThreshold` guard always fires `true`, and the
+> retrieval path is never actually executed.
+
+### 11a — Activate retrieval mode (fix the V1 deviation)
+
+The `tokensBelowThreshold` XState guard exists but always defaults to `context`
+mode because `documentSummaries[]` is empty when it runs. The fix requires
+implementing the `summarizing` state described in Phase 2/4:
+
+1. Add the `summarizing` XState state (currently deferred — see Phase 4 V1 deviation note)
+2. `POST /api/sessions/:id/confirm` transitions to `summarizing` and starts
+   `summarizeAllDocuments` before waiting for `USER_CONFIRM`
+3. `SUMMARIZATION_DONE` populates `documentSummaries[]` in context, transitions
+   to `processing`, and waits
+4. `POST /api/sessions/:id/confirm` (second call, or a new `POST /api/sessions/:id/ready`)
+   fires `USER_CONFIRM` — guard now has real token counts to evaluate
+5. Implement the retrieval path: when `tokensBelowThreshold` returns `false`,
+   retrieve the top-k most relevant summaries from pgvector by cosine similarity
+   rather than stuffing all summaries into context
+
+**Retrieval query pattern:**
+
+```ts
+// In context mode: pass all documentSummaries[] from XState context
+// In retrieval mode: query pgvector for top-k summaries by relevance
+const relevantSummaries = await db
+  .select()
+  .from(documentSummaries)
+  .where(eq(documentSummaries.sessionId, sessionId))
+  .orderBy(sql`embedding <=> ${queryEmbedding}`)
+  .limit(TOP_K);
+```
+
+### 11b — Agentic RAG via `query_chunks` tool
+
+Add a `query_chunks(query: string, limit?: number)` Vercel AI SDK `tool()` that
+the LLM can call during analysis and writing passes to retrieve relevant chunks
+from pgvector on demand.
+
+```ts
+import { tool } from "ai";
+
+export const queryChunksTool = (sessionId: string) =>
+  tool({
+    description:
+      "Retrieve relevant document chunks by semantic similarity. Use when you need more detail on a specific area not covered in the summaries.",
+    parameters: z.object({
+      query: z.string().describe("The search query — a specific question or topic"),
+      limit: z.number().int().min(1).max(20).default(5).optional(),
+    }),
+    execute: async ({ query, limit = 5 }) => {
+      const embedding = await embed(query);
+      return retrieveChunks(sessionId, embedding, limit);
+    },
+  });
+```
+
+**Which passes get the tool:**
+
+| Pass | Tool available | Notes |
+|---|---|---|
+| Challenger | Yes | Useful for resolving ambiguities between summaries |
+| Question Generator | Yes | Can pull supporting detail for question rationale |
+| Writer (Brief) | Yes | Can verify a claim against source chunks |
+| Writer (PRD) | Yes | Useful for detailed constraint verification |
+| Revision Writer | **Primary use case** | "The auth section needs more detail" → targeted chunk retrieval |
+
+The tool is wired and available to all passes. Individual passes are not
+required to call it — the model decides when a targeted lookup is needed.
+Monitor tool call frequency in Langfuse traces; if a pass never calls it,
+review the system prompt to ensure the model knows it's available.
+
+**Gate:** Retrieval mode activates on a test bundle where total summary tokens
+exceed the threshold. Agentic tool calls appear in at least one Langfuse trace.
+`tokensBelowThreshold` guard correctly evaluates real token counts (not always `true`).
 
 ---
 

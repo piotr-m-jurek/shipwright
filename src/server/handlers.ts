@@ -16,7 +16,12 @@ import { getAgentSesionById, getQuestionsBySessionId } from "../db/queries.js";
 import { confirmUploadResults } from "../agent/confirm-upload-results.js";
 import { processUploadedDocuments } from "../agent/process-uploaded-documents.js";
 import { createUploadSession } from "../agent/create-upload-session.js";
-import { runAnalysisPipeline, submitAnswers, getOrRestoreActor, runGeneratingPipeline, startRevision } from "../agent/session-actor.js";
+import {
+  runAnalysisPipeline,
+  submitAnswers,
+  getOrRestoreActor,
+  startRevision,
+} from "../agent/session-actor.js";
 import { getOutputsBySessionId, getLatestOutputByType } from "../db/queries.js";
 import {
   CreateAgentSessionResponse,
@@ -205,9 +210,9 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
 
         const storage = yield* StorageAdapter;
         // Generate presigned GET URL with 15-minute TTL (not a PUT URL)
-        const url = yield* storage.generatePresignedGetUrl(output.s3Key, 15).pipe(
-          Effect.mapError(() => new OutputNotFoundError()),
-        );
+        const url = yield* storage
+          .generatePresignedGetUrl(output.s3Key, 15)
+          .pipe(Effect.mapError(() => new OutputNotFoundError()));
 
         return OutputDownloadUrlResponse.make({ url });
       }),

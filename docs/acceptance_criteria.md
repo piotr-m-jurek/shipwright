@@ -213,17 +213,27 @@ it "mostly works".
 
 ---
 
-## Phase 7 — CLI
+## Phase 7 — Monorepo Restructure
 
-- [ ] Running the CLI prompts for one or more file paths
-- [ ] Providing a valid PDF path triggers upload and shows a spinner
-- [ ] After analysis, questions are displayed clearly in the terminal (numbered, readable)
-- [ ] Typing answers and submitting proceeds to the generation phase
-- [ ] The generated Brief is printed to the terminal (or written to a file)
-- [ ] The generated PRD is printed to the terminal (or written to a file)
-- [ ] Running the full flow against the test corpus end-to-end completes without an unhandled error
+> **Deviation:** Phase 7 was a CLI. CLI is cut. This phase restructures the monolith
+> into a pnpm workspaces monorepo.
 
-**Gate:** Full end-to-end on the test corpus must complete before Phase 8.
+- [ ] `pnpm-workspace.yaml` exists at repo root and declares `apps/*` and `packages/*`
+- [ ] `apps/api/package.json` exists with name `@shipwright/api`
+- [ ] `apps/web/package.json` exists with name `@shipwright/web` (scaffold only — no components yet)
+- [ ] `packages/shared/package.json` exists with name `@shipwright/shared`
+- [ ] `packages/shared` has an `exports` field covering `.`, `./schemas`, `./domain`, `./lib`
+- [ ] All files from `src/server/`, `src/agent/`, `src/db/`, `src/storage/` are under `apps/api/src/`
+- [ ] All files from `src/shared/` are under `packages/shared/src/`
+- [ ] Gate test scripts (`test-phase4-gate.ts`, `test-phase5-gate.ts`, `test-phase5b-gate.ts`) are in `apps/api/tests/gates/`
+- [ ] `apps/api` imports `@shipwright/shared` via package name — no relative cross-workspace imports (Rule 14)
+- [ ] `pnpm --filter @shipwright/api start` starts the server on port 3000 without errors
+- [ ] `pnpm --filter @shipwright/api test:phase4` passes (16/16)
+- [ ] `docker-compose.yml`, `.env.example`, `drizzle.config.ts` remain at repo root
+- [ ] No `Effect.tryPromise` count regresses — count in `apps/api/src/` must be ≤ the pre-phase count
+- [ ] `GET http://localhost:3000/openapi.json` still returns a valid OpenAPI 3.1 schema
+
+**Gate:** `pnpm -r build` passes from repo root. Server starts. Phase 4 gate tests pass from new location.
 
 ---
 
@@ -238,12 +248,77 @@ it "mostly works".
 - [ ] Running the test corpus through the full pipeline: Issue 3 surfaced — delegation acceptance criteria gap (prd_draft vs hr_requirements.pdf)
 - [ ] Running the test corpus through the full pipeline: Issue 4 surfaced — notification channel ambiguity (prd_draft vs transcript vs hr_requirements.pdf)
 - [ ] Running the test corpus through the full pipeline: Issue 5 surfaced — SSO/auth conflict (prd_draft vs hr_requirements.pdf)
+- [ ] `EvalResultSchema` parsed through Zod — an unparseable judge response counts as a failed eval
+
+**Gate:** All 5/5 planted issues surfaced. Faithfulness eval score ≥ 0.9. `plantedConflictFound: true` in conflict detection eval.
+
+---
+
+## Phase 9 — Full Effect Rewrite
+
+- [ ] `DatabaseService` exists as an Effect `Context.Service` in `apps/api/src/db/database-service.ts`
+- [ ] Every function from `apps/api/src/db/queries.ts` is wrapped in `DatabaseService` returning `Effect<T, DbError>` — not `Promise<T>`
+- [ ] Zero `Effect.tryPromise` calls in `apps/api/src/agent/` after the rewrite
+- [ ] Zero `Effect.tryPromise` calls in `apps/api/src/db/` after the rewrite
+- [ ] `parseDocument` returns `Effect<ParseResult, ParseError>` — not a Promise
+- [ ] `embedChunks` returns `Effect<number[][], EmbedError>` — not a Promise
+- [ ] `runtime.ts` merges all layers: `StorageAdapter.layer`, `DatabaseService.layer` at minimum
+- [ ] `pnpm --filter @shipwright/api test:phase4` still passes (16/16)
+- [ ] Evals from Phase 8 still pass (output quality not regressed by the rewrite)
+- [ ] No `@anthropic-ai/sdk` imports introduced — Rule 1 still holds
+- [ ] Raw Promise query functions in `queries.ts` are deleted (replaced by `DatabaseService` methods)
+
+**Gate:** Zero `Effect.tryPromise` in `apps/api/src/agent/` and `apps/api/src/db/`. Phase 4 and Phase 8 evals still pass.
+
+---
+
+## Phase 10 — React SPA
+
+- [ ] `apps/web` has Vite + React + TanStack Router configured
+- [ ] `apps/web` declares `@shipwright/shared: workspace:*` as a dependency
+- [ ] `apps/web/src/generated/api.ts` is generated from `GET http://localhost:3000/openapi.json` via `openapi-typescript`
+- [ ] All API calls in `apps/web` go through the typed `openapi-fetch` client — no raw `fetch()` (Rule 10)
+- [ ] Route `/` renders an upload form — selecting files calls `POST /api/sessions/upload-url`
+- [ ] Route `/sessions/:id/questions` renders questions from `GET /api/sessions/:id` and accepts answers
+- [ ] Route `/sessions/:id/output` renders the Brief and PRD side by side in Markdown
+- [ ] Download buttons call `GET /api/sessions/:id/output/:type/download-url` and open the presigned URL
+- [ ] CORS is enabled on `apps/api` for `http://localhost:5173`
+- [ ] Full end-to-end run in the browser: upload 2+ files → confirm → answer questions → view outputs → download Brief
+
+**Gate:** Full end-to-end in the browser without errors. Zero raw `fetch()` calls in `apps/web/src/`.
+
+---
+
+## Phase 11 — RAG: Retrieval Mode + Agentic Chunks
+
+### 11a — Retrieval mode activated
+
+- [ ] `summarizing` XState state is implemented — machine transitions `uploading → summarizing → processing` before `USER_CONFIRM`
+- [ ] `documentSummaries[]` in XState context is populated with real `tokenCount` values before the `USER_CONFIRM` event fires
+- [ ] `tokensBelowThreshold` guard correctly evaluates the sum of `documentSummaries[].tokenCount` — it does NOT always return `true`
+- [ ] When total summary tokens exceed the configured threshold, the machine enters `retrieval` mode (`inputMode = "retrieval"`)
+- [ ] In retrieval mode, Challenger and Writers query pgvector for top-k summaries by cosine similarity rather than using all summaries from context
+- [ ] pgvector retrieval query includes `WHERE session_id = ?` filter (Rule 15)
+- [ ] `GET /api/sessions/:id` reflects the correct `inputMode` (`"context"` or `"retrieval"`)
+
+### 11b — Agentic `query_chunks` tool
+
+- [ ] `queryChunksTool` is defined in `apps/api/src/agent/tools/query-chunks.ts` using Vercel AI SDK `tool()`
+- [ ] Tool parameters schema includes `query: z.string()` and `limit: z.number().optional()`
+- [ ] Tool `execute` function filters by `sessionId` (Rule 15) — no cross-session leakage
+- [ ] Tool is passed to Challenger, Question Generator, Brief writer, PRD writer, and Revision writer via `tools` param
+- [ ] At least one agent pass calls the tool in a Langfuse trace for a session with detailed source material
+- [ ] Tool call results appear as child spans in Langfuse traces
+
+**Gate:** `tokensBelowThreshold` fires correctly (not always `true`). Retrieval mode activates on a large test bundle. At least one tool call appears in Langfuse traces. Rule 15 verified (no cross-session retrieval).
 
 ---
 
 ## Cross-cutting checks (tutor runs these at any phase)
 
-- [ ] No file in `src/agent/` imports from `@anthropic-ai/sdk` directly
-- [ ] No file calls `mammoth.convertToHtml()` — only `mammoth.extractRawText()`
-- [ ] No file writes to the filesystem with `fs.writeFile` or `fs.writeFileSync` directly — all file I/O goes through `StorageAdapter`
-- [ ] No structured output pass uses bare `generateText` without `Output.object()` — all structured passes use `generateText` + `Output.object({ schema })`
+- [ ] No file in `apps/api/src/agent/` imports from `@anthropic-ai/sdk` directly (Rule 1)
+- [ ] No file calls `mammoth.convertToHtml()` — only `mammoth.extractRawText()` (Rule 2)
+- [ ] No file writes to the filesystem with `fs.writeFile` or `fs.writeFileSync` directly — all file I/O goes through `StorageAdapter` (Rule 4)
+- [ ] No structured output pass uses bare `generateText` without `Output.object()` — all structured passes use `generateText` + `Output.object({ schema })` (Rule 6)
+- [ ] No cross-workspace relative imports — all `packages/shared` imports use `@shipwright/shared/...` (Rule 14)
+- [ ] All `query_chunks` tool implementations filter by `sessionId` (Rule 15)

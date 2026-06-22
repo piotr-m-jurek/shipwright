@@ -4,9 +4,12 @@ import { Effect, Schema } from "effect";
 import { ReconstructedSummary } from "../db/queries.js";
 import { MachineContext } from "../shared/schemas/machine.js";
 
-export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()("shipwright/agent/BriefWriterError", {
-	cause: Schema.Defect(),
-}) {}
+export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(
+  "shipwright/agent/BriefWriterError",
+  {
+    cause: Schema.Defect(),
+  },
+) {}
 
 const BriefSystemPrompt = `You are a technical writer producing a Project Brief for a non-technical stakeholder.
 
@@ -28,37 +31,37 @@ Structure (use these Markdown headings):
 ANTI-HALLUCINATION RULE: Do not include any requirement, constraint, or decision not present in the provided summaries or answers. If something is unclear, say it is unclear — do not invent clarity.`;
 
 function formatSummariesForBrief(
-	summaries: ReconstructedSummary[],
-	answers: MachineContext["answers"],
-	questions: MachineContext["questions"],
+  summaries: ReconstructedSummary[],
+  answers: MachineContext["answers"],
+  questions: MachineContext["questions"],
 ): string {
-	const summarySection = summaries
-		.map((s) => {
-			const items = [
-				...s.requirements.map((r) => `  - [req] ${r.text} (${r.confidence})`),
-				...s.constraints.map((c) => `  - [constraint] ${c.text} (${c.confidence})`),
-				...s.assumptions.map((a) => `  - [assumption] ${a.text} (${a.confidence})`),
-			].join("\n");
-			return `=== ${s.sourceDocument} ===\n${s.summary}${items ? `\n${items}` : ""}`;
-		})
-		.join("\n\n");
+  const summarySection = summaries
+    .map((s) => {
+      const items = [
+        ...s.requirements.map((r) => `  - [req] ${r.text} (${r.confidence})`),
+        ...s.constraints.map((c) => `  - [constraint] ${c.text} (${c.confidence})`),
+        ...s.assumptions.map((a) => `  - [assumption] ${a.text} (${a.confidence})`),
+      ].join("\n");
+      return `=== ${s.sourceDocument} ===\n${s.summary}${items ? `\n${items}` : ""}`;
+    })
+    .join("\n\n");
 
-	const answeredQuestions = questions
-		.map((q) => {
-			const answer = answers.find((a) => a.questionId === q.id);
-			return answer ? `Q: ${q.text}\nA: ${answer.text}` : null;
-		})
-		.filter(Boolean)
-		.join("\n\n");
+  const answeredQuestions = questions
+    .map((q) => {
+      const answer = answers.find((a) => a.questionId === q.id);
+      return answer ? `Q: ${q.text}\nA: ${answer.text}` : null;
+    })
+    .filter(Boolean)
+    .join("\n\n");
 
-	return [
-		"=== DOCUMENT SUMMARIES ===",
-		summarySection,
-		answeredQuestions ? "\n=== RESOLVED CLARIFICATIONS ===" : "",
-		answeredQuestions,
-	]
-		.filter(Boolean)
-		.join("\n\n");
+  return [
+    "=== DOCUMENT SUMMARIES ===",
+    summarySection,
+    answeredQuestions ? "\n=== RESOLVED CLARIFICATIONS ===" : "",
+    answeredQuestions,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /**
@@ -66,38 +69,38 @@ function formatSummariesForBrief(
  * Uses prompt caching on the document summaries (static across both writer passes).
  */
 export const runBriefWriter = Effect.fn("agent/runBriefWriter")(function* (
-	summaries: ReconstructedSummary[],
-	answers: MachineContext["answers"],
-	questions: MachineContext["questions"],
+  summaries: ReconstructedSummary[],
+  answers: MachineContext["answers"],
+  questions: MachineContext["questions"],
 ) {
-	const userContent = formatSummariesForBrief(summaries, answers, questions);
+  const userContent = formatSummariesForBrief(summaries, answers, questions);
 
-	const result = yield* Effect.tryPromise({
-		try: async () => {
-			const stream = streamText({
-				model: anthropic("claude-sonnet-4-6"),
-				system: BriefSystemPrompt,
-				messages: [
-					{
-						role: "user",
-						content: [
-							{
-								type: "text",
-								text: userContent,
-								// Prompt caching: document summaries are identical across Brief and PRD passes
-								providerOptions: {
-									anthropic: { cacheControl: { type: "ephemeral" } },
-								},
-							},
-						],
-					},
-				],
-			});
-			// Consume the stream and return the full text
-			return await stream.text;
-		},
-		catch: (cause) => new BriefWriterError({ cause }),
-	});
+  const result = yield* Effect.tryPromise({
+    try: async () => {
+      const stream = streamText({
+        model: anthropic("claude-sonnet-4-6"),
+        system: BriefSystemPrompt,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: userContent,
+                // Prompt caching: document summaries are identical across Brief and PRD passes
+                providerOptions: {
+                  anthropic: { cacheControl: { type: "ephemeral" } },
+                },
+              },
+            ],
+          },
+        ],
+      });
+      // Consume the stream and return the full text
+      return await stream.text;
+    },
+    catch: (cause) => new BriefWriterError({ cause }),
+  });
 
-	return result;
+  return result;
 });

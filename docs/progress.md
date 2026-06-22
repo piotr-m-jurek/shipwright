@@ -18,13 +18,23 @@
 - Effect v4 beta (`4.0.0-beta.78`)
 - XState (used from Phase 4 onwards)
 
-**Commands:**
+**Commands (pre-Phase 7 monolith):**
 ```
 docker compose up -d        start Postgres + rustfs
 pnpm dev                    start Effect server + Vite (two processes via concurrently)
 pnpm test                   unit tests
 pnpm test:corpus            integration test against 5-doc corpus (needs ANTHROPIC_API_KEY)
 pnpm db:push                apply schema changes (new enums: use psql directly — drizzle-kit requires TTY)
+```
+
+**Commands (Phase 7+ monorepo):**
+```
+pnpm install                                    install all workspace deps
+docker compose up -d                            start Postgres + rustfs
+pnpm --filter @shipwright/api dev               start Effect API server (port 3000)
+pnpm --filter @shipwright/web dev               start Vite frontend (port 5173)
+pnpm -r build                                   build all packages
+pnpm --filter @shipwright/api test:phase4       run Phase 4 gate tests
 ```
 
 **Effect docs:** `docs/effect-smol/ai-docs/src/` — authoritative reference for all Effect v4 patterns.
@@ -47,9 +57,11 @@ pnpm db:push                apply schema changes (new enums: use psql directly �
 - **Folder:** `src/api/` does not exist — server is in `src/server/`.
 - **`summarizing` state deferred (Phase 4):** The `tokensBelowThreshold` guard correctly needs `documentSummaries[]` populated before it fires, which requires a `summarizing` state between `uploading` and `processing`, with `SUMMARIZATION_DONE` fired after all summaries are stored. V1 implementation runs summarization inside the analysis pipeline after `USER_CONFIRM`, so the guard always sees empty `documentSummaries[]` and defaults to `context` mode. Acceptable for V1 corpus sizes. Correct fix documented in `build_sequence.md` Phase 4 and tracked in `acceptance_criteria.md` Phase 4 as a known deviation.
 
-**Build sequence:** Phases 1–8 → Phase 9 (Effect migration, ongoing) → Phase 10 (React SPA)
+**Build sequence:** Phases 1–6 (complete) → Phase 7 (Monorepo) → Phase 8 (Evals) → Phase 9 (Effect rewrite) → Phase 10 (React SPA) → Phase 11 (RAG)
 
-**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE (gate passed 17.06.2026) · Phase 7 next
+**Note:** CLI (original Phase 7) is cut. See `docs/build_sequence.md` for the revised sequence.
+
+**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE (gate passed 17.06.2026) · **Phase 7 (Monorepo) next**
 
 ---
 
@@ -179,10 +191,10 @@ XState actors call `Effect.runPromise(effect.pipe(Effect.provide(runtime)))` ins
 
 See `docs/build_sequence.md` Phase 9. Key remaining items:
 - `DatabaseService` — wrap all Drizzle queries as an Effect service; enables mock DB in tests
-- `@effect/ai-anthropic` — replace Vercel AI SDK with Effect's typed AI layer
 - Parsers + embedder as Effect services
-- Delete legacy `S3Storage` Promise class
+- Delete legacy Promise wrappers
 - Merge all layers in `runtime.ts`
+- Note: `@effect/ai-anthropic` is NOT in scope — Rule 1 (Vercel AI SDK only) holds.
 
 ---
 
@@ -307,3 +319,4 @@ Full audit of `src/` vs docs completed.
 - `docs/stack.md` — API layer updated from Hono to Effect HttpApi; DB layer updated; Final Stack Summary updated
 - `docs/architecture_rules.md` — Rules 6, 7, 8, 10 updated for Effect HttpApi and AI SDK v6 (`Output.object()`)
 - `docs/build_sequence.md` — Phase 0 structure updated to actual layout; Phase 6 updated from Hono to Effect HttpApi wiring
+- **22.06.2026 — Build sequence revised:** CLI (Phase 7) cut. New sequence: Phase 7 Monorepo → Phase 8 Evals → Phase 9 Effect rewrite → Phase 10 React SPA → Phase 11 RAG (retrieval mode + agentic `query_chunks` tool). `stack.md`, `architecture_rules.md` (Rules 14 + 15 added), `acceptance_criteria.md` (Phases 7–11 gates added) all updated.

@@ -3,6 +3,54 @@
 > **Tag:** V1
 > **Project:** Project Description Agent
 > **Scope:** TypeScript stack with one clear winner per layer.
+> **Architecture:** pnpm workspaces monorepo (Phase 7 deviation from monolith start)
+
+---
+
+## Monorepo Structure
+
+> **Deviation from Phase 0:** The project starts as a monolith (single `package.json`)
+> and is restructured into a pnpm workspaces monorepo at Phase 7. This section
+> describes the Phase 7+ target layout.
+
+```
+apps/
+  api/          — Effect HttpApi server, agent pipeline, DB, storage
+  web/          — React SPA (Phase 10)
+packages/
+  shared/       — schemas, domain errors, lib utilities — imported by both apps
+```
+
+**Why pnpm workspaces (not Turborepo or Nx):**
+
+pnpm workspace protocol (`workspace:*`) resolves `packages/shared` to the local
+version at all times — no accidental npm resolution, no symlink hacks. Turborepo
+adds build caching on top; useful if build times become a bottleneck, but not
+needed at this scale. Nx is heavier and more opinionated than required.
+
+**Rejected:** Turborepo — adds build caching, not needed at this scale.
+Nx — too heavy and opinionated.
+
+**Workspace package names:**
+
+- `@shipwright/api` — `apps/api/package.json`
+- `@shipwright/web` — `apps/web/package.json`
+- `@shipwright/shared` — `packages/shared/package.json`
+
+**Cross-workspace imports:**
+
+`apps/api` and `apps/web` both declare `"@shipwright/shared": "workspace:*"` as a
+dependency. All shared type imports use `@shipwright/shared/schemas`,
+`@shipwright/shared/domain`, etc. No direct relative path imports across workspace
+boundaries (Rule 14).
+
+**What stays at repo root:**
+
+- `docker-compose.yml`
+- `.env` / `.env.example`
+- `drizzle.config.ts` (points into `apps/api/src/db/`)
+- `pnpm-workspace.yaml`
+- Root `package.json` (workspace root only — no source code, no runtime deps)
 
 ---
 
@@ -22,6 +70,11 @@ streaming endpoints.
 **Control rationale:** Raw Anthropic SDK + Vercel AI SDK on the backend (not Mastra)
 gives full visibility into every LLM call. Mastra would abstract too much of the
 backend learning surface for an upskilling project.
+
+**Typed API client:** `openapi-fetch` + `openapi-typescript` — generates a fully-typed
+client from the Effect HttpApi `/openapi.json` schema. This replaces `hc<typeof app>`
+(Hono RPC), which does not apply since the server is Effect HttpApi. Rule 10 requires
+all API calls to go through this typed client — no raw `fetch()` in the frontend.
 
 **Rejected:** Next.js App Router — SSR/client boundary adds complexity for a tool
 focused on agent logic. Mastra client SDK — trades control for convenience.
@@ -98,6 +151,17 @@ via `Effect.runPromise`. The full backend is Effect — storage, DB, LLM calls, 
 chunking, summarization. XState owns state transitions and the HITL suspend/resume
 pattern. Effect owns typed errors, dependency injection, and structured concurrency
 within each actor. This is the chosen architecture, not a stretch goal.
+
+**RAG additions (Phase 11):**
+
+- **Retrieval mode** — when `tokensBelowThreshold` guard fires `false`, the pipeline
+  switches from stuffing all summaries into context to querying pgvector for the
+  top-k most relevant summaries by cosine similarity.
+- **`query_chunks` tool** — a Vercel AI SDK `tool()` available to all agent passes
+  (Challenger, Question Generator, all Writers). Lets the model issue targeted
+  pgvector queries during a pass when it needs more detail on a specific area.
+  Primary use case: Revision Writer resolving targeted feedback ("the auth section
+  needs more detail"). The tool is wired and optional — the model decides when to call it.
 
 **Rejected:** LangChain.js — leaky abstractions. Mastra — pre-assembles exactly what
 we want to learn to assemble. Raw loop control without XState — works for V1 single
@@ -339,17 +403,20 @@ Braintrust — smaller community. Helicone — proxy-based, weak eval story.
 
 ## Final Stack Summary
 
-| Layer                 | Winner                                                                                        |
-| --------------------- | --------------------------------------------------------------------------------------------- |
-| UI                    | Vite + React · TanStack Router · TanStack Query · assistant-ui · shadcn/ui · Vercel AI SDK UI |
-| API                   | Effect HttpApi (`effect/unstable/httpapi`) · NodeRuntime                                      |
-| Agent / Orchestration | Vercel AI SDK Core + XState + Effect (typed errors, DI, concurrency)                         |
-| LLM / Prompt          | Claude 3.7 Sonnet · Zod · Prompt Caching                                                      |
-| Document Processing   | unpdf + mammoth (extractRawText) + Node.js fs                                                 |
-| Vector DB / Retrieval | pgvector (Postgres) + OpenAI text-embedding-3-small                                           |
-| Database              | PostgreSQL + Drizzle ORM + postgres.js + Effect DatabaseService (in progress)                 |
-| File Storage          | StorageAdapter (Effect Context.Service) · @aws-sdk/client-s3 · rustfs → Supabase Storage     |
-| Observability / Evals | Langfuse (full stack: Postgres + ClickHouse + Redis + S3)                                     |
+| Layer                 | Winner                                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| Repo structure        | pnpm workspaces · apps/api · apps/web · packages/shared                                                  |
+| UI                    | Vite + React · TanStack Router · TanStack Query · assistant-ui · shadcn/ui · Vercel AI SDK UI            |
+| API client (frontend) | openapi-fetch + openapi-typescript (generated from /openapi.json)                                        |
+| API                   | Effect HttpApi (`effect/unstable/httpapi`) · NodeRuntime                                                 |
+| Agent / Orchestration | Vercel AI SDK Core + XState + Effect (typed errors, DI, concurrency)                                    |
+| RAG                   | pgvector retrieval mode + `query_chunks` Vercel AI SDK tool (Phase 11)                                   |
+| LLM / Prompt          | Claude 3.7 Sonnet · Zod · Prompt Caching                                                                 |
+| Document Processing   | unpdf + mammoth (extractRawText) + Node.js fs                                                            |
+| Vector DB / Retrieval | pgvector (Postgres) + OpenAI text-embedding-3-small                                                      |
+| Database              | PostgreSQL + Drizzle ORM + postgres.js + Effect DatabaseService (Phase 9)                                |
+| File Storage          | StorageAdapter (Effect Context.Service) · @aws-sdk/client-s3 · rustfs → Supabase Storage                |
+| Observability / Evals | Langfuse (full stack: Postgres + ClickHouse + Redis + S3)                                                |
 
 ---
 

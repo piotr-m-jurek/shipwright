@@ -282,6 +282,60 @@ pipeline.
 
 ---
 
+## Rule 14 — No cross-workspace relative imports
+
+`apps/api` and `apps/web` must never import from each other or from
+`packages/shared` using relative paths (`../../packages/shared/...`).
+All cross-workspace imports use the package name.
+
+```ts
+// ✅ Allowed — package name import
+import { DocumentSummarySchema } from "@shipwright/shared/schemas";
+import type { MachineContext } from "@shipwright/shared/schemas/machine";
+
+// ❌ Blocked — relative path crossing workspace boundary
+import { DocumentSummarySchema } from "../../packages/shared/src/schemas/agent";
+```
+
+**Why:** Relative cross-workspace imports bypass the workspace resolution
+protocol. They break when packages are reorganised, and they are invisible
+to tools that reason about workspace dependency graphs (TypeScript project
+references, pnpm, bundlers).
+
+---
+
+## Rule 15 — `query_chunks` tool execute function must filter by sessionId
+
+Any `query_chunks` tool implementation must include `sessionId` as a required
+filter on the pgvector query. A tool that queries across all sessions is a
+data isolation bug.
+
+```ts
+// ✅ Allowed — sessionId filter ensures isolation
+const chunks = await db
+  .select()
+  .from(chunksTable)
+  .where(and(
+    eq(chunksTable.sessionId, sessionId),
+    sql`embedding <=> ${embedding} < ${SIMILARITY_THRESHOLD}`,
+  ))
+  .orderBy(sql`embedding <=> ${embedding}`)
+  .limit(limit);
+
+// ❌ Blocked — no sessionId filter, returns chunks from all sessions
+const chunks = await db
+  .select()
+  .from(chunksTable)
+  .orderBy(sql`embedding <=> ${embedding}`)
+  .limit(limit);
+```
+
+**Why:** Sessions are isolated units. A query that bleeds across session
+boundaries will return chunks from other users' documents, corrupting the
+analysis and leaking data.
+
+---
+
 ## Rule 13 — Analysis passes read chunks from DB, never raw document text
 
 No Summarizer, Challenger, or Writer pass may read `documents.rawText`

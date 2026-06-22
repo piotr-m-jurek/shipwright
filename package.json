@@ -25,6 +25,7 @@
     "@aws-sdk/client-s3": "3.1055.0",
     "@aws-sdk/s3-request-presigner": "3.1057.0",
     "@effect/platform-node": "4.0.0-beta.83",
+    "@effect/sql-pg": "^0.52.1",
     "ai": "6.0.191",
     "concurrently": "^10.0.3",
     "dotenv": "17.4.2",
@@ -33,6 +34,7 @@
     "file-type": "22.0.1",
     "js-tiktoken": "1.0.21",
     "mammoth": "1.12.0",
+    "pg": "^8.22.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "unpdf": "1.6.2",
@@ -43,6 +45,7 @@
   "devDependencies": {
     "@effect/language-service": "0.86.2",
     "@types/bun": "latest",
+    "@types/pg": "^8.20.0",
     "@types/react": "19.2.15",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
