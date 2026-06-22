@@ -11,6 +11,9 @@ import {
 	PostAgentSessionAnswersResponse,
 	GetAgentSessionFinalOutputResponse,
 	ConfirmAnalysisResponse,
+	OutputDownloadUrlResponse,
+	ReviseRequest,
+	ReviseResponse,
 } from "../../shared/schemas/api.js";
 import {
 	CreateAgentSessionError,
@@ -20,6 +23,8 @@ import {
 	SessionStateError,
 	AnalysisPipelineError,
 	ConfirmAnalysisError,
+	OutputNotFoundError,
+	RevisionError,
 } from "../../shared/domain/errors.js";
 
 class SystemApiGroup extends HttpApiGroup.make("system")
@@ -30,7 +35,6 @@ class SystemApiGroup extends HttpApiGroup.make("system")
 			success: CreateAgentSessionResponse,
 			error: CreateAgentSessionError,
 		}),
-
 		HttpApiEndpoint.post("confirmUpload", "/sessions/:sessionId/confirm-upload", {
 			params: { sessionId: Schema.String },
 			payload: ConfirmUploadRequest,
@@ -59,14 +63,24 @@ class SystemApiGroup extends HttpApiGroup.make("system")
 			error: [SessionStateError, AnalysisPipelineError],
 		}),
 		HttpApiEndpoint.get("getSessionFinalOutput", "/sessions/:id/output", {
-			// INFO: This is where you post answers, and get something in return
 			params: { id: Schema.String },
 			success: GetAgentSessionFinalOutputResponse,
-			error: AgentSessionNotFound, // TODO:
+			error: AgentSessionNotFound,
+		}),
+		HttpApiEndpoint.get("getOutputDownloadUrl", "/sessions/:id/output/:type/download-url", {
+			params: { id: Schema.String, type: Schema.String },
+			success: OutputDownloadUrlResponse,
+			error: OutputNotFoundError,
+		}),
+		HttpApiEndpoint.post("reviseOutput", "/sessions/:id/revise", {
+			params: { id: Schema.String },
+			payload: ReviseRequest,
+			success: ReviseResponse,
+			error: [SessionStateError, RevisionError],
 		}),
 	)
 	.prefix("/api") {}
 
 export class Api extends HttpApi.make("api")
 	.add(SystemApiGroup)
-	.annotateMerge(OpenApi.annotations({ title: "Shiprweck User API" })) {}
+	.annotateMerge(OpenApi.annotations({ title: "Shipwright API" })) {}

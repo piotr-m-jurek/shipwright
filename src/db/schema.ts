@@ -217,6 +217,8 @@ export const outputs = pgTable("outputs", {
   type: outputTypeEnum().notNull(),
   content: text(),
   version: integer(),
+  // S3 key for presigned GET URL export — set when output is uploaded to storage
+  s3Key: text("s3_key"),
 });
 
 export const relations = defineRelations(

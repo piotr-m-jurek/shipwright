@@ -41,9 +41,15 @@ export class StorageAdapter extends Context.Service<
     download(key: string): Effect.Effect<Buffer, DownloadError>;
     downloadPartialObject(key: string, length: number): Effect.Effect<Uint8Array, DownloadError>;
     remove(key: string): Effect.Effect<void, DeleteError>;
+    /** Generate a presigned PUT URL (for client uploads). */
     generatePresignedUrl(
       key: string,
       mimeType: string,
+      ttlInMins: number,
+    ): Effect.Effect<string, PresignedUrlError>;
+    /** Generate a presigned GET URL (for client downloads). */
+    generatePresignedGetUrl(
+      key: string,
       ttlInMins: number,
     ): Effect.Effect<string, PresignedUrlError>;
     headObject(key: string): Effect.Effect<boolean, HeadObjectError>;
@@ -158,7 +164,22 @@ export class StorageAdapter extends Context.Service<
       return result;
     });
 
-    const headObject = Effect.fn("storage/headObject")(
+      const generatePresignedGetUrl = Effect.fn("storage/generatePresignedGetUrl")(function* (
+        key: string,
+        ttlInMins: number,
+      ) {
+        const command = new GetObjectCommand({
+          Bucket: config.storage.bucket,
+          Key: key,
+        });
+        const result = yield* Effect.tryPromise({
+          try: () => getSignedUrl(client, command, { expiresIn: ttlInMins * 60 }),
+          catch: (cause) => new PresignedUrlError({ cause }),
+        });
+        return result;
+      });
+
+      const headObject = Effect.fn("storage/headObject")(
       function* (key: string) {
         const command = new HeadObjectCommand({
           Bucket: config.storage.bucket,
@@ -183,14 +204,15 @@ export class StorageAdapter extends Context.Service<
       }),
     );
 
-    return StorageAdapter.of({
-      upload,
-      download,
-      downloadPartialObject,
-      remove: remove,
-      generatePresignedUrl,
-      headObject,
-    });
+      return StorageAdapter.of({
+        upload,
+        download,
+        downloadPartialObject,
+        remove: remove,
+        generatePresignedUrl,
+        generatePresignedGetUrl,
+        headObject,
+      });
   });
 }
 

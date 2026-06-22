@@ -10,6 +10,7 @@
  */
 
 import { Effect, Schema } from "effect";
+import { StorageAdapter } from "../storage/index.js";
 import {
   getAgentSesionById,
   updateAgentSessionSnapshot,
@@ -20,6 +21,7 @@ import {
   getDocumentsBySessionId,
   getAnswersBySessionId,
   getQuestionsBySessionId,
+  getLatestOutputByType,
 } from "../db/queries.js";
 import { createAgentActor, restoreAgentActor, type AgentActor } from "./machine.js";
 import { MachineContextSchema, type MachineContext } from "../shared/schemas/machine.js";
@@ -28,6 +30,7 @@ import { runChallenger } from "./challenger.js";
 import { runQuestionGenerator } from "./question-generator.js";
 import { runBriefWriter } from "./writer-brief.js";
 import { runPrdWriter } from "./writer-prd.js";
+import { runRevisionBriefWriter, runRevisionPrdWriter } from "./writer-revision.js";
 
 // ── Error types ────────────────────────────────────────────────────────────
 
@@ -329,7 +332,21 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(fu
     { concurrency: 2 },
   );
 
-  // Store both outputs
+  // Upload both outputs to S3 for presigned URL export (Rule 4 — file I/O via StorageAdapter)
+  const storage = yield* StorageAdapter;
+  const briefKey = `outputs/${sessionId}/project_brief_v${outputVersion}.md`;
+  const prdKey   = `outputs/${sessionId}/implementation_prd_v${outputVersion}.md`;
+
+  yield* Effect.all([
+    storage.upload(briefKey, Buffer.from(briefText, "utf-8")).pipe(
+      Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+    ),
+    storage.upload(prdKey, Buffer.from(prdText, "utf-8")).pipe(
+      Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+    ),
+  ], { concurrency: 2 });
+
+  // Store both outputs in DB with S3 key for download-url endpoint
   yield* Effect.tryPromise({
     try: () =>
       Promise.all([
@@ -338,12 +355,14 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(fu
           type: "project_brief",
           content: briefText,
           version: outputVersion,
+          s3Key: briefKey,
         }),
         createOutput({
           sessionId,
           type: "implementation_prd",
           content: prdText,
           version: outputVersion,
+          s3Key: prdKey,
         }),
       ]),
     catch: (cause) => new AnalysisPipelineError({ cause }),
@@ -356,5 +375,106 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(fu
       projectBrief: briefText,
       implementationPrd: prdText,
     },
+  });
+});
+
+// ── Revision ───────────────────────────────────────────────────────────────
+
+/**
+ * Fire REVISION_REQUESTED on the actor and fork the revision pipeline.
+ */
+export const startRevision = Effect.fn("agent/startRevision")(function* (
+  sessionId: string,
+  feedback: string,
+) {
+  const actor = yield* getOrRestoreActor(sessionId);
+
+  const state = actor.getSnapshot().value as string;
+  if (state !== "complete") {
+    return yield* new SessionStateError({
+      message: `Session ${sessionId} is in state '${state}', expected 'complete'`,
+    });
+  }
+
+  actor.send({ type: "REVISION_REQUESTED", feedback });
+
+  yield* runRevisionPipeline(sessionId).pipe(
+    Effect.tapError((e) =>
+      Effect.sync(() => console.error("[session-actor] revision pipeline error:", e)),
+    ),
+    Effect.forkDetach,
+  );
+
+  return { started: true };
+});
+
+/**
+ * Run the revision pipeline: load existing outputs + summaries, re-run both
+ * writers with feedback, store new version, fire OUTPUT_READY.
+ */
+export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(function* (
+  sessionId: string,
+) {
+  const actor = yield* getOrRestoreActor(sessionId);
+  const storage = yield* StorageAdapter;
+
+  const summaries = yield* Effect.tryPromise({
+    try: () => getFinalSummariesBySession(sessionId),
+    catch: (cause) => new AnalysisPipelineError({ cause }),
+  });
+
+  // Load existing outputs
+  const [existingBriefRow, existingPrdRow] = yield* Effect.tryPromise({
+    try: () =>
+      Promise.all([
+        getLatestOutputByType(sessionId, "project_brief"),
+        getLatestOutputByType(sessionId, "implementation_prd"),
+      ]),
+    catch: (cause) => new AnalysisPipelineError({ cause }),
+  });
+
+  const existingBrief = existingBriefRow?.content ?? "";
+  const existingPrd   = existingPrdRow?.content ?? "";
+
+  const feedback = actor.getSnapshot().context.revisionFeedback ?? "";
+  const outputVersion = actor.getSnapshot().context.outputVersion;
+
+  // Re-run both writers with feedback
+  const [newBriefText, newPrdText] = yield* Effect.all(
+    [
+      runRevisionBriefWriter(summaries, existingBrief, existingPrd, feedback).pipe(
+        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      ),
+      runRevisionPrdWriter(summaries, existingBrief, existingPrd, feedback).pipe(
+        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      ),
+    ],
+    { concurrency: 2 },
+  );
+
+  const briefKey = `outputs/${sessionId}/project_brief_v${outputVersion}.md`;
+  const prdKey   = `outputs/${sessionId}/implementation_prd_v${outputVersion}.md`;
+
+  yield* Effect.all([
+    storage.upload(briefKey, Buffer.from(newBriefText, "utf-8")).pipe(
+      Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+    ),
+    storage.upload(prdKey, Buffer.from(newPrdText, "utf-8")).pipe(
+      Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+    ),
+  ], { concurrency: 2 });
+
+  yield* Effect.tryPromise({
+    try: () =>
+      Promise.all([
+        createOutput({ sessionId, type: "project_brief",      content: newBriefText, version: outputVersion, s3Key: briefKey }),
+        createOutput({ sessionId, type: "implementation_prd", content: newPrdText,   version: outputVersion, s3Key: prdKey }),
+      ]),
+    catch: (cause) => new AnalysisPipelineError({ cause }),
+  });
+
+  actor.send({
+    type: "OUTPUT_READY",
+    outputs: { projectBrief: newBriefText, implementationPrd: newPrdText },
   });
 });

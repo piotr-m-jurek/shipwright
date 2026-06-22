@@ -42,3 +42,15 @@ export class ConfirmAnalysisError extends Schema.TaggedErrorClass<ConfirmAnalysi
   {},
   { httpApiStatus: 500 },
 ) {}
+
+export class OutputNotFoundError extends Schema.TaggedErrorClass<OutputNotFoundError>()(
+  "OutputNotFoundError",
+  {},
+  { httpApiStatus: 404 },
+) {}
+
+export class RevisionError extends Schema.TaggedErrorClass<RevisionError>()(
+  "RevisionError",
+  {},
+  { httpApiStatus: 500 },
+) {}

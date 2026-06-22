@@ -1,4 +1,5 @@
 import { Effect, pipe } from "effect";
+import { StorageAdapter } from "../storage/index.js";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import {
   AgentSessionNotFound,
@@ -8,13 +9,15 @@ import {
   SessionStateError,
   AnalysisPipelineError,
   ConfirmAnalysisError,
+  OutputNotFoundError,
+  RevisionError,
 } from "../shared/domain/errors.js";
 import { getAgentSesionById, getQuestionsBySessionId } from "../db/queries.js";
 import { confirmUploadResults } from "../agent/confirm-upload-results.js";
 import { processUploadedDocuments } from "../agent/process-uploaded-documents.js";
 import { createUploadSession } from "../agent/create-upload-session.js";
-import { runAnalysisPipeline, submitAnswers, getOrRestoreActor, runGeneratingPipeline } from "../agent/session-actor.js";
-import { getOutputsBySessionId } from "../db/queries.js";
+import { runAnalysisPipeline, submitAnswers, getOrRestoreActor, runGeneratingPipeline, startRevision } from "../agent/session-actor.js";
+import { getOutputsBySessionId, getLatestOutputByType } from "../db/queries.js";
 import {
   CreateAgentSessionResponse,
   GetAgentSessionResponse,
@@ -23,6 +26,8 @@ import {
   PostAgentSessionAnswersResponse,
   ConfirmAnalysisResponse,
   GetAgentSessionFinalOutputResponse,
+  OutputDownloadUrlResponse,
+  ReviseResponse,
 } from "../shared/schemas/api.js";
 import { Api } from "./api/api.js";
 
@@ -100,15 +105,9 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
       }),
     )
     .handle("getSessionProgress", ({ params: { id } }) =>
-      // Trigger the analysis pipeline async (forkDetach) — returns 202-style immediately.
-      // The actor advances through states as each pass completes.
-      // The client polls GET /sessions/:id for status + questions.
+      // Legacy endpoint — use POST /sessions/:id/confirm instead.
+      // Returns current session status for polling.
       Effect.gen(function* () {
-        yield* pipe(
-          runAnalysisPipeline(id),
-          Effect.mapError(() => new AnalysisPipelineError({ cause: new Error("pipeline failed") })),
-          Effect.forkDetach,
-        );
         return GetAgentSessionProgressResponse.make({ started: true });
       }),
     )
@@ -131,6 +130,13 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
     )
     .handle("getSessionFinalOutput", ({ params: { id } }) =>
       Effect.gen(function* () {
+        // Verify session exists first
+        const session = yield* Effect.tryPromise({
+          try: () => getAgentSesionById(id),
+          catch: () => new AgentSessionNotFound(),
+        });
+        if (!session) return yield* new AgentSessionNotFound();
+
         const allOutputs = yield* Effect.tryPromise({
           try: () => getOutputsBySessionId(id),
           catch: () => new AgentSessionNotFound(),
@@ -179,6 +185,45 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
             orderIndex: q.orderIndex,
           })),
         });
+      }),
+    )
+    .handle("getOutputDownloadUrl", ({ params: { id, type } }) =>
+      Effect.gen(function* () {
+        // Validate type param
+        if (type !== "project_brief" && type !== "implementation_prd") {
+          return yield* new OutputNotFoundError();
+        }
+
+        const output = yield* Effect.tryPromise({
+          try: () => getLatestOutputByType(id, type as "project_brief" | "implementation_prd"),
+          catch: () => new OutputNotFoundError(),
+        });
+
+        if (!output?.s3Key) {
+          return yield* new OutputNotFoundError();
+        }
+
+        const storage = yield* StorageAdapter;
+        // Generate presigned GET URL with 15-minute TTL (not a PUT URL)
+        const url = yield* storage.generatePresignedGetUrl(output.s3Key, 15).pipe(
+          Effect.mapError(() => new OutputNotFoundError()),
+        );
+
+        return OutputDownloadUrlResponse.make({ url });
+      }),
+    )
+    .handle("reviseOutput", ({ payload: { feedback }, params: { id } }) =>
+      Effect.gen(function* () {
+        const result = yield* pipe(
+          startRevision(id, feedback),
+          Effect.mapError((e) => {
+            if (e._tag === "shipwright/agent/SessionStateError") {
+              return new SessionStateError({ message: (e as any).message });
+            }
+            return new RevisionError();
+          }),
+        );
+        return ReviseResponse.make({ started: result.started });
       }),
     )
     .handle("health", () => Effect.succeed("Healthy")),
