@@ -13,7 +13,8 @@ import { getAgentSesionById, getQuestionsBySessionId } from "../db/queries.js";
 import { confirmUploadResults } from "../agent/confirm-upload-results.js";
 import { processUploadedDocuments } from "../agent/process-uploaded-documents.js";
 import { createUploadSession } from "../agent/create-upload-session.js";
-import { runAnalysisPipeline, submitAnswers, getOrRestoreActor } from "../agent/session-actor.js";
+import { runAnalysisPipeline, submitAnswers, getOrRestoreActor, runGeneratingPipeline } from "../agent/session-actor.js";
+import { getOutputsBySessionId } from "../db/queries.js";
 import {
   CreateAgentSessionResponse,
   GetAgentSessionResponse,
@@ -21,6 +22,7 @@ import {
   GetAgentSessionProgressResponse,
   PostAgentSessionAnswersResponse,
   ConfirmAnalysisResponse,
+  GetAgentSessionFinalOutputResponse,
 } from "../shared/schemas/api.js";
 import { Api } from "./api/api.js";
 
@@ -127,7 +129,23 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
         });
       }),
     )
-    .handle("getSessionFinalOutput", () => Effect.die("NotImplemented"))
+    .handle("getSessionFinalOutput", ({ params: { id } }) =>
+      Effect.gen(function* () {
+        const allOutputs = yield* Effect.tryPromise({
+          try: () => getOutputsBySessionId(id),
+          catch: () => new AgentSessionNotFound(),
+        });
+
+        const brief = allOutputs.find((o) => o.type === "project_brief");
+        const prd = allOutputs.find((o) => o.type === "implementation_prd");
+
+        return GetAgentSessionFinalOutputResponse.make({
+          projectBrief: brief?.content ?? null,
+          implementationPrd: prd?.content ?? null,
+          version: brief?.version ?? null,
+        });
+      }),
+    )
     .handle("getAgentSessionById", ({ params }) =>
       Effect.gen(function* () {
         const session = yield* pipe(

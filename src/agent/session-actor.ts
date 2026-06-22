@@ -15,14 +15,19 @@ import {
   updateAgentSessionSnapshot,
   createQuestions,
   createAnswers,
+  createOutput,
   getFinalSummariesBySession,
   getDocumentsBySessionId,
+  getAnswersBySessionId,
+  getQuestionsBySessionId,
 } from "../db/queries.js";
 import { createAgentActor, restoreAgentActor, type AgentActor } from "./machine.js";
 import { MachineContextSchema, type MachineContext } from "../shared/schemas/machine.js";
 import { summarizeAllDocuments } from "./summarizer.js";
 import { runChallenger } from "./challenger.js";
 import { runQuestionGenerator } from "./question-generator.js";
+import { runBriefWriter } from "./writer-brief.js";
+import { runPrdWriter } from "./writer-prd.js";
 
 // ── Error types ────────────────────────────────────────────────────────────
 
@@ -254,5 +259,102 @@ export const submitAnswers = Effect.fn("agent/submitAnswers")(function* (
     actor.send({ type: "ANSWERS_INSUFFICIENT", questions: currentQuestions });
   }
 
+  // If machine is now in generating state, fork the writer pipeline
+  const stateAfter = actor.getSnapshot().value as string;
+  if (stateAfter === "generating") {
+    yield* runGeneratingPipeline(sessionId).pipe(
+      Effect.tapError((e) =>
+        Effect.sync(() => console.error("[session-actor] generating pipeline error:", e)),
+      ),
+      Effect.forkDetach,
+    );
+  }
+
   return { sufficient, round: round + 1 };
+});
+
+// ── Generating pipeline ────────────────────────────────────────────────────
+
+/**
+ * Run both writer passes (Brief + PRD), store in `outputs` table, fire OUTPUT_READY.
+ * Invoked from the generating state — called after ANSWERS_SUFFICIENT or roundLimitReached.
+ */
+export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(function* (
+  sessionId: string,
+) {
+  const actor = yield* getOrRestoreActor(sessionId);
+
+  // Load the data the writers need
+  const summaries = yield* Effect.tryPromise({
+    try: () => getFinalSummariesBySession(sessionId),
+    catch: (cause) => new AnalysisPipelineError({ cause }),
+  });
+
+  const allAnswers = yield* Effect.tryPromise({
+    try: () => getAnswersBySessionId(sessionId),
+    catch: (cause) => new AnalysisPipelineError({ cause }),
+  });
+
+  const allQuestions = yield* Effect.tryPromise({
+    try: () => getQuestionsBySessionId(sessionId),
+    catch: (cause) => new AnalysisPipelineError({ cause }),
+  });
+
+  // Map to the shape the writers expect from MachineContext
+  const answers: MachineContext["answers"] = allAnswers.map((a) => ({
+    questionId: a.questionId,
+    text: a.text,
+    round: a.round,
+  }));
+
+  const questions: MachineContext["questions"] = allQuestions.map((q) => ({
+    id: q.id,
+    text: q.text,
+    rationale: q.rationale,
+    sourceDocuments: q.sourceDocuments,
+  }));
+
+  const outputVersion = actor.getSnapshot().context.outputVersion;
+
+  // Run both writer passes (prompt caching applies across both — same summaries)
+  const [briefText, prdText] = yield* Effect.all(
+    [
+      runBriefWriter(summaries, answers, questions).pipe(
+        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      ),
+      runPrdWriter(summaries, answers, questions).pipe(
+        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      ),
+    ],
+    { concurrency: 2 },
+  );
+
+  // Store both outputs
+  yield* Effect.tryPromise({
+    try: () =>
+      Promise.all([
+        createOutput({
+          sessionId,
+          type: "project_brief",
+          content: briefText,
+          version: outputVersion,
+        }),
+        createOutput({
+          sessionId,
+          type: "implementation_prd",
+          content: prdText,
+          version: outputVersion,
+        }),
+      ]),
+    catch: (cause) => new AnalysisPipelineError({ cause }),
+  });
+
+  // Fire OUTPUT_READY — machine → complete
+  actor.send({
+    type: "OUTPUT_READY",
+    outputs: {
+      projectBrief: briefText,
+      implementationPrd: prdText,
+    },
+  });
 });

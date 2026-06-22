@@ -19,7 +19,11 @@ export class GetAgentSessionResponse extends Schema.Class<GetAgentSessionRespons
 
 export class GetAgentSessionFinalOutputResponse extends Schema.Class<GetAgentSessionFinalOutputResponse>(
   "GetAgentSessionFinalOutputResponse",
-)({}) {}
+)({
+  projectBrief: Schema.NullOr(Schema.String),
+  implementationPrd: Schema.NullOr(Schema.String),
+  version: Schema.NullOr(Schema.Int),
+}) {}
 
 export class ConfirmAnalysisResponse extends Schema.Class<ConfirmAnalysisResponse>(
   "ConfirmAnalysisResponse",

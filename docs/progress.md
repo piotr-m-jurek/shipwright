@@ -49,7 +49,7 @@ pnpm db:push                apply schema changes (new enums: use psql directly �
 
 **Build sequence:** Phases 1–8 → Phase 9 (Effect migration, ongoing) → Phase 10 (React SPA)
 
-**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE (gate passed 17.06.2026) · Phase 5 next
+**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE (gate passed 17.06.2026) · Phase 5b next
 
 ---
 

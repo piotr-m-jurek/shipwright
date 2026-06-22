@@ -17,11 +17,15 @@ import {
   summaryItems,
   questions,
   answers,
+  outputs,
   DocumentSummaryInsert,
   DocumentSummarySelect,
   SummaryItemInsert,
   SummaryItemSelect,
 } from "./schema.js";
+
+export type OutputInsert = typeof outputs.$inferInsert;
+export type OutputSelect = typeof outputs.$inferSelect;
 
 export type QuestionInsert = typeof questions.$inferInsert;
 export type QuestionSelect = typeof questions.$inferSelect;
@@ -286,4 +290,32 @@ export async function createAnswers(data: AnswerInsert[]): Promise<AnswerSelect[
 
 export async function getAnswersBySessionId(sessionId: string): Promise<AnswerSelect[]> {
   return db.select().from(answers).where(eq(answers.sessionId, sessionId));
+}
+
+// ── Outputs ────────────────────────────────────────────────────────────────
+
+export async function createOutput(data: OutputInsert): Promise<OutputSelect> {
+  const [result] = await db.insert(outputs).values(data).returning();
+  return result;
+}
+
+export async function getOutputsBySessionId(sessionId: string): Promise<OutputSelect[]> {
+  return db
+    .select()
+    .from(outputs)
+    .where(eq(outputs.sessionId, sessionId))
+    .orderBy(desc(outputs.version));
+}
+
+export async function getLatestOutputByType(
+  sessionId: string,
+  type: OutputSelect["type"],
+): Promise<OutputSelect | undefined> {
+  const [result] = await db
+    .select()
+    .from(outputs)
+    .where(and(eq(outputs.sessionId, sessionId), eq(outputs.type, type)))
+    .orderBy(desc(outputs.version))
+    .limit(1);
+  return result;
 }

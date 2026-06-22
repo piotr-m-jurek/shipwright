@@ -147,18 +147,18 @@ it "mostly works".
 
 ## Phase 5 — Writer Passes
 
-- [ ] The Brief writer uses `streamText` — not `generateObject`
-- [ ] The PRD writer uses `streamText` — not `generateObject`
-- [ ] The streamed Brief is valid Markdown when rendered
-- [ ] The streamed PRD contains at least: acceptance criteria section, non-goals section, recommended stack section
-- [ ] `SELECT content FROM outputs WHERE session_id = '<id>' AND type = 'project_brief'` returns non-empty content
-- [ ] `SELECT content FROM outputs WHERE session_id = '<id>' AND type = 'implementation_prd'` returns non-empty content
-- [ ] `SELECT version FROM outputs WHERE session_id = '<id>'` returns `1`
-- [ ] The Brief does not contain requirements not present in the source documents (spot-check 3 claims against sources)
-- [ ] The system prompt for the Brief writer is different from the system prompt for the PRD writer
-- [ ] Prompt caching is configured: the Anthropic provider call includes cache control headers on the document context
+- [x] The Brief writer uses `streamText` — not `generateObject`
+- [x] The PRD writer uses `streamText` — not `generateObject`
+- [x] The streamed Brief is valid Markdown when rendered — verified: contains `## Overview` and scope sections
+- [x] The streamed PRD contains at least: acceptance criteria section, non-goals section, recommended stack section — verified
+- [x] `SELECT content FROM outputs WHERE session_id = '<id>' AND type = 'project_brief'` returns non-empty content — verified: 6935 chars
+- [x] `SELECT content FROM outputs WHERE session_id = '<id>' AND type = 'implementation_prd'` returns non-empty content — verified: 32204 chars
+- [x] `SELECT version FROM outputs WHERE session_id = '<id>'` returns `1` — verified
+- [ ] The Brief does not contain requirements not present in the source documents (spot-check 3 claims against sources) — manual spot-check needed
+- [x] The system prompt for the Brief writer is different from the system prompt for the PRD writer
+- [x] Prompt caching is configured: `experimental_providerMetadata: { anthropic: { cacheControl: { type: "ephemeral" } } }` on document context in both writers
 
-**Gate:** Both outputs must be stored in the DB before Phase 5b.
+**Gate:** PASSED. Both outputs stored in DB, 12/12 automated checks pass (`pnpm tsx src/agent/test-phase5-gate.ts`, 17.06.2026). One manual spot-check item outstanding (faithfulness — verify no hallucinated requirements in Brief).
 
 ---
 
