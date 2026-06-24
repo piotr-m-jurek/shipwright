@@ -1,10 +1,12 @@
 import { drizzle } from "drizzle-orm/postgres-js";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
-import { config } from "../config.js";
+import { config, ConfigService } from "../config.js";
 import * as schema from "./schema.js";
 import { relations } from "./schema.js";
-import {PgClient} from '@effect/sql-pg;
+import { Context, Effect, Layer, pipe } from "effect";
+import * as PgDrizzle from "drizzle-orm/effect-postgres";
+import * as PgClientModule from "@effect/sql-pg/PgClient";
+import { types } from "pg";
 
 // INFO:
 // instead of having this as a migration that runs every time this file is imported somewhere
@@ -14,7 +16,36 @@ import {PgClient} from '@effect/sql-pg;
 //
 // const migrationClient = postgres(config.db.url, { max: 1 });
 // await migrate(drizzle({ client: migrationClient }), config.db.migrationConfig);
-
 const client = postgres(config.db.url, { max: 1 });
-
 export const db = drizzle({ client, relations, schema });
+
+// ==================================================
+// ==================================================
+// ==================================================
+
+type DBType = Effect.Success<ReturnType<typeof PgDrizzle.makeWithDefaults>>;
+
+export class DB extends Context.Service<DB, DBType>()("shipwright/db/index/DB") {}
+
+export const PgClientLive = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* ConfigService;
+    return PgClientModule.layer({
+      url: config.db.url,
+      types: {
+        getTypeParser: (typeId, format) => {
+          if ([1184, 1114, 1082, 1186, 1231, 1115, 1185, 1187, 1182].includes(typeId)) {
+            return (val: any) => val;
+          }
+          return types.getTypeParser(typeId, format);
+        },
+      },
+    });
+  }),
+);
+
+// Composed: consumers only need to provide AppDBLayer
+export const AppDBLayer = pipe(
+  Layer.effect(DB, PgDrizzle.makeWithDefaults({ schema, relations })),
+  Layer.provide(PgClientLive),
+);

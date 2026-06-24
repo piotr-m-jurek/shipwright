@@ -1,12 +1,15 @@
 import { streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { Effect, Schema } from "effect";
-import { ReconstructedSummary } from "../db/queries.js";
+import type { ReconstructedSummary } from "../db/queries.js";
 import { MachineContext } from "../shared/schemas/machine.js";
 
-export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()("shipwright/agent/PrdWriterError", {
-	cause: Schema.Defect(),
-}) {}
+export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()(
+  "shipwright/agent/PrdWriterError",
+  {
+    cause: Schema.Defect(),
+  },
+) {}
 
 // This prompt is a meta-prompting exercise: the PRD is written FOR a coding agent,
 // not for a human. Structure, specificity, and completeness matter more than readability.
@@ -48,36 +51,38 @@ Any ambiguities that remain after the clarifying session. The coding agent must 
 ANTI-HALLUCINATION RULE: Every requirement in the Acceptance Criteria must be traceable to the provided document summaries or clarification answers. Do not invent scope. If a section cannot be filled from the available information, say so explicitly.`;
 
 function formatSummariesForPrd(
-	summaries: ReconstructedSummary[],
-	answers: MachineContext["answers"],
-	questions: MachineContext["questions"],
+  summaries: ReconstructedSummary[],
+  answers: MachineContext["answers"],
+  questions: MachineContext["questions"],
 ): string {
-	const summarySection = summaries
-		.map((s) => {
-			const reqs = s.requirements.map((r) => `  REQ [${r.confidence}]: ${r.text}`).join("\n");
-			const cons = s.constraints.map((c) => `  CONSTRAINT [${c.confidence}]: ${c.text}`).join("\n");
-			const asms = s.assumptions.map((a) => `  ASSUMPTION [${a.confidence}]: ${a.text}`).join("\n");
-			const items = [reqs, cons, asms].filter(Boolean).join("\n");
-			return `=== ${s.sourceDocument} (${s.sourceDocument.split(".").pop()?.toUpperCase()}) ===\n${s.summary}${items ? `\n${items}` : ""}`;
-		})
-		.join("\n\n");
+  const summarySection = summaries
+    .map((s) => {
+      const reqs = s.requirements.map((r) => `  REQ [${r.confidence}]: ${r.text}`).join("\n");
+      const cons = s.constraints.map((c) => `  CONSTRAINT [${c.confidence}]: ${c.text}`).join("\n");
+      const asms = s.assumptions.map((a) => `  ASSUMPTION [${a.confidence}]: ${a.text}`).join("\n");
+      const items = [reqs, cons, asms].filter(Boolean).join("\n");
+      return `=== ${s.sourceDocument} (${s.sourceDocument.split(".").pop()?.toUpperCase()}) ===\n${s.summary}${items ? `\n${items}` : ""}`;
+    })
+    .join("\n\n");
 
-	const answeredQuestions = questions
-		.map((q) => {
-			const answer = answers.find((a) => a.questionId === q.id);
-			return answer ? `DECISION [${q.sourceDocuments.join(", ")}]: ${q.text}\nRESPONSE: ${answer.text}` : null;
-		})
-		.filter(Boolean)
-		.join("\n\n");
+  const answeredQuestions = questions
+    .map((q) => {
+      const answer = answers.find((a) => a.questionId === q.id);
+      return answer
+        ? `DECISION [${q.sourceDocuments.join(", ")}]: ${q.text}\nRESPONSE: ${answer.text}`
+        : null;
+    })
+    .filter(Boolean)
+    .join("\n\n");
 
-	return [
-		"=== DOCUMENT SUMMARIES ===",
-		summarySection,
-		answeredQuestions ? "\n=== RESOLVED DECISIONS ===" : "",
-		answeredQuestions,
-	]
-		.filter(Boolean)
-		.join("\n\n");
+  return [
+    "=== DOCUMENT SUMMARIES ===",
+    summarySection,
+    answeredQuestions ? "\n=== RESOLVED DECISIONS ===" : "",
+    answeredQuestions,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /**
@@ -85,37 +90,37 @@ function formatSummariesForPrd(
  * Uses prompt caching on the document summaries (shared with Brief writer pass).
  */
 export const runPrdWriter = Effect.fn("agent/runPrdWriter")(function* (
-	summaries: ReconstructedSummary[],
-	answers: MachineContext["answers"],
-	questions: MachineContext["questions"],
+  summaries: ReconstructedSummary[],
+  answers: MachineContext["answers"],
+  questions: MachineContext["questions"],
 ) {
-	const userContent = formatSummariesForPrd(summaries, answers, questions);
+  const userContent = formatSummariesForPrd(summaries, answers, questions);
 
-	const result = yield* Effect.tryPromise({
-		try: async () => {
-			const stream = streamText({
-				model: anthropic("claude-sonnet-4-6"),
-				system: PrdSystemPrompt,
-				messages: [
-					{
-						role: "user",
-						content: [
-							{
-								type: "text",
-								text: userContent,
-								// Prompt caching: same document summaries as Brief pass — pays token cost once
-								providerOptions: {
-									anthropic: { cacheControl: { type: "ephemeral" } },
-								},
-							},
-						],
-					},
-				],
-			});
-			return await stream.text;
-		},
-		catch: (cause) => new PrdWriterError({ cause }),
-	});
+  const result = yield* Effect.tryPromise({
+    try: async () => {
+      const stream = streamText({
+        model: anthropic("claude-sonnet-4-6"),
+        system: PrdSystemPrompt,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: userContent,
+                // Prompt caching: same document summaries as Brief pass — pays token cost once
+                providerOptions: {
+                  anthropic: { cacheControl: { type: "ephemeral" } },
+                },
+              },
+            ],
+          },
+        ],
+      });
+      return await stream.text;
+    },
+    catch: (cause) => new PrdWriterError({ cause }),
+  });
 
-	return result;
+  return result;
 });

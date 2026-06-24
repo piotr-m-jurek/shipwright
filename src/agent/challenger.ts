@@ -3,7 +3,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { GapReport, GapReportSchema } from "../shared/schemas/agent.js";
 import { Effect } from "effect";
 import { TextGenerationError } from "./errors.js";
-import { ReconstructedSummary } from "../db/queries.js";
+import type { ReconstructedSummary } from "../db/queries.js";
 
 const ChallengerSystemPrompt = `You are an adversarial requirements reviewer. Your job is to find everything wrong, missing, or contradictory across a set of project document summaries.
 

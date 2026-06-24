@@ -7,8 +7,10 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { agentSessions, chunks, documents } from "../db/schema.js";
 import { config } from "../config.js";
+import { ConfigService } from "../config.js";
 import { StorageAdapter } from "../storage/index.js";
 import { ApiRoute } from "./server.js";
+import { DatabaseService } from "../db/queries.js";
 
 // ---------------------------------------------------------------------------
 // Embedder mock
@@ -34,6 +36,8 @@ const TestRoutes = pipe(
   ApiRoute,
   Layer.provide(NodeHttpServer.layerHttpServices),
   Layer.provide(StorageAdapter.layer),
+  Layer.provide(ConfigService.layer),
+  Layer.provide(DatabaseService.layer),
 );
 
 const { handler, dispose } = HttpRouter.toWebHandler(TestRoutes, {

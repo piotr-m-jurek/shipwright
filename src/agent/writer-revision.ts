@@ -1,7 +1,7 @@
 import { streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { Effect, Schema } from "effect";
-import { ReconstructedSummary } from "../db/queries.js";
+import type { ReconstructedSummary } from "../db/queries.js";
 import { MachineContext } from "../shared/schemas/machine.js";
 
 export class RevisionWriterError extends Schema.TaggedErrorClass<RevisionWriterError>()(
@@ -84,16 +84,20 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
       const stream = streamText({
         model: anthropic("claude-sonnet-4-6"),
         system: RevisionBriefSystemPrompt,
-        messages: [{
-          role: "user",
-          content: [{
-            type: "text",
-            text: userContent,
-            experimental_providerMetadata: {
-              anthropic: { cacheControl: { type: "ephemeral" } },
-            },
-          }],
-        }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: userContent,
+                providerOptions: {
+                  anthropic: { cacheControl: { type: "ephemeral" } },
+                },
+              },
+            ],
+          },
+        ],
       });
       return await stream.text;
     },
@@ -117,16 +121,20 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(func
       const stream = streamText({
         model: anthropic("claude-sonnet-4-6"),
         system: RevisionPrdSystemPrompt,
-        messages: [{
-          role: "user",
-          content: [{
-            type: "text",
-            text: userContent,
-            experimental_providerMetadata: {
-              anthropic: { cacheControl: { type: "ephemeral" } },
-            },
-          }],
-        }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: userContent,
+                providerOptions: {
+                  anthropic: { cacheControl: { type: "ephemeral" } },
+                },
+              },
+            ],
+          },
+        ],
       });
       return await stream.text;
     },

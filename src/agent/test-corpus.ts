@@ -24,7 +24,7 @@ import { config } from "dotenv";
 
 config({ path: resolve(process.cwd(), ".env") });
 
-import { ManagedRuntime } from "effect";
+import { Layer, ManagedRuntime } from "effect";
 import { runChallenger } from "./challenger.js";
 import { parseDocument } from "./parsers.js";
 import { summarizeAllDocuments } from "./summarizer.js";
@@ -34,13 +34,21 @@ import {
   createDocument,
   createChunks,
   getFinalSummariesBySession,
+  DatabaseService,
 } from "../db/queries.js";
 import { StorageAdapter } from "../storage/index.js";
 import { db } from "../db/index.js";
-
-const runtime = ManagedRuntime.make(StorageAdapter.layer);
 import { agentSessions } from "../db/schema.js";
 import { eq } from "drizzle-orm";
+import { ConfigService } from "../config.js";
+
+const runtime = ManagedRuntime.make(
+  Layer.mergeAll(StorageAdapter.layer, ConfigService.layer, DatabaseService.layer) as Layer.Layer<
+    StorageAdapter | ConfigService | DatabaseService,
+    never,
+    never
+  >,
+);
 
 const CORPUS_DIR = resolve(process.cwd(), "docs/test_corpus");
 

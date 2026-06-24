@@ -12,7 +12,7 @@ import { resolve } from "path";
 config({ path: resolve(process.cwd(), ".env") });
 
 import { readFile } from "fs/promises";
-import { ManagedRuntime } from "effect";
+import { Layer, ManagedRuntime } from "effect";
 import { StorageAdapter } from "../storage/index.js";
 import { db } from "../db/index.js";
 import { agentSessions, outputs } from "../db/schema.js";
@@ -20,16 +20,23 @@ import { eq } from "drizzle-orm";
 import { createAgentSession, createDocument, createChunks } from "../db/queries.js";
 import { parseDocument } from "./parsers.js";
 import { estimateTokenCount } from "./estimate-token-count.js";
+import { ConfigService } from "../config.js";
 
-const runtime = ManagedRuntime.make(StorageAdapter.layer);
+const runtime = ManagedRuntime.make(Layer.provideMerge(StorageAdapter.layer, ConfigService.layer));
 const CORPUS = resolve(process.cwd(), "docs/test_corpus");
 const BASE = "http://localhost:3000/api";
 
 let passed = 0;
 let failed = 0;
 
-function ok(label: string) { console.log(`  ✓ ${label}`); passed++; }
-function fail(label: string, detail?: unknown) { console.error(`  ❌ ${label}`, detail ?? ""); failed++; }
+function ok(label: string) {
+  console.log(`  ✓ ${label}`);
+  passed++;
+}
+function fail(label: string, detail?: unknown) {
+  console.error(`  ❌ ${label}`, detail ?? "");
+  failed++;
+}
 
 async function req(method: string, path: string, body?: unknown) {
   const res = await fetch(BASE + path, {
@@ -37,19 +44,28 @@ async function req(method: string, path: string, body?: unknown) {
     headers: body ? { "Content-Type": "application/json" } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
-  try { return { status: res.status, body: await res.json() }; }
-  catch { return { status: res.status, body: await res.text() }; }
+  try {
+    return { status: res.status, body: await res.json() };
+  } catch {
+    return { status: res.status, body: await res.text() };
+  }
 }
 
 async function poll(sessionId: string, target: string, maxMs = 180000) {
   const start = Date.now();
   while (Date.now() - start < maxMs) {
-    const r = await req("GET", `/sessions/${sessionId}`) as any;
+    const r = (await req("GET", `/sessions/${sessionId}`)) as any;
     const s = r.body?.status;
     process.stdout.write(`  [${s}]\r`);
-    if (s === target) { process.stdout.write("\n"); return r.body; }
-    if (String(s).includes("error")) { process.stdout.write("\n"); return null; }
-    await new Promise(r => setTimeout(r, 3000));
+    if (s === target) {
+      process.stdout.write("\n");
+      return r.body;
+    }
+    if (String(s).includes("error")) {
+      process.stdout.write("\n");
+      return null;
+    }
+    await new Promise((r) => setTimeout(r, 3000));
   }
   process.stdout.write("\n");
   return null;
@@ -61,8 +77,8 @@ console.log("\n=== Phase 5b Gate Test ===\n");
 console.log("1. Setup session + corpus chunks");
 const files = [
   { filename: "project_brief.txt", documentType: "notes" as const },
-  { filename: "prd_draft.md",      documentType: "prd_draft" as const },
-  { filename: "rfp.md",            documentType: "rfp" as const },
+  { filename: "prd_draft.md", documentType: "prd_draft" as const },
+  { filename: "rfp.md", documentType: "rfp" as const },
   { filename: "discovery_call_transcript.txt", documentType: "transcript" as const },
 ];
 
@@ -72,8 +88,26 @@ const sessionId = session.id;
 for (const { filename, documentType } of files) {
   const buf = await readFile(resolve(CORPUS, filename));
   const parsed = await runtime.runPromise(parseDocument(buf, filename));
-  const doc = await createDocument({ sessionId, filename, documentType, mimeType: "text/plain", sizeBytes: buf.length, status: "ready", tokenCount: estimateTokenCount(parsed.text) });
-  await createChunks([{ sessionId, documentId: doc.id, documentType, content: parsed.text, chunkIndex: 0, charOffset: 0, embedding: new Array(1536).fill(0) }]);
+  const doc = await createDocument({
+    sessionId,
+    filename,
+    documentType,
+    mimeType: "text/plain",
+    sizeBytes: buf.length,
+    status: "ready",
+    tokenCount: estimateTokenCount(parsed.text),
+  });
+  await createChunks([
+    {
+      sessionId,
+      documentId: doc.id,
+      documentType,
+      content: parsed.text,
+      chunkIndex: 0,
+      charOffset: 0,
+      embedding: new Array(1536).fill(0),
+    },
+  ]);
 }
 ok(`Session: ${sessionId}`);
 
@@ -82,7 +116,10 @@ console.log("\n2. Running full pipeline to complete...");
 await req("POST", `/sessions/${sessionId}/confirm`);
 
 const awaiting = await poll(sessionId, "awaiting_answers");
-if (!awaiting) { fail("Never reached awaiting_answers"); process.exit(1); }
+if (!awaiting) {
+  fail("Never reached awaiting_answers");
+  process.exit(1);
+}
 ok(`awaiting_answers (${awaiting.questions?.length} questions)`);
 
 // Submit answers — two rounds to hit roundLimitReached
@@ -102,14 +139,17 @@ if (awaiting2) {
 
 console.log("\n   Waiting for writer passes (~60s)...");
 const complete = await poll(sessionId, "complete");
-if (!complete) { fail("Never reached complete"); process.exit(1); }
+if (!complete) {
+  fail("Never reached complete");
+  process.exit(1);
+}
 ok("Session reached complete");
 
 // ── 3. Verify initial outputs in DB ────────────────────────────────────────
 console.log("\n3. Initial output checks");
 const outputRows = await db.select().from(outputs).where(eq(outputs.sessionId, sessionId));
-const briefV1 = outputRows.find(o => o.type === "project_brief" && o.version === 1);
-const prdV1   = outputRows.find(o => o.type === "implementation_prd" && o.version === 1);
+const briefV1 = outputRows.find((o) => o.type === "project_brief" && o.version === 1);
+const prdV1 = outputRows.find((o) => o.type === "implementation_prd" && o.version === 1);
 
 if (briefV1?.s3Key) {
   ok(`project_brief v1 has s3Key: ${briefV1.s3Key}`);
@@ -126,7 +166,10 @@ if (prdV1?.s3Key) {
 // ── 4. Export — download-url endpoint ──────────────────────────────────────
 console.log("\n4. Export via presigned URL");
 
-const briefUrlRes = await req("GET", `/sessions/${sessionId}/output/project_brief/download-url`) as any;
+const briefUrlRes = (await req(
+  "GET",
+  `/sessions/${sessionId}/output/project_brief/download-url`,
+)) as any;
 if (briefUrlRes.status === 200 && briefUrlRes.body?.url?.startsWith("http")) {
   ok("GET /output/project_brief/download-url returns URL");
 
@@ -146,7 +189,10 @@ if (briefUrlRes.status === 200 && briefUrlRes.body?.url?.startsWith("http")) {
   fail("GET /output/project_brief/download-url", briefUrlRes);
 }
 
-const prdUrlRes = await req("GET", `/sessions/${sessionId}/output/implementation_prd/download-url`) as any;
+const prdUrlRes = (await req(
+  "GET",
+  `/sessions/${sessionId}/output/implementation_prd/download-url`,
+)) as any;
 if (prdUrlRes.status === 200 && prdUrlRes.body?.url?.startsWith("http")) {
   ok("GET /output/implementation_prd/download-url returns URL");
 } else {
@@ -154,7 +200,7 @@ if (prdUrlRes.status === 200 && prdUrlRes.body?.url?.startsWith("http")) {
 }
 
 // Invalid type returns 404
-const badTypeRes = await req("GET", `/sessions/${sessionId}/output/bad_type/download-url`) as any;
+const badTypeRes = (await req("GET", `/sessions/${sessionId}/output/bad_type/download-url`)) as any;
 if (badTypeRes.status === 404) {
   ok("Invalid type returns 404");
 } else {
@@ -164,9 +210,10 @@ if (badTypeRes.status === 404) {
 // ── 5. Revision loop ────────────────────────────────────────────────────────
 console.log("\n5. Revision loop");
 
-const reviseRes = await req("POST", `/sessions/${sessionId}/revise`, {
-  feedback: "Please add more detail about the BambooHR integration in both the Brief and the PRD acceptance criteria.",
-}) as any;
+const reviseRes = (await req("POST", `/sessions/${sessionId}/revise`, {
+  feedback:
+    "Please add more detail about the BambooHR integration in both the Brief and the PRD acceptance criteria.",
+})) as any;
 
 if (reviseRes.status === 200 && reviseRes.body?.started === true) {
   ok("POST /revise returns { started: true }");
@@ -175,8 +222,8 @@ if (reviseRes.status === 200 && reviseRes.body?.started === true) {
 }
 
 // Machine should be in revising or generating
-await new Promise(r => setTimeout(r, 500));
-const revisingCheck = await req("GET", `/sessions/${sessionId}`) as any;
+await new Promise((r) => setTimeout(r, 500));
+const revisingCheck = (await req("GET", `/sessions/${sessionId}`)) as any;
 const revState = revisingCheck.body?.status;
 if (["revising", "generating", "complete"].includes(revState)) {
   ok(`Machine in ${revState} after REVISION_REQUESTED`);
@@ -187,13 +234,16 @@ if (["revising", "generating", "complete"].includes(revState)) {
 // Wait for complete again (revision writers take ~60s)
 console.log("\n   Waiting for revision writers (~60s)...");
 const complete2 = await poll(sessionId, "complete");
-if (!complete2) { fail("Never reached complete after revision"); process.exit(1); }
+if (!complete2) {
+  fail("Never reached complete after revision");
+  process.exit(1);
+}
 ok("Session reached complete after revision");
 
 // Check version 2 exists
 const outputRowsAfter = await db.select().from(outputs).where(eq(outputs.sessionId, sessionId));
-const briefV2 = outputRowsAfter.find(o => o.type === "project_brief" && o.version === 2);
-const prdV2   = outputRowsAfter.find(o => o.type === "implementation_prd" && o.version === 2);
+const briefV2 = outputRowsAfter.find((o) => o.type === "project_brief" && o.version === 2);
+const prdV2 = outputRowsAfter.find((o) => o.type === "implementation_prd" && o.version === 2);
 
 if (briefV2?.content && briefV2.content.length > 100) {
   ok(`project_brief v2 stored (${briefV2.content.length} chars)`);
@@ -217,7 +267,7 @@ if (outputVersion === 2) {
 }
 
 // GET /output returns v2 content
-const outputV2Res = await req("GET", `/sessions/${sessionId}/output`) as any;
+const outputV2Res = (await req("GET", `/sessions/${sessionId}/output`)) as any;
 if (outputV2Res.body?.version === 2) {
   ok("GET /sessions/:id/output returns version 2");
 } else {

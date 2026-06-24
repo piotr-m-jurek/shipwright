@@ -1,4 +1,4 @@
-import { Layer, pipe } from "effect";
+import { Effect, Layer, pipe } from "effect";
 import { HttpRouter, HttpStaticServer } from "effect/unstable/http";
 import { createServer } from "node:http";
 import { HttpApiBuilder, HttpApiScalar } from "effect/unstable/httpapi";
@@ -7,6 +7,8 @@ import path from "node:path";
 import { StorageAdapter } from "../storage/index.js";
 import { Api } from "./api/api.js";
 import { SystemApiHandlers } from "./handlers.js";
+import { ConfigService } from "../config.js";
+import { DatabaseService } from "../db/queries.js";
 
 export const ApiRoute = pipe(
   HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }),
@@ -23,10 +25,16 @@ const StaticFiles = HttpStaticServer.layer({
 
 const AllRoutes = Layer.mergeAll(ApiRoute, DocsRoute, StaticFiles);
 
-const HttpServerLayer = pipe(
-  HttpRouter.serve(AllRoutes),
-  Layer.provide(StorageAdapter.layer),
-  Layer.provide(NodeHttpServer.layer(createServer, { port: 3000 })),
+const ServiceLayer = pipe(
+  Layer.mergeAll(DatabaseService.layer),
+  Layer.provideMerge(StorageAdapter.layer),
+  Layer.provideMerge(NodeHttpServer.layer(createServer, { port: 3000 })),
 );
 
-pipe(Layer.launch(HttpServerLayer), NodeRuntime.runMain);
+const HttpServerLayer = pipe(
+  HttpRouter.serve(AllRoutes),
+  Layer.provide(ServiceLayer), //
+);
+
+// INFO: known issue with static files, will be removed when moved to monorepo
+NodeRuntime.runMain(Layer.launch(HttpServerLayer) as Effect.Effect<never, never, never>);

@@ -1,7 +1,7 @@
 import { streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { Effect, Schema } from "effect";
-import { ReconstructedSummary } from "../db/queries.js";
+import type { ReconstructedSummary } from "../db/queries.js";
 import { MachineContext } from "../shared/schemas/machine.js";
 
 export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(

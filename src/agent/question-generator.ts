@@ -7,7 +7,7 @@ import {
   ClarifyingQuestions,
 } from "../shared/schemas/agent.js";
 import { TextGenerationError } from "./errors.js";
-import { ReconstructedSummary } from "../db/queries.js";
+import type { ReconstructedSummary } from "../db/queries.js";
 
 const QuestionGeneratorSystemPrompt = `You are a requirements analyst preparing clarifying questions for a project team.
 

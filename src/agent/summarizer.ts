@@ -1,13 +1,7 @@
 import { Effect, Schema, Option, pipe } from "effect";
 import { SelectChunk } from "../shared/schemas/index.js";
 import { DocumentSummary, DocumentSummarySchema } from "../shared/schemas/agent.js";
-import {
-  createDocumentSummary,
-  createSummaryItems,
-  getChunksByDocumentId,
-  getCurrentDocumenSummaryVersion,
-  getDocumentsBySessionId,
-} from "../db/queries.js";
+import { DatabaseService } from "../db/queries.js";
 import { SummaryItemInsert } from "../db/schema.js";
 import { generateText, ModelMessage, Output } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
@@ -34,16 +28,15 @@ class DocumentSummaryReadError extends Schema.TaggedErrorClass<DocumentSummaryRe
 export const summarizeAllDocuments = Effect.fn("agent/summarizeAllDocuments")(function* (
   sessionId: string,
 ) {
-  const docs = yield* Effect.tryPromise({
-    try: () => getDocumentsBySessionId(sessionId),
-    catch: (cause) => new ChunksRetrievalError({ cause }),
-  });
-
+  const db = yield* DatabaseService;
   return yield* pipe(
-    docs,
-    Effect.forEach((doc) => summarizeDocument(doc.id, sessionId, doc.filename), {
-      concurrency: 2,
-    }),
+    db.getDocumentsBySessionId(sessionId),
+    Effect.map(
+      Effect.forEach((doc) => summarizeDocument(doc.id, sessionId, doc.filename), {
+        concurrency: 2,
+      }),
+    ),
+    Effect.mapError((cause) => new ChunksRetrievalError({ cause })),
   );
 });
 
@@ -52,16 +45,20 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
   sessionId: string,
   filename: string,
 ) {
-  const chunks = yield* loadChunks(documentId);
+  const db = yield* DatabaseService;
+  const chunks = yield* pipe(
+    db.getChunksByDocumentId(documentId),
+    Effect.mapError((cause) => new ChunksRetrievalError({ cause })),
+  );
 
   if (chunks.length === 0) {
     return yield* new NoChunksError();
   }
 
-  const currentHighestVersion = yield* Effect.tryPromise({
-    try: () => getCurrentDocumenSummaryVersion({ documentId, sessionId }),
-    catch: (cause) => new DocumentSummaryReadError({ cause }),
-  });
+  const currentHighestVersion = yield* pipe(
+    db.getCurrentDocumenSummaryVersion({ documentId, sessionId }),
+    Effect.mapError((cause) => new DocumentSummaryReadError({ cause })),
+  );
 
   let current: Option.Option<DocumentSummary> = Option.none();
   for (const chunk of chunks) {
@@ -87,65 +84,59 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
   });
 });
 
-const loadChunks = (documentId: string) =>
-  Effect.tryPromise({
-    try: () => getChunksByDocumentId(documentId),
-    catch: (cause) => new ChunksRetrievalError({ cause }),
-  });
-
 // Shared persist helper — inserts into document_summaries then batch-inserts items.
 // Used by both intermediate and final persists.
-const persistSummary = ({
-  summary,
-  summaryType,
-  batchIndex,
-  documentId,
-  sessionId,
-  version,
-}: {
-  summary: DocumentSummary;
-  summaryType: "map_intermediate" | "final";
-  batchIndex?: number;
-  documentId: string;
-  sessionId: string;
-  version: number;
-}) =>
-  Effect.tryPromise({
-    try: async () => {
-      const row = await createDocumentSummary({
-        documentId,
-        sessionId,
-        sourceDocument: summary.sourceDocument,
-        summaryType,
-        batchIndex: batchIndex ?? null,
-        content: summary.summary,
-        tokenCount: estimateTokenCount(summary.summary),
-        version,
-      });
+const persistSummary = Effect.fn("persistSummary")(
+  function* ({
+    summary,
+    summaryType,
+    batchIndex,
+    documentId,
+    sessionId,
+    version,
+  }: {
+    summary: DocumentSummary;
+    summaryType: "map_intermediate" | "final";
+    batchIndex?: number;
+    documentId: string;
+    sessionId: string;
+    version: number;
+  }) {
+    const db = yield* DatabaseService;
+    const row = yield* db.createDocumentSummary({
+      documentId,
+      sessionId,
+      sourceDocument: summary.sourceDocument,
+      summaryType,
+      batchIndex: batchIndex ?? null,
+      content: summary.summary,
+      tokenCount: estimateTokenCount(summary.summary),
+      version,
+    });
 
-      const toItems = (
-        items: DocumentSummary["requirements"],
-        itemType: SummaryItemInsert["itemType"],
-      ): SummaryItemInsert[] =>
-        items.map((item, i) => ({
-          summaryId: row.id,
-          itemType,
-          text: item.text,
-          sourceDocument: item.sourceDocument,
-          confidence: item.confidence,
-          orderIndex: i,
-        }));
+    const toItems = (
+      items: DocumentSummary["requirements"],
+      itemType: SummaryItemInsert["itemType"],
+    ): SummaryItemInsert[] =>
+      items.map((item, i) => ({
+        summaryId: row.id,
+        itemType,
+        text: item.text,
+        sourceDocument: item.sourceDocument,
+        confidence: item.confidence,
+        orderIndex: i,
+      }));
 
-      await createSummaryItems([
-        ...toItems(summary.requirements, "requirement"),
-        ...toItems(summary.constraints, "constraint"),
-        ...toItems(summary.assumptions, "assumption"),
-      ]);
+    yield* db.createSummaryItems([
+      ...toItems(summary.requirements, "requirement"),
+      ...toItems(summary.constraints, "constraint"),
+      ...toItems(summary.assumptions, "assumption"),
+    ]);
 
-      return row;
-    },
-    catch: (cause) => new DocumentSummaryWriteError({ cause }),
-  });
+    return row;
+  },
+  Effect.mapError((cause) => new DocumentSummaryWriteError({ cause })),
+);
 
 const MapReduceSystemPrompt = `
 You are a document analysis assistant. Your job is to extract structured information from project documents — briefs, PRDs, RFPs, and transcripts.

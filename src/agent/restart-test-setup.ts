@@ -10,13 +10,14 @@ import { resolve } from "path";
 config({ path: resolve(process.cwd(), ".env") });
 
 import { readFile } from "fs/promises";
-import { ManagedRuntime } from "effect";
+import { Layer, ManagedRuntime } from "effect";
 import { StorageAdapter } from "../storage/index.js";
 import { createAgentSession, createDocument, createChunks } from "../db/queries.js";
 import { parseDocument } from "./parsers.js";
 import { estimateTokenCount } from "./estimate-token-count.js";
+import { ConfigService } from "../config.js";
 
-const runtime = ManagedRuntime.make(StorageAdapter.layer);
+const runtime = ManagedRuntime.make(Layer.provideMerge(StorageAdapter.layer, ConfigService.layer));
 const CORPUS = resolve(process.cwd(), "docs/test_corpus");
 const BASE = "http://localhost:3000/api";
 
@@ -44,14 +45,25 @@ for (const { filename, documentType } of files) {
   const buf = await readFile(resolve(CORPUS, filename));
   const parsed = await runtime.runPromise(parseDocument(buf, filename));
   const doc = await createDocument({
-    sessionId, filename, documentType, mimeType: "text/plain",
-    sizeBytes: buf.length, status: "ready",
+    sessionId,
+    filename,
+    documentType,
+    mimeType: "text/plain",
+    sizeBytes: buf.length,
+    status: "ready",
     tokenCount: estimateTokenCount(parsed.text),
   });
-  await createChunks([{
-    sessionId, documentId: doc.id, documentType, content: parsed.text,
-    chunkIndex: 0, charOffset: 0, embedding: new Array(1536).fill(0),
-  }]);
+  await createChunks([
+    {
+      sessionId,
+      documentId: doc.id,
+      documentType,
+      content: parsed.text,
+      chunkIndex: 0,
+      charOffset: 0,
+      embedding: Array.from<number>({ length: 1536 }).fill(0),
+    },
+  ]);
 }
 console.log(`Session: ${sessionId}`);
 
@@ -62,15 +74,18 @@ console.log("Polling for awaiting_answers (this will take ~60s)...");
 let questions: { id: string; text: string }[] = [];
 const start = Date.now();
 while (Date.now() - start < 120000) {
-  const s = await req("GET", `/sessions/${sessionId}`) as any;
+  const s = (await req("GET", `/sessions/${sessionId}`)) as any;
   process.stdout.write(`  [${s.status}]\r`);
   if (s.status === "awaiting_answers") {
     process.stdout.write("\n");
     questions = s.questions ?? [];
     break;
   }
-  if (String(s.status).includes("error")) { process.stdout.write("\n"); break; }
-  await new Promise(r => setTimeout(r, 3000));
+  if (String(s.status).includes("error")) {
+    process.stdout.write("\n");
+    break;
+  }
+  await new Promise((r) => setTimeout(r, 3000));
 }
 
 if (!questions.length) {
@@ -80,8 +95,13 @@ if (!questions.length) {
 
 console.log(`\n✓ Session is in awaiting_answers with ${questions.length} questions`);
 console.log(`\nSession ID:   ${sessionId}`);
-console.log(`Question IDs: ${questions.map(q => q.id).join(", ")}`);
+console.log(`Question IDs: ${questions.map((q) => q.id).join(", ")}`);
 console.log(`\nNow kill the server, restart it, then run:`);
 console.log(`  curl -s -X POST http://localhost:3000/api/sessions/${sessionId}/answers \\`);
 console.log(`    -H "Content-Type: application/json" \\`);
-console.log(`    -d '{"answers":[${questions.slice(0,2).map(q => `{"questionId":"${q.id}","text":"restart recovery answer"}`).join(",")}]}'`);
+console.log(
+  `    -d '{"answers":[${questions
+    .slice(0, 2)
+    .map((q) => `{"questionId":"${q.id}","text":"restart recovery answer"}`)
+    .join(",")}]}'`,
+);

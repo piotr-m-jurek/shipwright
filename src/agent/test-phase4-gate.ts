@@ -14,19 +14,20 @@ import { config } from "dotenv";
 config({ path: resolve(process.cwd(), ".env") });
 
 import { db } from "../db/index.js";
-import { agentSessions, questions as questionsTable, answers as answersTable } from "../db/schema.js";
-import { eq, count } from "drizzle-orm";
 import {
-  createAgentSession,
-  createDocument,
-  createChunks,
-} from "../db/queries.js";
+  agentSessions,
+  questions as questionsTable,
+  answers as answersTable,
+} from "../db/schema.js";
+import { eq, count } from "drizzle-orm";
+import { createAgentSession, createDocument, createChunks } from "../db/queries.js";
 import { parseDocument } from "./parsers.js";
 import { estimateTokenCount } from "./estimate-token-count.js";
-import { ManagedRuntime } from "effect";
+import { Layer, ManagedRuntime } from "effect";
 import { StorageAdapter } from "../storage/index.js";
+import { ConfigService } from "../config.js";
 
-const runtime = ManagedRuntime.make(StorageAdapter.layer);
+const runtime = ManagedRuntime.make(Layer.provideMerge(StorageAdapter.layer, ConfigService.layer));
 
 const BASE = "http://localhost:3000/api";
 const CORPUS = resolve(process.cwd(), "docs/test_corpus");
@@ -110,15 +111,17 @@ for (const { filename, documentType } of corpusFiles) {
     tokenCount: estimateTokenCount(parsed.text),
   });
 
-  await createChunks([{
-    sessionId,
-    documentId: doc.id,
-    documentType,
-    content: parsed.text,
-    chunkIndex: 0,
-    charOffset: 0,
-    embedding: new Array(1536).fill(0),
-  }]);
+  await createChunks([
+    {
+      sessionId,
+      documentId: doc.id,
+      documentType,
+      content: parsed.text,
+      chunkIndex: 0,
+      charOffset: 0,
+      embedding: new Array(1536).fill(0),
+    },
+  ]);
 }
 
 ok(`Session created with ${corpusFiles.length} documents + chunks: ${sessionId}`);
@@ -135,10 +138,14 @@ if (confirmRes.status === 200 && (confirmRes.body as any)?.started === true) {
 }
 
 // Verify machine advanced (should be analyzing or beyond now)
-await new Promise(r => setTimeout(r, 500));
+await new Promise((r) => setTimeout(r, 500));
 const stateCheck = await req("GET", `/sessions/${sessionId}`);
 const stateAfterConfirm = (stateCheck.body as any)?.status;
-if (["analyzing", "awaiting_answers", "re_evaluating", "generating", "summarizing"].includes(stateAfterConfirm)) {
+if (
+  ["analyzing", "awaiting_answers", "re_evaluating", "generating", "summarizing"].includes(
+    stateAfterConfirm,
+  )
+) {
   ok(`Machine advanced to '${stateAfterConfirm}' after /confirm`);
 } else {
   fail("Machine state unexpected after /confirm", stateAfterConfirm);
@@ -150,13 +157,17 @@ console.log("\n3. Waiting for analysis pipeline (may take ~60s with LLM calls)..
 const awaitingSession = await pollForStatus(sessionId, "awaiting_answers");
 if (!awaitingSession) {
   const finalCheck = await req("GET", `/sessions/${sessionId}`);
-  fail("Session never reached awaiting_answers", `final status: ${(finalCheck.body as any)?.status}`);
+  fail(
+    "Session never reached awaiting_answers",
+    `final status: ${(finalCheck.body as any)?.status}`,
+  );
   await db.delete(agentSessions).where(eq(agentSessions.id, sessionId));
   process.exit(1);
 }
 ok("Session reached awaiting_answers");
 
-const sessionQuestions = (awaitingSession.questions as { id: string; text: string; rationale: string }[]) ?? [];
+const sessionQuestions =
+  (awaitingSession.questions as { id: string; text: string; rationale: string }[]) ?? [];
 if (sessionQuestions.length >= 3 && sessionQuestions.length <= 7) {
   ok(`3–7 questions generated (got ${sessionQuestions.length})`);
 } else {
@@ -202,14 +213,19 @@ const answers1 = sessionQuestions.map((q) => ({
 const answersRes1 = await req("POST", `/sessions/${sessionId}/answers`, { answers: answers1 });
 if (answersRes1.status === 200) {
   ok("POST /sessions/:id/answers returns 200");
-  ok(`sufficient=${(answersRes1.body as any).sufficient}, round=${(answersRes1.body as any).round}`);
+  ok(
+    `sufficient=${(answersRes1.body as any).sufficient}, round=${(answersRes1.body as any).round}`,
+  );
 } else {
   fail("POST /sessions/:id/answers", JSON.stringify(answersRes1));
 }
 
 // Brief wait for the async snapshot write to commit before reading
 await new Promise((r) => setTimeout(r, 300));
-const [sessionAfter1] = await db.select().from(agentSessions).where(eq(agentSessions.id, sessionId));
+const [sessionAfter1] = await db
+  .select()
+  .from(agentSessions)
+  .where(eq(agentSessions.id, sessionId));
 const round1 = (sessionAfter1.xstateSnapshot as any)?.context?.round;
 if (round1 === 1) {
   ok("round incremented to 1 in xstateSnapshot");
@@ -247,7 +263,10 @@ if (status2 === "awaiting_answers") {
   }
 
   await new Promise((r) => setTimeout(r, 500));
-  const [sessionAfter2] = await db.select().from(agentSessions).where(eq(agentSessions.id, sessionId));
+  const [sessionAfter2] = await db
+    .select()
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId));
   const round2 = (sessionAfter2.xstateSnapshot as any)?.context?.round;
   if (round2 === 2) {
     ok("round incremented to 2");

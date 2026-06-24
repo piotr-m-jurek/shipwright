@@ -24,7 +24,6 @@ export class ConfirmUploadError extends Schema.TaggedErrorClass<ConfirmUploadErr
   { httpApiStatus: 500 },
 ) {}
 
-
 export class SessionStateError extends Schema.TaggedErrorClass<SessionStateError>()(
   "SessionStateError",
   { message: Schema.String },

@@ -1,4 +1,5 @@
 import type { MigrationConfig } from "drizzle-orm/migrator";
+import { Config, Context, Effect, Layer, pipe, Redacted, Schema } from "effect";
 
 process.loadEnvFile();
 
@@ -47,7 +48,44 @@ export const config: APIConfig = {
 function envOrThrow(key: string) {
   const raw = process.env[key];
   if (!raw) {
-    throw new Error(`Missing env variable ${key}`);
+    throw new Error(key);
   }
   return raw;
+}
+
+class EnvMissing extends Schema.TaggedErrorClass<EnvMissing>()("EnvMissing", {
+  key: Schema.String,
+}) {}
+
+function envOrThrowEffect(key: string) {
+  const raw = process.env[key];
+  if (!raw) {
+    throw new EnvMissing({ key });
+  }
+  return raw;
+}
+
+export class ConfigService extends Context.Service<
+  ConfigService,
+  {
+    db: { url: Redacted.Redacted<string>; migrationConfig: MigrationConfig };
+    storage: StorageConfig;
+    ai: AIConfig;
+  }
+>()("shipwright/config/ConfigService") {
+  static readonly layer = Layer.sync(ConfigService, () => ({
+    db: {
+      url: pipe(envOrThrowEffect("DATABASE_URL"), Redacted.make),
+      migrationConfig,
+    },
+    storage: {
+      endpoint: envOrThrowEffect("S3_ENDPOINT"),
+      secretKey: envOrThrowEffect("S3_SECRET_KEY"),
+      accessKey: envOrThrowEffect("S3_ACCESS_KEY"),
+      bucket: envOrThrowEffect("S3_BUCKET"),
+    },
+    ai: {
+      openaiApiKey: envOrThrow("OPENAI_API_KEY"),
+    },
+  }));
 }

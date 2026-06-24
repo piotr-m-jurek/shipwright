@@ -9,20 +9,8 @@
  * on every state transition. This is the Rule 5 implementation.
  */
 
-import { Effect, Schema } from "effect";
+import { Effect, pipe, Schema } from "effect";
 import { StorageAdapter } from "../storage/index.js";
-import {
-  getAgentSesionById,
-  updateAgentSessionSnapshot,
-  createQuestions,
-  createAnswers,
-  createOutput,
-  getFinalSummariesBySession,
-  getDocumentsBySessionId,
-  getAnswersBySessionId,
-  getQuestionsBySessionId,
-  getLatestOutputByType,
-} from "../db/queries.js";
 import { createAgentActor, restoreAgentActor, type AgentActor } from "./machine.js";
 import { MachineContextSchema, type MachineContext } from "../shared/schemas/machine.js";
 import { summarizeAllDocuments } from "./summarizer.js";
@@ -31,6 +19,7 @@ import { runQuestionGenerator } from "./question-generator.js";
 import { runBriefWriter } from "./writer-brief.js";
 import { runPrdWriter } from "./writer-prd.js";
 import { runRevisionBriefWriter, runRevisionPrdWriter } from "./writer-revision.js";
+import { DatabaseService } from "../db/queries.js";
 
 // ── Error types ────────────────────────────────────────────────────────────
 
@@ -63,13 +52,11 @@ const registry = new Map<string, AgentActor>();
 export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* (
   sessionId: string,
 ) {
+  const db = yield* DatabaseService;
   const existing = registry.get(sessionId);
   if (existing) return existing;
 
-  const session = yield* Effect.tryPromise({
-    try: () => getAgentSesionById(sessionId),
-    catch: () => new SessionNotFoundError(),
-  });
+  const session = yield* db.getAgentSesionById(sessionId);
 
   if (!session) return yield* new SessionNotFoundError();
 
@@ -88,7 +75,7 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
     actor = createAgentActor({ sessionId });
   }
 
-  wireSnapshotPersistence(actor, sessionId);
+  yield* wireSnapshotPersistence(actor, sessionId);
   actor.start();
   registry.set(sessionId, actor);
   return actor;
@@ -98,13 +85,13 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
  * Create a fresh actor for a new session, register it, and start it.
  * Called after confirm-upload when the session is brand new.
  */
-export function createAndRegisterActor(sessionId: string): AgentActor {
+const createAndRegisterActor = Effect.fnUntraced(function* (sessionId: string) {
   const actor = createAgentActor({ sessionId });
-  wireSnapshotPersistence(actor, sessionId);
+  yield* wireSnapshotPersistence(actor, sessionId);
   actor.start();
   registry.set(sessionId, actor);
   return actor;
-}
+});
 
 /**
  * Wire Rule 5: persist xstateSnapshot on every state transition.
@@ -120,19 +107,31 @@ const ERROR_STATES = new Set([
   "revising_error",
 ]);
 
-function wireSnapshotPersistence(actor: AgentActor, sessionId: string): void {
+const wireSnapshotPersistence = Effect.fnUntraced(function* wireSnapshotPersistence(
+  actor: AgentActor,
+  sessionId: string,
+) {
+  const db = yield* DatabaseService;
+  const services = yield* Effect.context<never>();
+
   actor.subscribe((snapshot) => {
     const xstateState = snapshot.value as string;
-    // Map XState error substates to the 'error' enum value in Postgres.
     const dbStatus = ERROR_STATES.has(xstateState) ? "error" : xstateState;
-    updateAgentSessionSnapshot(sessionId, dbStatus as any, snapshot).catch((err) => {
-      console.error(
-        `[session-actor] Failed to persist snapshot for ${sessionId} (state: ${xstateState}):`,
-        err,
-      );
-    });
+
+    Effect.runForkWith(services)(
+      db
+        .updateAgentSessionSnapshot(sessionId, dbStatus as any, snapshot)
+        .pipe(
+          Effect.tapError((err) =>
+            Effect.logError(
+              `[session-actor] Failed to persist snapshot for ${sessionId} (state: ${xstateState}):`,
+              err,
+            ),
+          ),
+        ),
+    );
   });
-}
+});
 
 // ── Analysis pipeline ──────────────────────────────────────────────────────
 
@@ -145,59 +144,45 @@ function wireSnapshotPersistence(actor: AgentActor, sessionId: string): void {
  * (forkDetach pattern). The actor advances through states as each
  * step completes and fires events.
  */
-export const runAnalysisPipeline = Effect.fn("agent/runAnalysisPipeline")(function* (
-  sessionId: string,
-) {
-  const actor = yield* getOrRestoreActor(sessionId);
+export const runAnalysisPipeline = Effect.fn("agent/runAnalysisPipeline")(
+  function* (sessionId: string) {
+    const db = yield* DatabaseService;
+    const actor = yield* getOrRestoreActor(sessionId);
 
-  // 1. Summarize all documents
-  yield* summarizeAllDocuments(sessionId).pipe(
-    Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-  );
+    yield* summarizeAllDocuments(sessionId);
 
-  // 2. Load final summaries
-  const summaries = yield* Effect.tryPromise({
-    try: () => getFinalSummariesBySession(sessionId),
-    catch: (cause) => new AnalysisPipelineError({ cause }),
-  });
+    const summaries = yield* db.getFinalSummariesBySession(sessionId);
+    const gapReport = yield* runChallenger(summaries);
 
-  // 3. Run Challenger
-  const gapReport = yield* runChallenger(summaries).pipe(
-    Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-  );
-
-  // 4. Generate clarifying questions
-  const { questions: generatedQuestions } = yield* runQuestionGenerator(gapReport, summaries).pipe(
-    Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-  );
-
-  // 5. Persist questions to DB before suspending
-  const persistedQuestions = yield* Effect.tryPromise({
-    try: () =>
-      createQuestions(
-        generatedQuestions.map((q, i) => ({
-          sessionId,
-          text: q.text,
-          rationale: q.rationale,
-          sourceDocuments: q.sourceDocuments,
-          orderIndex: i,
-        })),
+    const persistedQuestions = yield* pipe(
+      runQuestionGenerator(gapReport, summaries),
+      Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      Effect.flatMap(({ questions: generatedQuestions }) =>
+        db.createQuestions(
+          generatedQuestions.map((q, i) => ({
+            sessionId,
+            text: q.text,
+            rationale: q.rationale,
+            sourceDocuments: q.sourceDocuments,
+            orderIndex: i,
+          })),
+        ),
       ),
-    catch: (cause) => new AnalysisPipelineError({ cause }),
-  });
+    );
 
-  // 6. Fire ANALYSIS_DONE — machine transitions to awaiting_answers
-  actor.send({
-    type: "ANALYSIS_DONE",
-    gapReport,
-    questions: persistedQuestions.map((q) => ({
-      id: q.id,
-      text: q.text,
-      rationale: q.rationale,
-      sourceDocuments: q.sourceDocuments,
-    })),
-  });
-});
+    actor.send({
+      type: "ANALYSIS_DONE",
+      gapReport,
+      questions: persistedQuestions.map((q) => ({
+        id: q.id,
+        text: q.text,
+        rationale: q.rationale,
+        sourceDocuments: q.sourceDocuments,
+      })),
+    });
+  },
+  Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+);
 
 // ── Answer submission ──────────────────────────────────────────────────────
 
@@ -209,72 +194,69 @@ export const runAnalysisPipeline = Effect.fn("agent/runAnalysisPipeline")(functi
  * Sufficiency check: if all answers are non-empty and the round is >= 1,
  * treat as sufficient. The heuristic can be replaced with an LLM judge later.
  */
-export const submitAnswers = Effect.fn("agent/submitAnswers")(function* (
-  sessionId: string,
-  rawAnswers: { questionId: string; text: string }[],
-) {
-  const actor = yield* getOrRestoreActor(sessionId);
+export const submitAnswers = Effect.fn("agent/submitAnswers")(
+  function* (sessionId: string, rawAnswers: { questionId: string; text: string }[]) {
+    const db = yield* DatabaseService;
+    const actor = yield* getOrRestoreActor(sessionId);
 
-  const state = actor.getSnapshot().value;
-  if (state !== "awaiting_answers") {
-    return yield* new SessionStateError({
-      message: `Session ${sessionId} is in state '${state}', expected 'awaiting_answers'`,
-    });
-  }
+    const state = actor.getSnapshot().value;
+    if (state !== "awaiting_answers") {
+      return yield* new SessionStateError({
+        message: `Session ${sessionId} is in state '${state}', expected 'awaiting_answers'`,
+      });
+    }
 
-  const round = actor.getSnapshot().context.round;
+    const round = actor.getSnapshot().context.round;
 
-  // Persist answers to DB
-  const persistedAnswers = yield* Effect.tryPromise({
-    try: () =>
-      createAnswers(
-        rawAnswers.map((a) => ({
-          sessionId,
-          questionId: a.questionId,
-          text: a.text,
-          round,
-        })),
-      ),
-    catch: (cause) => new AnalysisPipelineError({ cause }),
-  });
-
-  // Fire USER_ANSWERED — machine → re_evaluating, round increments
-  actor.send({
-    type: "USER_ANSWERED",
-    answers: persistedAnswers.map((a) => ({
-      questionId: a.questionId,
-      text: a.text,
-      round: a.round,
-    })),
-  });
-
-  // Simple sufficiency heuristic: answers are sufficient if all are non-empty
-  // and this is round >= 1 (at least one full cycle). Extend with LLM judge later.
-  const allAnswered = rawAnswers.every((a) => a.text.trim().length > 0);
-  const sufficient = allAnswered && round >= 1;
-
-  // Load latest questions from context for the response
-  const currentQuestions = actor.getSnapshot().context.questions;
-
-  if (sufficient) {
-    actor.send({ type: "ANSWERS_SUFFICIENT", questions: currentQuestions });
-  } else {
-    actor.send({ type: "ANSWERS_INSUFFICIENT", questions: currentQuestions });
-  }
-
-  // If machine is now in generating state, fork the writer pipeline
-  const stateAfter = actor.getSnapshot().value as string;
-  if (stateAfter === "generating") {
-    yield* runGeneratingPipeline(sessionId).pipe(
-      Effect.tapError((e) =>
-        Effect.sync(() => console.error("[session-actor] generating pipeline error:", e)),
-      ),
-      Effect.forkDetach,
+    // Persist answers to DB
+    const persistedAnswers = yield* db.createAnswers(
+      rawAnswers.map((a) => ({
+        sessionId,
+        questionId: a.questionId,
+        text: a.text,
+        round,
+      })),
     );
-  }
 
-  return { sufficient, round: round + 1 };
-});
+    // Fire USER_ANSWERED — machine → re_evaluating, round increments
+    actor.send({
+      type: "USER_ANSWERED",
+      answers: persistedAnswers.map((a) => ({
+        questionId: a.questionId,
+        text: a.text,
+        round: a.round,
+      })),
+    });
+
+    // Simple sufficiency heuristic: answers are sufficient if all are non-empty
+    // and this is round >= 1 (at least one full cycle). Extend with LLM judge later.
+    const allAnswered = rawAnswers.every((a) => a.text.trim().length > 0);
+    const sufficient = allAnswered && round >= 1;
+
+    // Load latest questions from context for the response
+    const currentQuestions = actor.getSnapshot().context.questions;
+
+    if (sufficient) {
+      actor.send({ type: "ANSWERS_SUFFICIENT", questions: currentQuestions });
+    } else {
+      actor.send({ type: "ANSWERS_INSUFFICIENT", questions: currentQuestions });
+    }
+
+    // If machine is now in generating state, fork the writer pipeline
+    const stateAfter = actor.getSnapshot().value as string;
+    if (stateAfter === "generating") {
+      yield* runGeneratingPipeline(sessionId).pipe(
+        Effect.tapError((e) =>
+          Effect.sync(() => console.error("[session-actor] generating pipeline error:", e)),
+        ),
+        Effect.forkDetach,
+      );
+    }
+
+    return { sufficient, round: round + 1 };
+  },
+  Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+);
 
 // ── Generating pipeline ────────────────────────────────────────────────────
 
@@ -282,101 +264,89 @@ export const submitAnswers = Effect.fn("agent/submitAnswers")(function* (
  * Run both writer passes (Brief + PRD), store in `outputs` table, fire OUTPUT_READY.
  * Invoked from the generating state — called after ANSWERS_SUFFICIENT or roundLimitReached.
  */
-export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(function* (
-  sessionId: string,
-) {
-  const actor = yield* getOrRestoreActor(sessionId);
+export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
+  function* (sessionId: string) {
+    const actor = yield* getOrRestoreActor(sessionId);
+    const db = yield* DatabaseService;
 
-  // Load the data the writers need
-  const summaries = yield* Effect.tryPromise({
-    try: () => getFinalSummariesBySession(sessionId),
-    catch: (cause) => new AnalysisPipelineError({ cause }),
-  });
+    const summaries = yield* db.getFinalSummariesBySession(sessionId);
+    const allAnswers = yield* db.getAnswersBySessionId(sessionId);
+    const allQuestions = yield* db.getQuestionsBySessionId(sessionId);
 
-  const allAnswers = yield* Effect.tryPromise({
-    try: () => getAnswersBySessionId(sessionId),
-    catch: (cause) => new AnalysisPipelineError({ cause }),
-  });
+    const answers: MachineContext["answers"] = allAnswers.map((a) => ({
+      questionId: a.questionId,
+      text: a.text,
+      round: a.round,
+    }));
 
-  const allQuestions = yield* Effect.tryPromise({
-    try: () => getQuestionsBySessionId(sessionId),
-    catch: (cause) => new AnalysisPipelineError({ cause }),
-  });
+    const questions: MachineContext["questions"] = allQuestions.map((q) => ({
+      id: q.id,
+      text: q.text,
+      rationale: q.rationale,
+      sourceDocuments: q.sourceDocuments,
+    }));
 
-  // Map to the shape the writers expect from MachineContext
-  const answers: MachineContext["answers"] = allAnswers.map((a) => ({
-    questionId: a.questionId,
-    text: a.text,
-    round: a.round,
-  }));
+    const outputVersion = actor.getSnapshot().context.outputVersion;
 
-  const questions: MachineContext["questions"] = allQuestions.map((q) => ({
-    id: q.id,
-    text: q.text,
-    rationale: q.rationale,
-    sourceDocuments: q.sourceDocuments,
-  }));
+    // Run both writer passes (prompt caching applies across both — same summaries)
+    const [briefText, prdText] = yield* Effect.all(
+      [
+        runBriefWriter(summaries, answers, questions).pipe(
+          Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+        ),
+        runPrdWriter(summaries, answers, questions).pipe(
+          Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+        ),
+      ],
+      { concurrency: 2 },
+    );
 
-  const outputVersion = actor.getSnapshot().context.outputVersion;
+    // Upload both outputs to S3 for presigned URL export (Rule 4 — file I/O via StorageAdapter)
+    const storage = yield* StorageAdapter;
+    const briefKey = `outputs/${sessionId}/project_brief_v${outputVersion}.md`;
+    const prdKey = `outputs/${sessionId}/implementation_prd_v${outputVersion}.md`;
 
-  // Run both writer passes (prompt caching applies across both — same summaries)
-  const [briefText, prdText] = yield* Effect.all(
-    [
-      runBriefWriter(summaries, answers, questions).pipe(
-        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-      ),
-      runPrdWriter(summaries, answers, questions).pipe(
-        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-      ),
-    ],
-    { concurrency: 2 },
-  );
+    yield* Effect.all(
+      [
+        storage
+          .upload(briefKey, Buffer.from(briefText, "utf-8"))
+          .pipe(Effect.mapError((cause) => new AnalysisPipelineError({ cause }))),
+        storage
+          .upload(prdKey, Buffer.from(prdText, "utf-8"))
+          .pipe(Effect.mapError((cause) => new AnalysisPipelineError({ cause }))),
+      ],
+      { concurrency: 2 },
+    );
 
-  // Upload both outputs to S3 for presigned URL export (Rule 4 — file I/O via StorageAdapter)
-  const storage = yield* StorageAdapter;
-  const briefKey = `outputs/${sessionId}/project_brief_v${outputVersion}.md`;
-  const prdKey   = `outputs/${sessionId}/implementation_prd_v${outputVersion}.md`;
+    // Store both outputs in DB with S3 key for download-url endpoint
+    yield* Effect.all([
+      db.createOutput({
+        sessionId,
+        type: "project_brief",
+        content: briefText,
+        version: outputVersion,
+        s3Key: briefKey,
+      }),
+      db.createOutput({
+        sessionId,
+        type: "implementation_prd",
+        content: prdText,
+        version: outputVersion,
+        s3Key: prdKey,
+      }),
+    ]);
 
-  yield* Effect.all([
-    storage.upload(briefKey, Buffer.from(briefText, "utf-8")).pipe(
-      Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-    ),
-    storage.upload(prdKey, Buffer.from(prdText, "utf-8")).pipe(
-      Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-    ),
-  ], { concurrency: 2 });
-
-  // Store both outputs in DB with S3 key for download-url endpoint
-  yield* Effect.tryPromise({
-    try: () =>
-      Promise.all([
-        createOutput({
-          sessionId,
-          type: "project_brief",
-          content: briefText,
-          version: outputVersion,
-          s3Key: briefKey,
-        }),
-        createOutput({
-          sessionId,
-          type: "implementation_prd",
-          content: prdText,
-          version: outputVersion,
-          s3Key: prdKey,
-        }),
-      ]),
-    catch: (cause) => new AnalysisPipelineError({ cause }),
-  });
-
-  // Fire OUTPUT_READY — machine → complete
-  actor.send({
-    type: "OUTPUT_READY",
-    outputs: {
-      projectBrief: briefText,
-      implementationPrd: prdText,
-    },
-  });
-});
+    // Fire OUTPUT_READY — machine → complete
+    actor.send({
+      type: "OUTPUT_READY",
+      outputs: {
+        projectBrief: briefText,
+        implementationPrd: prdText,
+      },
+    });
+  },
+  Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+);
 
 // ── Revision ───────────────────────────────────────────────────────────────
 
@@ -412,69 +382,79 @@ export const startRevision = Effect.fn("agent/startRevision")(function* (
  * Run the revision pipeline: load existing outputs + summaries, re-run both
  * writers with feedback, store new version, fire OUTPUT_READY.
  */
-export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(function* (
-  sessionId: string,
-) {
-  const actor = yield* getOrRestoreActor(sessionId);
-  const storage = yield* StorageAdapter;
+export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
+  function* (sessionId: string) {
+    const actor = yield* getOrRestoreActor(sessionId);
+    const storage = yield* StorageAdapter;
+    const db = yield* DatabaseService;
 
-  const summaries = yield* Effect.tryPromise({
-    try: () => getFinalSummariesBySession(sessionId),
-    catch: (cause) => new AnalysisPipelineError({ cause }),
-  });
+    const summaries = yield* db.getFinalSummariesBySession(sessionId);
 
-  // Load existing outputs
-  const [existingBriefRow, existingPrdRow] = yield* Effect.tryPromise({
-    try: () =>
-      Promise.all([
-        getLatestOutputByType(sessionId, "project_brief"),
-        getLatestOutputByType(sessionId, "implementation_prd"),
-      ]),
-    catch: (cause) => new AnalysisPipelineError({ cause }),
-  });
+    const [existingBriefRow, existingPrdRow] = yield* Effect.all(
+      [
+        db.getLatestOutputByType(sessionId, "project_brief"),
+        db.getLatestOutputByType(sessionId, "implementation_prd"),
+      ],
+      { concurrency: "unbounded" },
+    );
 
-  const existingBrief = existingBriefRow?.content ?? "";
-  const existingPrd   = existingPrdRow?.content ?? "";
+    const existingBrief = existingBriefRow?.content ?? "";
+    const existingPrd = existingPrdRow?.content ?? "";
 
-  const feedback = actor.getSnapshot().context.revisionFeedback ?? "";
-  const outputVersion = actor.getSnapshot().context.outputVersion;
+    const feedback = actor.getSnapshot().context.revisionFeedback ?? "";
+    const outputVersion = actor.getSnapshot().context.outputVersion;
 
-  // Re-run both writers with feedback
-  const [newBriefText, newPrdText] = yield* Effect.all(
-    [
-      runRevisionBriefWriter(summaries, existingBrief, existingPrd, feedback).pipe(
-        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-      ),
-      runRevisionPrdWriter(summaries, existingBrief, existingPrd, feedback).pipe(
-        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-      ),
-    ],
-    { concurrency: 2 },
-  );
+    const [newBriefText, newPrdText] = yield* Effect.all(
+      [
+        runRevisionBriefWriter(summaries, existingBrief, existingPrd, feedback).pipe(
+          Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+        ),
+        runRevisionPrdWriter(summaries, existingBrief, existingPrd, feedback).pipe(
+          Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+        ),
+      ],
+      { concurrency: 2 },
+    );
 
-  const briefKey = `outputs/${sessionId}/project_brief_v${outputVersion}.md`;
-  const prdKey   = `outputs/${sessionId}/implementation_prd_v${outputVersion}.md`;
+    const briefKey = `outputs/${sessionId}/project_brief_v${outputVersion}.md`;
+    const prdKey = `outputs/${sessionId}/implementation_prd_v${outputVersion}.md`;
 
-  yield* Effect.all([
-    storage.upload(briefKey, Buffer.from(newBriefText, "utf-8")).pipe(
-      Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-    ),
-    storage.upload(prdKey, Buffer.from(newPrdText, "utf-8")).pipe(
-      Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-    ),
-  ], { concurrency: 2 });
+    yield* Effect.all(
+      [
+        storage
+          .upload(briefKey, Buffer.from(newBriefText, "utf-8"))
+          .pipe(Effect.mapError((cause) => new AnalysisPipelineError({ cause }))),
+        storage
+          .upload(prdKey, Buffer.from(newPrdText, "utf-8"))
+          .pipe(Effect.mapError((cause) => new AnalysisPipelineError({ cause }))),
+      ],
+      { concurrency: 2 },
+    );
 
-  yield* Effect.tryPromise({
-    try: () =>
-      Promise.all([
-        createOutput({ sessionId, type: "project_brief",      content: newBriefText, version: outputVersion, s3Key: briefKey }),
-        createOutput({ sessionId, type: "implementation_prd", content: newPrdText,   version: outputVersion, s3Key: prdKey }),
-      ]),
-    catch: (cause) => new AnalysisPipelineError({ cause }),
-  });
+    yield* Effect.all(
+      [
+        db.createOutput({
+          sessionId,
+          type: "project_brief",
+          content: newBriefText,
+          version: outputVersion,
+          s3Key: briefKey,
+        }),
+        db.createOutput({
+          sessionId,
+          type: "implementation_prd",
+          content: newPrdText,
+          version: outputVersion,
+          s3Key: prdKey,
+        }),
+      ],
+      { concurrency: "unbounded" },
+    );
 
-  actor.send({
-    type: "OUTPUT_READY",
-    outputs: { projectBrief: newBriefText, implementationPrd: newPrdText },
-  });
-});
+    actor.send({
+      type: "OUTPUT_READY",
+      outputs: { projectBrief: newBriefText, implementationPrd: newPrdText },
+    });
+  },
+  Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+);

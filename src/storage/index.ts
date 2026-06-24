@@ -5,7 +5,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { config } from "../config.js";
+import { ConfigService } from "../config.js";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Context, Layer, Schema, Effect } from "effect";
 
@@ -55,114 +55,117 @@ export class StorageAdapter extends Context.Service<
     headObject(key: string): Effect.Effect<boolean, HeadObjectError>;
   }
 >()("shipwright/storage/StorageAdapter") {
-  static readonly layer = Layer.sync(StorageAdapter, () => {
-    const client = new S3Client({
-      endpoint: config.storage.endpoint,
-      credentials: {
-        accessKeyId: config.storage.accessKey,
-        secretAccessKey: config.storage.secretKey,
-      },
-      forcePathStyle: true,
-    });
-
-    const upload = Effect.fn("storage/upload")(function* (key: string, body: Buffer) {
-      const command = new PutObjectCommand({
-        Bucket: config.storage.bucket,
-        Key: key,
-        Body: body,
-      });
-
-      yield* Effect.tryPromise({
-        try: () => client.send(command),
-        catch(error) {
-          return new UploadError({ cause: error });
+  static readonly layer = Layer.effect(
+    StorageAdapter,
+    Effect.gen(function* () {
+      const config = yield* ConfigService;
+      const client = new S3Client({
+        endpoint: config.storage.endpoint,
+        credentials: {
+          accessKeyId: config.storage.accessKey,
+          secretAccessKey: config.storage.secretKey,
         },
+        forcePathStyle: true,
       });
-    });
 
-    const download = Effect.fn("storage/download")(
-      function* (key: string) {
-        const command = new GetObjectCommand({
+      const upload = Effect.fn("storage/upload")(function* (key: string, body: Buffer) {
+        const command = new PutObjectCommand({
+          Bucket: config.storage.bucket,
+          Key: key,
+          Body: body,
+        });
+
+        yield* Effect.tryPromise({
+          try: () => client.send(command),
+          catch(error) {
+            return new UploadError({ cause: error });
+          },
+        });
+      });
+
+      const download = Effect.fn("storage/download")(
+        function* (key: string) {
+          const command = new GetObjectCommand({
+            Bucket: config.storage.bucket,
+            Key: key,
+          });
+
+          return yield* Effect.tryPromise({
+            try: () => client.send(command),
+            catch: (error) =>
+              new DownloadError({
+                cause: error,
+                message: "Error sending download command to s3",
+              }),
+          });
+        },
+        Effect.andThen((rawData) => Effect.fromNullishOr(rawData.Body)),
+        Effect.andThen((body) =>
+          Effect.tryPromise({
+            try: () => body.transformToByteArray(),
+            catch: (cause) =>
+              new DownloadError({ cause, message: "Error transforming to byte array" }),
+          }),
+        ),
+        Effect.map((a) => Buffer.from(a)),
+        Effect.catchTag("NoSuchElementError", (cause) =>
+          Effect.fail(new DownloadError({ cause, message: "No body found on the data from s3" })),
+        ),
+      );
+
+      const downloadPartialObject = Effect.fn("storage/downloadPartialObject")(
+        function* (key: string, length: number) {
+          const command = new GetObjectCommand({
+            Bucket: config.storage.bucket,
+            Key: key,
+            Range: `bytes=0-${length}`,
+          });
+          return yield* Effect.tryPromise({
+            try: () => client.send(command),
+            catch: (cause) => new DownloadError({ cause }),
+          });
+        },
+        Effect.andThen((rawData) => Effect.fromNullishOr(rawData.Body)),
+        Effect.andThen((body) =>
+          Effect.tryPromise({
+            try: () => body.transformToByteArray(),
+            catch: (cause) =>
+              new DownloadError({ cause, message: "Error transforming to byte array" }),
+          }),
+        ),
+        Effect.catchTag("NoSuchElementError", (cause) =>
+          Effect.fail(new DownloadError({ cause, message: "No body found on the data from s3" })),
+        ),
+      );
+
+      const remove = Effect.fn("storage/delete")(function* (key: string) {
+        const command = new DeleteObjectCommand({
           Bucket: config.storage.bucket,
           Key: key,
         });
-
         return yield* Effect.tryPromise({
           try: () => client.send(command),
-          catch: (error) =>
-            new DownloadError({
-              cause: error,
-              message: "Error sending download command to s3",
-            }),
+          catch: (cause) => new DeleteError({ cause }),
         });
-      },
-      Effect.andThen((rawData) => Effect.fromNullishOr(rawData.Body)),
-      Effect.andThen((body) =>
-        Effect.tryPromise({
-          try: () => body.transformToByteArray(),
-          catch: (cause) =>
-            new DownloadError({ cause, message: "Error transforming to byte array" }),
-        }),
-      ),
-      Effect.map((a) => Buffer.from(a)),
-      Effect.catchTag("NoSuchElementError", (cause) =>
-        Effect.fail(new DownloadError({ cause, message: "No body found on the data from s3" })),
-      ),
-    );
+      });
 
-    const downloadPartialObject = Effect.fn("storage/downloadPartialObject")(
-      function* (key: string, length: number) {
-        const command = new GetObjectCommand({
+      const generatePresignedUrl = Effect.fn("storage/generatePresignedUrl")(function* (
+        key: string,
+        mimeType: string,
+        ttlInMins: number,
+      ) {
+        const command = new PutObjectCommand({
           Bucket: config.storage.bucket,
           Key: key,
-          Range: `bytes=0-${length}`,
+          ContentType: mimeType,
         });
-        return yield* Effect.tryPromise({
-          try: () => client.send(command),
-          catch: (cause) => new DownloadError({ cause }),
+
+        const result = yield* Effect.tryPromise({
+          try: () => getSignedUrl(client, command, { expiresIn: ttlInMins * 60 }),
+          catch: (cause) => new PresignedUrlError({ cause }),
         });
-      },
-      Effect.andThen((rawData) => Effect.fromNullishOr(rawData.Body)),
-      Effect.andThen((body) =>
-        Effect.tryPromise({
-          try: () => body.transformToByteArray(),
-          catch: (cause) =>
-            new DownloadError({ cause, message: "Error transforming to byte array" }),
-        }),
-      ),
-      Effect.catchTag("NoSuchElementError", (cause) =>
-        Effect.fail(new DownloadError({ cause, message: "No body found on the data from s3" })),
-      ),
-    );
-
-    const remove = Effect.fn("storage/delete")(function* (key: string) {
-      const command = new DeleteObjectCommand({
-        Bucket: config.storage.bucket,
-        Key: key,
+        return result;
       });
-      return yield* Effect.tryPromise({
-        try: () => client.send(command),
-        catch: (cause) => new DeleteError({ cause }),
-      });
-    });
-
-    const generatePresignedUrl = Effect.fn("storage/generatePresignedUrl")(function* (
-      key: string,
-      mimeType: string,
-      ttlInMins: number,
-    ) {
-      const command = new PutObjectCommand({
-        Bucket: config.storage.bucket,
-        Key: key,
-        ContentType: mimeType,
-      });
-
-      const result = yield* Effect.tryPromise({
-        try: () => getSignedUrl(client, command, { expiresIn: ttlInMins * 60 }),
-        catch: (cause) => new PresignedUrlError({ cause }),
-      });
-      return result;
-    });
 
       const generatePresignedGetUrl = Effect.fn("storage/generatePresignedGetUrl")(function* (
         key: string,
@@ -180,29 +183,30 @@ export class StorageAdapter extends Context.Service<
       });
 
       const headObject = Effect.fn("storage/headObject")(
-      function* (key: string) {
-        const command = new HeadObjectCommand({
-          Bucket: config.storage.bucket,
-          Key: key,
-        });
-        return yield* Effect.tryPromise({
-          try: () => client.send(command),
-          catch: (cause) => new HeadObjectError({ cause }),
-        });
-      },
-      Effect.map(() => true),
-      Effect.catch((error) => {
-        if (
-          error instanceof Error &&
-          (error.name === "NotFound" ||
-            error.name === "NoSuchKey" ||
-            ("$metadata" in error && [403, 404].includes((error as any).$metadata?.httpStatusCode)))
-        ) {
-          return Effect.succeed(false);
-        }
-        return Effect.fail(new HeadObjectError({ cause: error }));
-      }),
-    );
+        function* (key: string) {
+          const command = new HeadObjectCommand({
+            Bucket: config.storage.bucket,
+            Key: key,
+          });
+          return yield* Effect.tryPromise({
+            try: () => client.send(command),
+            catch: (cause) => new HeadObjectError({ cause }),
+          });
+        },
+        Effect.map(() => true),
+        Effect.catch((error) => {
+          if (
+            error instanceof Error &&
+            (error.name === "NotFound" ||
+              error.name === "NoSuchKey" ||
+              ("$metadata" in error &&
+                [403, 404].includes((error as any).$metadata?.httpStatusCode)))
+          ) {
+            return Effect.succeed(false);
+          }
+          return Effect.fail(new HeadObjectError({ cause: error }));
+        }),
+      );
 
       return StorageAdapter.of({
         upload,
@@ -213,7 +217,8 @@ export class StorageAdapter extends Context.Service<
         generatePresignedGetUrl,
         headObject,
       });
-  });
+    }),
+  ).pipe(Layer.provide(ConfigService.layer));
 }
 
 export type StorageAdapterService = StorageAdapter["Service"];

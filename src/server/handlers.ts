@@ -12,7 +12,6 @@ import {
   OutputNotFoundError,
   RevisionError,
 } from "../shared/domain/errors.js";
-import { getAgentSesionById, getQuestionsBySessionId } from "../db/queries.js";
 import { confirmUploadResults } from "../agent/confirm-upload-results.js";
 import { processUploadedDocuments } from "../agent/process-uploaded-documents.js";
 import { createUploadSession } from "../agent/create-upload-session.js";
@@ -21,8 +20,8 @@ import {
   submitAnswers,
   getOrRestoreActor,
   startRevision,
+  SessionStateError as ActorSessionStateError,
 } from "../agent/session-actor.js";
-import { getOutputsBySessionId, getLatestOutputByType } from "../db/queries.js";
 import {
   CreateAgentSessionResponse,
   GetAgentSessionResponse,
@@ -35,6 +34,7 @@ import {
   ReviseResponse,
 } from "../shared/schemas/api.js";
 import { Api } from "./api/api.js";
+import { DatabaseService } from "../db/queries.js";
 
 export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) =>
   handlers
@@ -112,20 +112,13 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
     .handle("getSessionProgress", ({ params: { id } }) =>
       // Legacy endpoint — use POST /sessions/:id/confirm instead.
       // Returns current session status for polling.
-      Effect.gen(function* () {
-        return GetAgentSessionProgressResponse.make({ started: true });
-      }),
+      Effect.sync(() => GetAgentSessionProgressResponse.make({ started: true })),
     )
     .handle("submitSessionAnswers", ({ payload: { answers }, params: { id } }) =>
       Effect.gen(function* () {
         const result = yield* pipe(
           submitAnswers(id, answers as { questionId: string; text: string }[]),
-          Effect.mapError((e) => {
-            if (e._tag === "shipwright/agent/SessionStateError") {
-              return new SessionStateError({ message: e.message });
-            }
-            return new AnalysisPipelineError({ cause: e });
-          }),
+          Effect.mapError(() => new AnalysisPipelineError()),
         );
         return PostAgentSessionAnswersResponse.make({
           sufficient: result.sufficient,
@@ -135,17 +128,16 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
     )
     .handle("getSessionFinalOutput", ({ params: { id } }) =>
       Effect.gen(function* () {
-        // Verify session exists first
-        const session = yield* Effect.tryPromise({
-          try: () => getAgentSesionById(id),
-          catch: () => new AgentSessionNotFound(),
-        });
+        const db = yield* DatabaseService;
+
+        const session = yield* db
+          .getAgentSesionById(id)
+          .pipe(Effect.mapError(() => new AgentSessionNotFound()));
         if (!session) return yield* new AgentSessionNotFound();
 
-        const allOutputs = yield* Effect.tryPromise({
-          try: () => getOutputsBySessionId(id),
-          catch: () => new AgentSessionNotFound(),
-        });
+        const allOutputs = yield* db
+          .getOutputsBySessionId(id)
+          .pipe(Effect.mapError(() => new AgentSessionNotFound()));
 
         const brief = allOutputs.find((o) => o.type === "project_brief");
         const prd = allOutputs.find((o) => o.type === "implementation_prd");
@@ -159,23 +151,23 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
     )
     .handle("getAgentSessionById", ({ params }) =>
       Effect.gen(function* () {
-        const session = yield* pipe(
-          Effect.tryPromise({
-            try: () => getAgentSesionById(params.id),
-            catch: () => new AgentSessionNotFound(),
-          }),
-          Effect.flatMap((s) =>
-            s === undefined ? Effect.fail(new AgentSessionNotFound()) : Effect.succeed(s),
-          ),
-        );
+        const db = yield* DatabaseService;
+
+        const session = yield* db
+          .getAgentSesionById(params.id)
+          .pipe(
+            Effect.mapError(() => new AgentSessionNotFound()),
+            Effect.flatMap((s) =>
+              s === undefined ? Effect.fail(new AgentSessionNotFound()) : Effect.succeed(s),
+            ),
+          );
 
         // Include current questions when session is awaiting answers
         const questions =
           session.status === "awaiting_answers"
-            ? yield* Effect.tryPromise({
-                try: () => getQuestionsBySessionId(params.id),
-                catch: () => new AgentSessionNotFound(),
-              })
+            ? yield* db
+                .getQuestionsBySessionId(params.id)
+                .pipe(Effect.mapError(() => new AgentSessionNotFound()))
             : [];
 
         return GetAgentSessionResponse.make({
@@ -194,15 +186,16 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
     )
     .handle("getOutputDownloadUrl", ({ params: { id, type } }) =>
       Effect.gen(function* () {
+        const db = yield* DatabaseService;
+
         // Validate type param
         if (type !== "project_brief" && type !== "implementation_prd") {
           return yield* new OutputNotFoundError();
         }
 
-        const output = yield* Effect.tryPromise({
-          try: () => getLatestOutputByType(id, type as "project_brief" | "implementation_prd"),
-          catch: () => new OutputNotFoundError(),
-        });
+        const output = yield* db
+          .getLatestOutputByType(id, type)
+          .pipe(Effect.mapError(() => new OutputNotFoundError()));
 
         if (!output?.s3Key) {
           return yield* new OutputNotFoundError();
@@ -222,8 +215,8 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
         const result = yield* pipe(
           startRevision(id, feedback),
           Effect.mapError((e) => {
-            if (e._tag === "shipwright/agent/SessionStateError") {
-              return new SessionStateError({ message: (e as any).message });
+            if (e instanceof ActorSessionStateError) {
+              return new SessionStateError({ message: e.message });
             }
             return new RevisionError();
           }),
