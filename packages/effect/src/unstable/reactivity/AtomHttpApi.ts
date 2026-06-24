@@ -82,7 +82,7 @@ export interface AtomHttpApiClient<Self, Id extends string, Groups extends HttpA
           readonly reactivityKeys?: ReadonlyArray<unknown> | ReadonlyRecord<string, ReadonlyArray<unknown>> | undefined
         }
       >,
-      ResponseByMode<_Success["Type"], ResponseMode>,
+      ResponseByMode<Extract<_Success, Schema.Top>["Type"], ResponseMode>,
       ErrorByMode<_Error, _Middleware, ResponseMode>
     >
     : never
@@ -140,7 +140,7 @@ export interface AtomHttpApiClient<Self, Id extends string, Groups extends HttpA
     >
   ] ? Atom.Atom<
       AsyncResult.AsyncResult<
-        ResponseByMode<_Success["Type"], ResponseMode>,
+        ResponseByMode<Extract<_Success, Schema.Top>["Type"], ResponseMode>,
         ErrorByMode<_Error, _Middleware, ResponseMode>
       >
     >
@@ -343,7 +343,7 @@ type ResponseByMode<Success, ResponseMode extends HttpApiEndpoint.ClientResponse
   : Success
 
 type ErrorByMode<
-  Error extends Schema.Top,
+  Error extends Schema.Constraint,
   Middleware,
   ResponseMode extends HttpApiEndpoint.ClientResponseMode
 > =

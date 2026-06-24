@@ -46,7 +46,7 @@ import type * as Tool from "./Tool.ts"
  * enabling persistent conversational AI interactions with full context
  * management.
  *
- * **Example** (Using the Chat service)
+ * **Example** (Accessing the Chat service)
  *
  * ```ts
  * import { Effect } from "effect"
@@ -336,7 +336,7 @@ export interface Service {
    */
   readonly generateObject: <
     ObjectEncoded extends Record<string, any>,
-    ObjectSchema extends Schema.Encoder<ObjectEncoded, unknown>,
+    ObjectSchema extends Schema.Codec<unknown, ObjectEncoded, unknown, unknown>,
     Options extends NoExcessProperties<LanguageModel.GenerateObjectOptions<any, ObjectSchema>, Options>
   >(
     options: Options & LanguageModel.GenerateObjectOptions<LanguageModel.ExtractTools<Options>, ObjectSchema>
