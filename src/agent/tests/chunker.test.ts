@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { chunkDocument, type ChunkResult } from "./chunker.js";
+import { chunkDocument, type ChunkResult } from "../chunker.js";
 
 // minChunkSize: 0 disables the merge guard — tests that explicitly test merging
 // set their own minChunkSize via the config override.
@@ -247,7 +247,12 @@ describe("chunkDocument", () => {
       const longPage = "a".repeat(60);
       const shortPage = "tiny";
       const result = chunkDocument(
-        { type: "pdf", pages: [longPage, shortPage], text: `${longPage}\n\n${shortPage}`, filename: "" },
+        {
+          type: "pdf",
+          pages: [longPage, shortPage],
+          text: `${longPage}\n\n${shortPage}`,
+          filename: "",
+        },
         { chunkSize: 80, overlap: 0, minChunkSize: 10 },
       );
       const joined = contents(result).join(" ");

@@ -50,9 +50,6 @@ importers:
       pg:
         specifier: ^8.22.0
         version: 8.22.0
-      postgres:
-        specifier: ^3.4.9
-        version: 3.4.9
       react:
         specifier: 19.2.6
         version: 19.2.6
@@ -3335,7 +3332,8 @@ snapshots:
 
   postgres-range@1.1.4: {}
 
-  postgres@3.4.9: {}
+  postgres@3.4.9:
+    optional: true
 
   process-nextick-args@2.0.1: {}
 

@@ -13,21 +13,29 @@ import { config } from "dotenv";
 
 config({ path: resolve(process.cwd(), ".env") });
 
-import { db } from "../db/index.js";
 import {
   agentSessions,
   questions as questionsTable,
   answers as answersTable,
-} from "../db/schema.js";
+} from "../../db/schema.js";
 import { eq, count } from "drizzle-orm";
-import { createAgentSession, createDocument, createChunks } from "../db/queries.js";
-import { parseDocument } from "./parsers.js";
-import { estimateTokenCount } from "./estimate-token-count.js";
-import { Layer, ManagedRuntime } from "effect";
-import { StorageAdapter } from "../storage/index.js";
-import { ConfigService } from "../config.js";
+import { DatabaseService } from "../../db/queries.js";
+import { DB, AppDBLiveLayer } from "../../db/index.js";
+import { parseDocument } from "../parsers.js";
+import { estimateTokenCount } from "../estimate-token-count.js";
+import { Effect, Layer, ManagedRuntime, pipe } from "effect";
+import { StorageAdapter } from "../../storage/index.js";
+import { ConfigService } from "../../config.js";
 
-const runtime = ManagedRuntime.make(Layer.provideMerge(StorageAdapter.layer, ConfigService.layer));
+const runtime = ManagedRuntime.make(
+  pipe(
+    Layer.mergeAll(StorageAdapter.layer, DatabaseService.layer, AppDBLiveLayer),
+    Layer.provide(ConfigService.layer),
+  ),
+);
+
+const runDb = (effect: Effect.Effect<any, any, DatabaseService>) => runtime.runPromise(effect);
+const runRaw = (effect: Effect.Effect<any, any, DB>) => runtime.runPromise(effect);
 
 const BASE = "http://localhost:3000/api";
 const CORPUS = resolve(process.cwd(), "docs/test_corpus");
@@ -94,34 +102,44 @@ const corpusFiles = [
   { filename: "discovery_call_transcript.txt", documentType: "transcript" as const },
 ];
 
-const session = await createAgentSession({ status: "processing" });
+const session = await runDb(
+  Effect.flatMap(DatabaseService, (svc) => svc.createAgentSession({ status: "processing" })),
+);
 const sessionId = session.id;
 
 for (const { filename, documentType } of corpusFiles) {
   const buffer = await readFile(resolve(CORPUS, filename));
   const parsed = await runtime.runPromise(parseDocument(buffer, filename));
 
-  const doc = await createDocument({
-    sessionId,
-    filename,
-    documentType,
-    mimeType: "text/plain",
-    sizeBytes: buffer.length,
-    status: "ready",
-    tokenCount: estimateTokenCount(parsed.text),
-  });
+  const doc = await runDb(
+    Effect.flatMap(DatabaseService, (svc) =>
+      svc.createDocument({
+        sessionId,
+        filename,
+        documentType,
+        mimeType: "text/plain",
+        sizeBytes: buffer.length,
+        status: "ready",
+        tokenCount: estimateTokenCount(parsed.text),
+      }),
+    ),
+  );
 
-  await createChunks([
-    {
-      sessionId,
-      documentId: doc.id,
-      documentType,
-      content: parsed.text,
-      chunkIndex: 0,
-      charOffset: 0,
-      embedding: new Array(1536).fill(0),
-    },
-  ]);
+  await runDb(
+    Effect.flatMap(DatabaseService, (svc) =>
+      svc.createChunks([
+        {
+          sessionId,
+          documentId: doc.id,
+          documentType,
+          content: parsed.text,
+          chunkIndex: 0,
+          charOffset: 0,
+          embedding: new Array(1536).fill(0),
+        },
+      ]),
+    ),
+  );
 }
 
 ok(`Session created with ${corpusFiles.length} documents + chunks: ${sessionId}`);
@@ -137,7 +155,6 @@ if (confirmRes.status === 200 && (confirmRes.body as any)?.started === true) {
   process.exit(1);
 }
 
-// Verify machine advanced (should be analyzing or beyond now)
 await new Promise((r) => setTimeout(r, 500));
 const stateCheck = await req("GET", `/sessions/${sessionId}`);
 const stateAfterConfirm = (stateCheck.body as any)?.status;
@@ -161,7 +178,7 @@ if (!awaitingSession) {
     "Session never reached awaiting_answers",
     `final status: ${(finalCheck.body as any)?.status}`,
   );
-  await db.delete(agentSessions).where(eq(agentSessions.id, sessionId));
+  await runDb(Effect.flatMap(DatabaseService, (svc) => svc.deleteAgentSession(sessionId)));
   process.exit(1);
 }
 ok("Session reached awaiting_answers");
@@ -177,7 +194,11 @@ if (sessionQuestions.length >= 3 && sessionQuestions.length <= 7) {
 // ── 4. Persistence checks ────────────────────────────────────────────────────
 console.log("\n4. Persistence checks");
 
-const [sessionRow] = await db.select().from(agentSessions).where(eq(agentSessions.id, sessionId));
+const [sessionRow] = await runRaw(
+  Effect.flatMap(DB, (db) =>
+    db.select().from(agentSessions).where(eq(agentSessions.id, sessionId)),
+  ),
+);
 
 if (sessionRow.xstateSnapshot) {
   ok("xstateSnapshot is non-null in DB after transitions");
@@ -192,10 +213,14 @@ if (snap?.context?.round === 0) {
   fail("round unexpected before answers", snap?.context?.round);
 }
 
-const [{ value: qCount }] = await db
-  .select({ value: count() })
-  .from(questionsTable)
-  .where(eq(questionsTable.sessionId, sessionId));
+const [{ value: qCount }] = await runRaw(
+  Effect.flatMap(DB, (db) =>
+    db
+      .select({ value: count() })
+      .from(questionsTable)
+      .where(eq(questionsTable.sessionId, sessionId)),
+  ),
+);
 if (Number(qCount) >= 3) {
   ok(`Questions persisted to questions table (${qCount} rows)`);
 } else {
@@ -220,12 +245,12 @@ if (answersRes1.status === 200) {
   fail("POST /sessions/:id/answers", JSON.stringify(answersRes1));
 }
 
-// Brief wait for the async snapshot write to commit before reading
 await new Promise((r) => setTimeout(r, 300));
-const [sessionAfter1] = await db
-  .select()
-  .from(agentSessions)
-  .where(eq(agentSessions.id, sessionId));
+const [sessionAfter1] = await runRaw(
+  Effect.flatMap(DB, (db) =>
+    db.select().from(agentSessions).where(eq(agentSessions.id, sessionId)),
+  ),
+);
 const round1 = (sessionAfter1.xstateSnapshot as any)?.context?.round;
 if (round1 === 1) {
   ok("round incremented to 1 in xstateSnapshot");
@@ -233,10 +258,11 @@ if (round1 === 1) {
   fail("round did not increment to 1", round1);
 }
 
-const [{ value: aCount }] = await db
-  .select({ value: count() })
-  .from(answersTable)
-  .where(eq(answersTable.sessionId, sessionId));
+const [{ value: aCount }] = await runRaw(
+  Effect.flatMap(DB, (db) =>
+    db.select({ value: count() }).from(answersTable).where(eq(answersTable.sessionId, sessionId)),
+  ),
+);
 if (Number(aCount) >= answers1.length) {
   ok(`Answers persisted to answers table (${aCount} rows)`);
 } else {
@@ -263,10 +289,11 @@ if (status2 === "awaiting_answers") {
   }
 
   await new Promise((r) => setTimeout(r, 500));
-  const [sessionAfter2] = await db
-    .select()
-    .from(agentSessions)
-    .where(eq(agentSessions.id, sessionId));
+  const [sessionAfter2] = await runRaw(
+    Effect.flatMap(DB, (db) =>
+      db.select().from(agentSessions).where(eq(agentSessions.id, sessionId)),
+    ),
+  );
   const round2 = (sessionAfter2.xstateSnapshot as any)?.context?.round;
   if (round2 === 2) {
     ok("round incremented to 2");
@@ -285,13 +312,10 @@ if (status2 === "awaiting_answers") {
   ok(`Answers sufficient on round 1 — machine at: ${status2}`);
 }
 
-// ── 7. Server restart recovery ───────────────────────────────────────────────
-// (Manual step — see gate instructions below)
-
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
 
-await db.delete(agentSessions).where(eq(agentSessions.id, sessionId));
+await runDb(Effect.flatMap(DatabaseService, (svc) => svc.deleteAgentSession(sessionId)));
 console.log("Test session cleaned up.");
 
 process.exit(failed > 0 ? 1 : 0);

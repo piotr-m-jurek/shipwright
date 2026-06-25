@@ -1,11 +1,8 @@
 import { describe, it, expect, afterAll, vi } from "vitest";
-import { Layer, pipe } from "effect";
+import { Effect, Layer, pipe } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { S3Client, PutObjectCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
-import { eq } from "drizzle-orm";
-import { db } from "../db/index.js";
-import { agentSessions, chunks, documents } from "../db/schema.js";
 import { config } from "../config.js";
 import { ConfigService } from "../config.js";
 import { StorageAdapter } from "../storage/index.js";
@@ -27,11 +24,8 @@ vi.mock("../agent/embedder.js", async () => {
 // Test handler setup
 // ---------------------------------------------------------------------------
 
-// Build the same route layer as the server but without NodeHttpServer or
-// StaticFiles — those are not needed for API tests.
-// HttpRouter.toWebHandler provides HttpServer internally; we supply the
-// platform services (FileSystem, Path, HttpPlatform, Etag.Generator) via
-// NodeHttpServer.layerHttpServices.
+const DbLayer = pipe(DatabaseService.layer, Layer.provide(ConfigService.layer));
+
 const TestRoutes = pipe(
   ApiRoute,
   Layer.provide(NodeHttpServer.layerHttpServices),
@@ -49,6 +43,10 @@ afterAll(() => dispose());
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function runDb<A>(effect: Effect.Effect<A, unknown, DatabaseService>) {
+  return Effect.runPromise(Effect.provide(effect, DbLayer));
+}
 
 async function post(path: string, body: unknown) {
   return handler(
@@ -103,7 +101,7 @@ const createdSessionIds: string[] = [];
 
 afterAll(async () => {
   for (const id of createdSessionIds) {
-    await db.delete(agentSessions).where(eq(agentSessions.id, id));
+    await runDb(Effect.flatMap(DatabaseService, (db) => db.deleteAgentSession(id)));
   }
 });
 
@@ -169,13 +167,12 @@ describe("POST /api/sessions/upload-url", () => {
     const body = await res.json();
     createdSessionIds.push(body.sessionId);
 
-    const [session] = await db
-      .select()
-      .from(agentSessions)
-      .where(eq(agentSessions.id, body.sessionId));
+    const session = await runDb(
+      Effect.flatMap(DatabaseService, (db) => db.getAgentSesionById(body.sessionId)),
+    );
 
     expect(session).toBeDefined();
-    expect(session.status).toBe("uploading");
+    expect(session?.status).toBe("uploading");
   });
 
   it("creates document records in the DB", async () => {
@@ -199,7 +196,9 @@ describe("POST /api/sessions/upload-url", () => {
     const body = await res.json();
     createdSessionIds.push(body.sessionId);
 
-    const docs = await db.select().from(documents).where(eq(documents.sessionId, body.sessionId));
+    const docs = await runDb(
+      Effect.flatMap(DatabaseService, (db) => db.getDocumentsBySessionId(body.sessionId)),
+    );
 
     expect(docs).toHaveLength(2);
     expect(docs.map((d) => d.filename)).toContain("doc1.txt");
@@ -286,7 +285,9 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
     // Wait for async processing (forkDetach)
     await new Promise((resolve) => setTimeout(resolve, 8000));
 
-    const sessionChunks = await db.select().from(chunks).where(eq(chunks.sessionId, sessionId));
+    const sessionChunks = await runDb(
+      Effect.flatMap(DatabaseService, (db) => db.getChunksBySessionId(sessionId)),
+    );
 
     expect(sessionChunks.length).toBeGreaterThan(0);
     expect(sessionChunks.every((c) => c.embedding !== null)).toBe(true);
@@ -320,9 +321,11 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
     // Wait for async processing (forkDetach)
     await new Promise((resolve) => setTimeout(resolve, 8000));
 
-    const [doc] = await db.select().from(documents).where(eq(documents.sessionId, sessionId));
+    const docs = await runDb(
+      Effect.flatMap(DatabaseService, (db) => db.getDocumentsBySessionId(sessionId)),
+    );
 
-    expect(doc.tokenCount).toBeGreaterThan(0);
+    expect(docs[0]?.tokenCount).toBeGreaterThan(0);
   }, 20000);
 });
 

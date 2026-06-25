@@ -24,31 +24,25 @@ import { config } from "dotenv";
 
 config({ path: resolve(process.cwd(), ".env") });
 
-import { Layer, ManagedRuntime } from "effect";
-import { runChallenger } from "./challenger.js";
-import { parseDocument } from "./parsers.js";
-import { summarizeAllDocuments } from "./summarizer.js";
-import { estimateTokenCount } from "./estimate-token-count.js";
-import {
-  createAgentSession,
-  createDocument,
-  createChunks,
-  getFinalSummariesBySession,
-  DatabaseService,
-} from "../db/queries.js";
-import { StorageAdapter } from "../storage/index.js";
-import { db } from "../db/index.js";
-import { agentSessions } from "../db/schema.js";
-import { eq } from "drizzle-orm";
-import { ConfigService } from "../config.js";
+import { Effect, Layer, ManagedRuntime, pipe } from "effect";
+import { runChallenger } from "../challenger.js";
+import { parseDocument } from "../parsers.js";
+import { summarizeAllDocuments } from "../summarizer.js";
+import { estimateTokenCount } from "../estimate-token-count.js";
+import { DatabaseService } from "../../db/queries.js";
+import { StorageAdapter } from "../../storage/index.js";
+import { ConfigService } from "../../config.js";
 
 const runtime = ManagedRuntime.make(
-  Layer.mergeAll(StorageAdapter.layer, ConfigService.layer, DatabaseService.layer) as Layer.Layer<
-    StorageAdapter | ConfigService | DatabaseService,
-    never,
-    never
-  >,
+  pipe(
+    Layer.mergeAll(StorageAdapter.layer, DatabaseService.layer),
+    Layer.provide(ConfigService.layer),
+  ),
 );
+
+function runDb<A>(effect: Effect.Effect<A, any, DatabaseService>): Promise<A> {
+  return runtime.runPromise(effect);
+}
 
 const CORPUS_DIR = resolve(process.cwd(), "docs/test_corpus");
 
@@ -66,52 +60,57 @@ const CORPUS_FILES: {
 async function main() {
   console.log("Setting up test session...");
 
-  // Create a session
-  const session = await createAgentSession({ status: "processing" });
+  const session = await runDb(
+    Effect.flatMap(DatabaseService, (svc) => svc.createAgentSession({ status: "processing" })),
+  );
   const sessionId = session.id;
   console.log(`Session: ${sessionId}`);
 
   try {
-    // Parse each file, insert document + one chunk per document into DB
     console.log("\nParsing corpus and inserting records...");
     for (const { filename, documentType } of CORPUS_FILES) {
       const buffer = await readFile(resolve(CORPUS_DIR, filename));
       const parsed = await runtime.runPromise(parseDocument(buffer, filename));
 
-      const doc = await createDocument({
-        sessionId,
-        filename,
-        documentType,
-        mimeType: "text/plain",
-        sizeBytes: buffer.length,
-        status: "ready",
-        tokenCount: estimateTokenCount(parsed.text),
-      });
+      const doc = await runDb(
+        Effect.flatMap(DatabaseService, (svc) =>
+          svc.createDocument({
+            sessionId,
+            filename,
+            documentType,
+            mimeType: "text/plain",
+            sizeBytes: buffer.length,
+            status: "ready",
+            tokenCount: estimateTokenCount(parsed.text),
+          }),
+        ),
+      );
 
-      // Insert the full parsed text as a single chunk (bypasses embedder —
-      // summarizer reads chunks from DB, not embeddings)
-      await createChunks([
-        {
-          sessionId,
-          documentId: doc.id,
-          documentType,
-          content: parsed.text,
-          chunkIndex: 0,
-          charOffset: 0,
-          // embedding is required by the schema — use a zero vector for the test
-          embedding: Array.from<number>({ length: 1536 }).fill(0),
-        },
-      ]);
+      await runDb(
+        Effect.flatMap(DatabaseService, (svc) =>
+          svc.createChunks([
+            {
+              sessionId,
+              documentId: doc.id,
+              documentType,
+              content: parsed.text,
+              chunkIndex: 0,
+              charOffset: 0,
+              embedding: Array.from<number>({ length: 1536 }).fill(0),
+            },
+          ]),
+        ),
+      );
 
       console.log(`  ✓ ${filename} (${parsed.text.length} chars)`);
     }
 
-    // Run summarizer
     console.log("\nRunning summarizer...");
     await runtime.runPromise(summarizeAllDocuments(sessionId));
 
-    // Verify DB gate
-    const finals = await getFinalSummariesBySession(sessionId);
+    const finals = await runDb(
+      Effect.flatMap(DatabaseService, (svc) => svc.getFinalSummariesBySession(sessionId)),
+    );
 
     console.log("\n── SUMMARIZER OUTPUT ───────────────────────────────────────");
     console.log(`Final summaries in DB: ${finals.length}`);
@@ -138,7 +137,6 @@ async function main() {
       );
     });
 
-    // Run challenger
     console.log("\nRunning Challenger...");
     const gapReport = await runtime.runPromise(runChallenger(finals));
 
@@ -162,10 +160,8 @@ async function main() {
       console.error("❌ GATE FAIL: No gaps found");
     }
 
-    // ── Planted issue checks ───────────────────────────────────────────────
     console.log("\n── PLANTED ISSUE CHECKS ────────────────────────────────────");
 
-    // Issue 1: mobile scope conflict (prd_draft.md vs transcript)
     const mobileConflict = gapReport.conflicts.some(
       (c) =>
         (c.documentA.includes("prd_draft") || c.documentB.includes("prd_draft")) &&
@@ -178,9 +174,6 @@ async function main() {
         : "❌ Issue 1 MISSING: mobile scope conflict not surfaced",
     );
 
-    // Issue 2: EU data residency buried in rfp.md
-    // Checks requirements, constraints, AND assumptions — the summarizer may classify it
-    // in any of these depending on phrasing. Also checks gaps, conflicts, ambiguities.
     const euResidency =
       finals.some(
         (s) =>
@@ -209,7 +202,6 @@ async function main() {
         : "❌ Issue 2 MISSING: EU data residency not surfaced from rfp.md",
     );
 
-    // Issue 3: delegation gap
     const delegationGap =
       gapReport.gaps.some((g) => g.description.toLowerCase().includes("delegat")) ||
       gapReport.conflicts.some((c) => c.description.toLowerCase().includes("delegat")) ||
@@ -220,7 +212,6 @@ async function main() {
         : "❌ Issue 3 MISSING: delegation acceptance criteria gap not surfaced",
     );
 
-    // Issue 4: notification channel ambiguity
     const notificationAmbiguity =
       gapReport.ambiguities.some((a) => a.description.toLowerCase().includes("notif")) ||
       gapReport.gaps.some((g) => g.description.toLowerCase().includes("notif")) ||
@@ -231,7 +222,6 @@ async function main() {
         : "❌ Issue 4 MISSING: notification channel ambiguity not surfaced",
     );
 
-    // Issue 5: SSO conflict (prd_draft.md vs hr_requirements.pdf)
     const ssoConflict = gapReport.conflicts.some(
       (c) =>
         (c.documentA.includes("prd_draft") || c.documentB.includes("prd_draft")) &&
@@ -260,7 +250,6 @@ async function main() {
       console.log("✓ All planted issues surfaced — Phase 3 gate criteria met.");
     }
 
-    // ── Full output ────────────────────────────────────────────────────────
     if (gapReport.conflicts.length > 0) {
       console.log("\n── ALL CONFLICTS ───────────────────────────────────────────");
       gapReport.conflicts.forEach((c) => {
@@ -284,8 +273,7 @@ async function main() {
       });
     }
   } finally {
-    // Clean up — delete the test session and all cascade-deleted records
-    await db.delete(agentSessions).where(eq(agentSessions.id, sessionId));
+    await runDb(Effect.flatMap(DatabaseService, (svc) => svc.deleteAgentSession(sessionId)));
     console.log("\nTest session cleaned up.");
   }
 

@@ -10,14 +10,23 @@ import { resolve } from "path";
 config({ path: resolve(process.cwd(), ".env") });
 
 import { readFile } from "fs/promises";
-import { Layer, ManagedRuntime } from "effect";
+import { Effect, Layer, ManagedRuntime } from "effect";
 import { StorageAdapter } from "../storage/index.js";
-import { createAgentSession, createDocument, createChunks } from "../db/queries.js";
+import { DatabaseService } from "../db/queries.js";
 import { parseDocument } from "./parsers.js";
 import { estimateTokenCount } from "./estimate-token-count.js";
 import { ConfigService } from "../config.js";
 
-const runtime = ManagedRuntime.make(Layer.provideMerge(StorageAdapter.layer, ConfigService.layer));
+const runtime = ManagedRuntime.make(
+  Layer.mergeAll(
+    StorageAdapter.layer,
+    ConfigService.layer,
+    DatabaseService.layer,
+  ) as Layer.Layer<StorageAdapter | ConfigService | DatabaseService, never, never>,
+);
+
+const db = (effect: Effect.Effect<any, any, DatabaseService>) => runtime.runPromise(effect);
+
 const CORPUS = resolve(process.cwd(), "docs/test_corpus");
 const BASE = "http://localhost:3000/api";
 
@@ -38,32 +47,42 @@ async function req(method: string, path: string, body?: unknown) {
 }
 
 console.log("Creating session + inserting corpus chunks...");
-const session = await createAgentSession({ status: "processing" });
+const session = await db(
+  Effect.flatMap(DatabaseService, (svc) => svc.createAgentSession({ status: "processing" })),
+);
 const sessionId = session.id;
 
 for (const { filename, documentType } of files) {
   const buf = await readFile(resolve(CORPUS, filename));
   const parsed = await runtime.runPromise(parseDocument(buf, filename));
-  const doc = await createDocument({
-    sessionId,
-    filename,
-    documentType,
-    mimeType: "text/plain",
-    sizeBytes: buf.length,
-    status: "ready",
-    tokenCount: estimateTokenCount(parsed.text),
-  });
-  await createChunks([
-    {
-      sessionId,
-      documentId: doc.id,
-      documentType,
-      content: parsed.text,
-      chunkIndex: 0,
-      charOffset: 0,
-      embedding: Array.from<number>({ length: 1536 }).fill(0),
-    },
-  ]);
+  const doc = await db(
+    Effect.flatMap(DatabaseService, (svc) =>
+      svc.createDocument({
+        sessionId,
+        filename,
+        documentType,
+        mimeType: "text/plain",
+        sizeBytes: buf.length,
+        status: "ready",
+        tokenCount: estimateTokenCount(parsed.text),
+      }),
+    ),
+  );
+  await db(
+    Effect.flatMap(DatabaseService, (svc) =>
+      svc.createChunks([
+        {
+          sessionId,
+          documentId: doc.id,
+          documentType,
+          content: parsed.text,
+          chunkIndex: 0,
+          charOffset: 0,
+          embedding: Array.from<number>({ length: 1536 }).fill(0),
+        },
+      ]),
+    ),
+  );
 }
 console.log(`Session: ${sessionId}`);
 

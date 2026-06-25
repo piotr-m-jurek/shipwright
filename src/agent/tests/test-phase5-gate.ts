@@ -10,17 +10,26 @@ import { resolve } from "path";
 config({ path: resolve(process.cwd(), ".env") });
 
 import { readFile } from "fs/promises";
-import { Layer, ManagedRuntime } from "effect";
-import { StorageAdapter } from "../storage/index.js";
-import { db } from "../db/index.js";
-import { agentSessions, outputs } from "../db/schema.js";
+import { Effect, Layer, ManagedRuntime, pipe } from "effect";
+import { StorageAdapter } from "../../storage/index.js";
+import { DB, AppDBLiveLayer } from "../../db/index.js";
+import { DatabaseService } from "../../db/queries.js";
+import { outputs } from "../../db/schema.js";
 import { eq } from "drizzle-orm";
-import { createAgentSession, createDocument, createChunks } from "../db/queries.js";
-import { parseDocument } from "./parsers.js";
-import { estimateTokenCount } from "./estimate-token-count.js";
-import { ConfigService } from "../config.js";
+import { parseDocument } from "../parsers.js";
+import { estimateTokenCount } from "../estimate-token-count.js";
+import { ConfigService } from "../../config.js";
 
-const runtime = ManagedRuntime.make(Layer.provideMerge(StorageAdapter.layer, ConfigService.layer));
+const runtime = ManagedRuntime.make(
+  pipe(
+    Layer.mergeAll(StorageAdapter.layer, DatabaseService.layer, AppDBLiveLayer),
+    Layer.provide(ConfigService.layer),
+  ),
+);
+
+const runDb = (effect: Effect.Effect<any, any, DatabaseService>) => runtime.runPromise(effect);
+const runRaw = (effect: Effect.Effect<any, any, DB>) => runtime.runPromise(effect);
+
 const CORPUS = resolve(process.cwd(), "docs/test_corpus");
 const BASE = "http://localhost:3000/api";
 
@@ -81,32 +90,42 @@ const files = [
   { filename: "discovery_call_transcript.txt", documentType: "transcript" as const },
 ];
 
-const session = await createAgentSession({ status: "processing" });
+const session = await runDb(
+  Effect.flatMap(DatabaseService, (svc) => svc.createAgentSession({ status: "processing" })),
+);
 const sessionId = session.id;
 
 for (const { filename, documentType } of files) {
   const buf = await readFile(resolve(CORPUS, filename));
   const parsed = await runtime.runPromise(parseDocument(buf, filename));
-  const doc = await createDocument({
-    sessionId,
-    filename,
-    documentType,
-    mimeType: "text/plain",
-    sizeBytes: buf.length,
-    status: "ready",
-    tokenCount: estimateTokenCount(parsed.text),
-  });
-  await createChunks([
-    {
-      sessionId,
-      documentId: doc.id,
-      documentType,
-      content: parsed.text,
-      chunkIndex: 0,
-      charOffset: 0,
-      embedding: new Array(1536).fill(0),
-    },
-  ]);
+  const doc = await runDb(
+    Effect.flatMap(DatabaseService, (svc) =>
+      svc.createDocument({
+        sessionId,
+        filename,
+        documentType,
+        mimeType: "text/plain",
+        sizeBytes: buf.length,
+        status: "ready",
+        tokenCount: estimateTokenCount(parsed.text),
+      }),
+    ),
+  );
+  await runDb(
+    Effect.flatMap(DatabaseService, (svc) =>
+      svc.createChunks([
+        {
+          sessionId,
+          documentId: doc.id,
+          documentType,
+          content: parsed.text,
+          chunkIndex: 0,
+          charOffset: 0,
+          embedding: new Array(1536).fill(0),
+        },
+      ]),
+    ),
+  );
 }
 ok(`Session created: ${sessionId}`);
 
@@ -127,19 +146,21 @@ ok(`awaiting_answers with ${awaitingSession.questions?.length} questions`);
 // ── Submit answers (sufficient round) ─────────────────────────────────────
 console.log("\n4. Submitting answers");
 const qs = awaitingSession.questions as { id: string }[];
-const answers1 = qs.map((q: any) => ({
+const answers1 = qs.map((q: { id: string }) => ({
   questionId: q.id,
   text: "Confirmed — proceed with this approach.",
 }));
 const ans1 = (await req("POST", `/sessions/${sessionId}/answers`, { answers: answers1 })) as any;
 ok(`Round 1 answered — sufficient: ${ans1.body.sufficient}, round: ${ans1.body.round}`);
 
-// If not sufficient, submit round 2 to hit roundLimitReached
 if (!ans1.body.sufficient) {
   const statusR2 = await poll(sessionId, "awaiting_answers", 10000);
   if (statusR2) {
     const qs2 = (statusR2.questions ?? qs) as { id: string }[];
-    const answers2 = qs2.map((q: any) => ({ questionId: q.id, text: "Confirmed for round 2." }));
+    const answers2 = qs2.map((q: { id: string }) => ({
+      questionId: q.id,
+      text: "Confirmed for round 2.",
+    }));
     await req("POST", `/sessions/${sessionId}/answers`, { answers: answers2 });
     ok("Round 2 answers submitted (roundLimitReached will fire)");
   }
@@ -157,9 +178,11 @@ ok("Session reached complete");
 // ── Verify outputs in DB ───────────────────────────────────────────────────
 console.log("\n6. Verifying outputs");
 
-const outputRows = await db.select().from(outputs).where(eq(outputs.sessionId, sessionId));
-const brief = outputRows.find((o) => o.type === "project_brief");
-const prd = outputRows.find((o) => o.type === "implementation_prd");
+const outputRows = await runRaw(
+  Effect.flatMap(DB, (db) => db.select().from(outputs).where(eq(outputs.sessionId, sessionId))),
+);
+const brief = outputRows.find((o: (typeof outputRows)[number]) => o.type === "project_brief");
+const prd = outputRows.find((o: (typeof outputRows)[number]) => o.type === "implementation_prd");
 
 if (brief?.content && brief.content.length > 100) {
   ok(`project_brief stored (${brief.content.length} chars, version ${brief.version})`);
@@ -179,7 +202,6 @@ if (brief?.version === 1) {
   fail("version is not 1", brief?.version);
 }
 
-// Check Brief has expected Markdown headings
 if (brief?.content) {
   const hasOverview = brief.content.includes("## Overview") || brief.content.includes("## What");
   const hasOutOfScope = brief.content.toLowerCase().includes("scope");
@@ -190,7 +212,6 @@ if (brief?.content) {
   }
 }
 
-// Check PRD has required sections
 if (prd?.content) {
   const hasAC = prd.content.includes("Acceptance Criteria");
   const hasNonGoal =
@@ -205,7 +226,6 @@ if (prd?.content) {
   }
 }
 
-// Check GET /sessions/:id/output returns both
 const outputRes = (await req("GET", `/sessions/${sessionId}/output`)) as any;
 if (outputRes.status === 200 && outputRes.body.projectBrief && outputRes.body.implementationPrd) {
   ok("GET /sessions/:id/output returns both outputs");
@@ -216,7 +236,7 @@ if (outputRes.status === 200 && outputRes.body.projectBrief && outputRes.body.im
 // ── Summary ────────────────────────────────────────────────────────────────
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
 
-await db.delete(agentSessions).where(eq(agentSessions.id, sessionId));
+await runDb(Effect.flatMap(DatabaseService, (svc) => svc.deleteAgentSession(sessionId)));
 console.log("Test session cleaned up.");
 
 process.exit(failed > 0 ? 1 : 0);

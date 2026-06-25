@@ -12,17 +12,27 @@ import { resolve } from "path";
 config({ path: resolve(process.cwd(), ".env") });
 
 import { readFile } from "fs/promises";
-import { Layer, ManagedRuntime } from "effect";
-import { StorageAdapter } from "../storage/index.js";
-import { db } from "../db/index.js";
-import { agentSessions, outputs } from "../db/schema.js";
+import { Effect, Layer, ManagedRuntime } from "effect";
+import { StorageAdapter } from "../../storage/index.js";
+import { DB, AppDBLiveLayer } from "../../db/index.js";
+import { DatabaseService } from "../../db/queries.js";
+import { agentSessions, outputs } from "../../db/schema.js";
 import { eq } from "drizzle-orm";
-import { createAgentSession, createDocument, createChunks } from "../db/queries.js";
-import { parseDocument } from "./parsers.js";
-import { estimateTokenCount } from "./estimate-token-count.js";
-import { ConfigService } from "../config.js";
+import { parseDocument } from "../parsers.js";
+import { estimateTokenCount } from "../estimate-token-count.js";
+import { ConfigService } from "../../config.js";
 
-const runtime = ManagedRuntime.make(Layer.provideMerge(StorageAdapter.layer, ConfigService.layer));
+const runtime = ManagedRuntime.make(
+  Layer.mergeAll(
+    StorageAdapter.layer.pipe(Layer.provide(ConfigService.layer)),
+    DatabaseService.layer.pipe(Layer.provide(ConfigService.layer)),
+    AppDBLiveLayer,
+  ),
+);
+
+const runDb = (effect: Effect.Effect<any, any, DatabaseService>) => runtime.runPromise(effect);
+const runRaw = (effect: Effect.Effect<any, any, DB>) => runtime.runPromise(effect);
+
 const CORPUS = resolve(process.cwd(), "docs/test_corpus");
 const BASE = "http://localhost:3000/api";
 
@@ -82,32 +92,42 @@ const files = [
   { filename: "discovery_call_transcript.txt", documentType: "transcript" as const },
 ];
 
-const session = await createAgentSession({ status: "processing" });
+const session = await runDb(
+  Effect.flatMap(DatabaseService, (svc) => svc.createAgentSession({ status: "processing" })),
+);
 const sessionId = session.id;
 
 for (const { filename, documentType } of files) {
   const buf = await readFile(resolve(CORPUS, filename));
   const parsed = await runtime.runPromise(parseDocument(buf, filename));
-  const doc = await createDocument({
-    sessionId,
-    filename,
-    documentType,
-    mimeType: "text/plain",
-    sizeBytes: buf.length,
-    status: "ready",
-    tokenCount: estimateTokenCount(parsed.text),
-  });
-  await createChunks([
-    {
-      sessionId,
-      documentId: doc.id,
-      documentType,
-      content: parsed.text,
-      chunkIndex: 0,
-      charOffset: 0,
-      embedding: new Array(1536).fill(0),
-    },
-  ]);
+  const doc = await runDb(
+    Effect.flatMap(DatabaseService, (svc) =>
+      svc.createDocument({
+        sessionId,
+        filename,
+        documentType,
+        mimeType: "text/plain",
+        sizeBytes: buf.length,
+        status: "ready",
+        tokenCount: estimateTokenCount(parsed.text),
+      }),
+    ),
+  );
+  await runDb(
+    Effect.flatMap(DatabaseService, (svc) =>
+      svc.createChunks([
+        {
+          sessionId,
+          documentId: doc.id,
+          documentType,
+          content: parsed.text,
+          chunkIndex: 0,
+          charOffset: 0,
+          embedding: new Array(1536).fill(0),
+        },
+      ]),
+    ),
+  );
 }
 ok(`Session: ${sessionId}`);
 
@@ -122,17 +142,22 @@ if (!awaiting) {
 }
 ok(`awaiting_answers (${awaiting.questions?.length} questions)`);
 
-// Submit answers — two rounds to hit roundLimitReached
 const qs = awaiting.questions as { id: string }[];
 await req("POST", `/sessions/${sessionId}/answers`, {
-  answers: qs.map((q: any) => ({ questionId: q.id, text: "Confirmed, proceed as described." })),
+  answers: qs.map((q: { id: string }) => ({
+    questionId: q.id,
+    text: "Confirmed, proceed as described.",
+  })),
 });
 
 const awaiting2 = await poll(sessionId, "awaiting_answers", 15000);
 if (awaiting2) {
   const qs2 = awaiting2.questions as { id: string }[];
   await req("POST", `/sessions/${sessionId}/answers`, {
-    answers: qs2.map((q: any) => ({ questionId: q.id, text: "Round 2 confirmation." })),
+    answers: qs2.map((q: { id: string }) => ({
+      questionId: q.id,
+      text: "Round 2 confirmation.",
+    })),
   });
   ok("Round 2 submitted");
 }
@@ -147,9 +172,15 @@ ok("Session reached complete");
 
 // ── 3. Verify initial outputs in DB ────────────────────────────────────────
 console.log("\n3. Initial output checks");
-const outputRows = await db.select().from(outputs).where(eq(outputs.sessionId, sessionId));
-const briefV1 = outputRows.find((o) => o.type === "project_brief" && o.version === 1);
-const prdV1 = outputRows.find((o) => o.type === "implementation_prd" && o.version === 1);
+const outputRows = await runRaw(
+  Effect.flatMap(DB, (db) => db.select().from(outputs).where(eq(outputs.sessionId, sessionId))),
+);
+const briefV1 = outputRows.find(
+  (o: (typeof outputRows)[number]) => o.type === "project_brief" && o.version === 1,
+);
+const prdV1 = outputRows.find(
+  (o: (typeof outputRows)[number]) => o.type === "implementation_prd" && o.version === 1,
+);
 
 if (briefV1?.s3Key) {
   ok(`project_brief v1 has s3Key: ${briefV1.s3Key}`);
@@ -173,7 +204,6 @@ const briefUrlRes = (await req(
 if (briefUrlRes.status === 200 && briefUrlRes.body?.url?.startsWith("http")) {
   ok("GET /output/project_brief/download-url returns URL");
 
-  // Fetch the URL directly — must return the Brief content
   const fileRes = await fetch(briefUrlRes.body.url);
   if (fileRes.ok) {
     const content = await fileRes.text();
@@ -199,7 +229,6 @@ if (prdUrlRes.status === 200 && prdUrlRes.body?.url?.startsWith("http")) {
   fail("GET /output/implementation_prd/download-url", prdUrlRes);
 }
 
-// Invalid type returns 404
 const badTypeRes = (await req("GET", `/sessions/${sessionId}/output/bad_type/download-url`)) as any;
 if (badTypeRes.status === 404) {
   ok("Invalid type returns 404");
@@ -221,7 +250,6 @@ if (reviseRes.status === 200 && reviseRes.body?.started === true) {
   fail("POST /revise", JSON.stringify(reviseRes));
 }
 
-// Machine should be in revising or generating
 await new Promise((r) => setTimeout(r, 500));
 const revisingCheck = (await req("GET", `/sessions/${sessionId}`)) as any;
 const revState = revisingCheck.body?.status;
@@ -231,7 +259,6 @@ if (["revising", "generating", "complete"].includes(revState)) {
   fail("Machine not in expected state after revision", revState);
 }
 
-// Wait for complete again (revision writers take ~60s)
 console.log("\n   Waiting for revision writers (~60s)...");
 const complete2 = await poll(sessionId, "complete");
 if (!complete2) {
@@ -240,10 +267,15 @@ if (!complete2) {
 }
 ok("Session reached complete after revision");
 
-// Check version 2 exists
-const outputRowsAfter = await db.select().from(outputs).where(eq(outputs.sessionId, sessionId));
-const briefV2 = outputRowsAfter.find((o) => o.type === "project_brief" && o.version === 2);
-const prdV2 = outputRowsAfter.find((o) => o.type === "implementation_prd" && o.version === 2);
+const outputRowsAfter = await runRaw(
+  Effect.flatMap(DB, (db) => db.select().from(outputs).where(eq(outputs.sessionId, sessionId))),
+);
+const briefV2 = outputRowsAfter.find(
+  (o: (typeof outputRowsAfter)[number]) => o.type === "project_brief" && o.version === 2,
+);
+const prdV2 = outputRowsAfter.find(
+  (o: (typeof outputRowsAfter)[number]) => o.type === "implementation_prd" && o.version === 2,
+);
 
 if (briefV2?.content && briefV2.content.length > 100) {
   ok(`project_brief v2 stored (${briefV2.content.length} chars)`);
@@ -257,8 +289,11 @@ if (prdV2?.content && prdV2.content.length > 100) {
   fail("implementation_prd v2 missing or empty");
 }
 
-// outputVersion in xstateSnapshot should be 2
-const [sessionRow] = await db.select().from(agentSessions).where(eq(agentSessions.id, sessionId));
+const [sessionRow] = await runRaw(
+  Effect.flatMap(DB, (db) =>
+    db.select().from(agentSessions).where(eq(agentSessions.id, sessionId)),
+  ),
+);
 const outputVersion = (sessionRow.xstateSnapshot as any)?.context?.outputVersion;
 if (outputVersion === 2) {
   ok("outputVersion = 2 in xstateSnapshot");
@@ -266,7 +301,6 @@ if (outputVersion === 2) {
   fail("outputVersion not 2", outputVersion);
 }
 
-// GET /output returns v2 content
 const outputV2Res = (await req("GET", `/sessions/${sessionId}/output`)) as any;
 if (outputV2Res.body?.version === 2) {
   ok("GET /sessions/:id/output returns version 2");
@@ -277,6 +311,6 @@ if (outputV2Res.body?.version === 2) {
 // ── Summary ─────────────────────────────────────────────────────────────────
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
 
-await db.delete(agentSessions).where(eq(agentSessions.id, sessionId));
+await runDb(Effect.flatMap(DatabaseService, (svc) => svc.deleteAgentSession(sessionId)));
 console.log("Test session cleaned up.");
 process.exit(failed > 0 ? 1 : 0);
