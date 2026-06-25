@@ -195,16 +195,17 @@ export class StorageAdapter extends Context.Service<
         },
         Effect.map(() => true),
         Effect.catch((error) => {
+          const cause = error.cause;
           if (
-            error instanceof Error &&
-            (error.name === "NotFound" ||
-              error.name === "NoSuchKey" ||
-              ("$metadata" in error &&
-                [403, 404].includes((error as any).$metadata?.httpStatusCode)))
+            cause instanceof Error &&
+            (cause.name === "NotFound" ||
+              cause.name === "NoSuchKey" ||
+              ("$metadata" in cause &&
+                [403, 404].includes((cause as any).$metadata?.httpStatusCode)))
           ) {
             return Effect.succeed(false);
           }
-          return Effect.fail(new HeadObjectError({ cause: error }));
+          return Effect.fail(error);
         }),
       );
 

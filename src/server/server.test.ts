@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll, vi } from "vitest";
-import { Context, Layer, pipe } from "effect";
+import { Layer, pipe } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { S3Client, PutObjectCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
@@ -16,7 +16,7 @@ import { DatabaseService } from "../db/queries.js";
 // Embedder mock
 // ---------------------------------------------------------------------------
 
-vi.mock("./agent/embedder.js", async () => {
+vi.mock("../agent/embedder.js", async () => {
   const { Effect } = await import("effect");
   return {
     embedChunks: (chunks: string[]) => Effect.succeed(chunks.map(() => Array(1536).fill(0.1))),
@@ -36,8 +36,8 @@ const TestRoutes = pipe(
   ApiRoute,
   Layer.provide(NodeHttpServer.layerHttpServices),
   Layer.provide(StorageAdapter.layer),
-  Layer.provide(ConfigService.layer),
   Layer.provide(DatabaseService.layer),
+  Layer.provide(ConfigService.layer),
 );
 
 const { handler, dispose } = HttpRouter.toWebHandler(TestRoutes, {
@@ -50,8 +50,6 @@ afterAll(() => dispose());
 // Helpers
 // ---------------------------------------------------------------------------
 
-const emptyContext = Context.empty();
-
 async function post(path: string, body: unknown) {
   return handler(
     new Request(`http://localhost${path}`, {
@@ -59,12 +57,11 @@ async function post(path: string, body: unknown) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
-    emptyContext as any,
   );
 }
 
 async function get(path: string) {
-  return handler(new Request(`http://localhost${path}`), emptyContext as any);
+  return handler(new Request(`http://localhost${path}`));
 }
 
 async function ensureBucket() {

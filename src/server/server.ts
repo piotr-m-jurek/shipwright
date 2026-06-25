@@ -29,11 +29,12 @@ const ServiceLayer = pipe(
   Layer.mergeAll(DatabaseService.layer),
   Layer.provideMerge(StorageAdapter.layer),
   Layer.provideMerge(NodeHttpServer.layer(createServer, { port: 3000 })),
+  Layer.provideMerge(ConfigService.layer),
 );
 
 const HttpServerLayer = pipe(
   HttpRouter.serve(AllRoutes),
-  Layer.provide(ServiceLayer), //
+  Layer.provide(ServiceLayer),
 );
 
 // INFO: known issue with static files, will be removed when moved to monorepo

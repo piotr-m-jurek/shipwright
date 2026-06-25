@@ -10,7 +10,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { defineRelations } from "drizzle-orm";
 
-import { createInsertSchema } from "drizzle-orm/zod";
 import { MachineContext } from "../shared/schemas/machine.js";
 
 export const sessionStatusEnum = pgEnum("session_status", [
@@ -42,7 +41,6 @@ export const agentSessions = pgTable("agent_sessions", {
   xstateSnapshot: jsonb("xstate_snapshot").$type<MachineContext>(),
 });
 
-export const sessionInsertSchema = createInsertSchema(agentSessions);
 export type SessionInsert = typeof agentSessions.$inferInsert;
 export type SessionSelect = typeof agentSessions.$inferSelect;
 

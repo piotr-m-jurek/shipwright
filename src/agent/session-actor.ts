@@ -12,7 +12,11 @@
 import { Effect, pipe, Schema } from "effect";
 import { StorageAdapter } from "../storage/index.js";
 import { createAgentActor, restoreAgentActor, type AgentActor } from "./machine.js";
-import { MachineContextSchema, type MachineContext } from "../shared/schemas/machine.js";
+import {
+  MachineContextEffectSchema,
+  MachineContextSchema,
+  type MachineContext,
+} from "../shared/schemas/machine.js";
 import { summarizeAllDocuments } from "./summarizer.js";
 import { runChallenger } from "./challenger.js";
 import { runQuestionGenerator } from "./question-generator.js";
@@ -54,26 +58,30 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
 ) {
   const db = yield* DatabaseService;
   const existing = registry.get(sessionId);
-  if (existing) return existing;
+
+  if (existing) {
+    return existing;
+  }
 
   const session = yield* db.getAgentSesionById(sessionId);
 
-  if (!session) return yield* new SessionNotFoundError();
-
-  let actor: AgentActor;
-
-  if (session.xstateSnapshot) {
-    // Validate snapshot before restoring — catches schema corruption
-    const parsed = MachineContextSchema.safeParse((session.xstateSnapshot as any)?.context);
-    if (!parsed.success) {
-      return yield* new SessionStateError({
-        message: `Corrupt xstateSnapshot for session ${sessionId}`,
-      });
-    }
-    actor = restoreAgentActor(session.xstateSnapshot);
-  } else {
-    actor = createAgentActor({ sessionId });
+  if (!session) {
+    return yield* new SessionNotFoundError();
   }
+
+  const actor: AgentActor = yield* pipe(
+    Effect.fromNullishOr(session.xstateSnapshot),
+    Effect.flatMap((snapshot) =>
+      Schema.decodeUnknownEffect(MachineContextEffectSchema)((snapshot as any)?.context),
+    ),
+    Effect.as(restoreAgentActor(session.xstateSnapshot)),
+    Effect.catchTag("NoSuchElementError", () => Effect.succeed(createAgentActor({ sessionId }))),
+    Effect.catchTag("SchemaError", () =>
+      Effect.fail(
+        new SessionStateError({ message: `Corrupt xstateSnapshot for session ${sessionId}` }),
+      ),
+    ),
+  );
 
   yield* wireSnapshotPersistence(actor, sessionId);
   actor.start();
