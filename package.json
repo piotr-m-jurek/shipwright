@@ -20,15 +20,12 @@
     "docs:effect-update": "git subtree pull --prefix docs/effect-smol effect-smol main --squash"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "3.0.80",
-    "@ai-sdk/openai": "3.0.66",
     "@aws-sdk/client-s3": "3.1055.0",
     "@aws-sdk/s3-request-presigner": "3.1057.0",
     "@effect/ai-anthropic": "4.0.0-beta.87",
     "@effect/ai-openai": "4.0.0-beta.87",
     "@effect/platform-node": "4.0.0-beta.87",
     "@effect/sql-pg": "4.0.0-beta.87",
-    "ai": "6.0.191",
     "concurrently": "^10.0.3",
     "dotenv": "^17.4.2",
     "drizzle-orm": "1.0.0-rc.3",
@@ -42,8 +39,7 @@
     "react-dom": "19.2.6",
     "unpdf": "1.6.2",
     "vite": "8.0.14",
-    "xstate": "5.32.0",
-    "zod": "^4.4.3"
+    "xstate": "5.32.0"
   },
   "devDependencies": {
     "@effect/language-service": "0.86.2",
