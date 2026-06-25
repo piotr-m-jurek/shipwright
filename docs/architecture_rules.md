@@ -230,28 +230,50 @@ adds unnecessary latency and DB load.
 
 ---
 
-## Rule 10 — Frontend uses a typed API client generated from the OpenAPI schema
+## Rule 10 — Frontend uses the shared `Api` definition for all API calls
 
 Frontend code must not construct `fetch` calls manually. All API calls go through
-a typed client derived from the Effect HttpApi OpenAPI schema (via `openapi-fetch`
-or equivalent). The schema is exposed at `/openapi.json`.
+`AtomHttpApi.Service` (or `HttpApiClient.make` for non-reactive one-off calls),
+both derived directly from the shared `Api` definition in `@shipwright/shared/api`.
+
+The `Api` class (the `HttpApi` definition) lives in `packages/shared` and is
+imported by both `apps/api` (server implementation) and `apps/web` (client).
+No code generation. No OpenAPI file. The types are the same object at runtime.
 
 ```ts
-// ✅ Allowed — typed client from OpenAPI schema
-import createClient from "openapi-fetch"
-import type { paths } from "./generated/api"
-const client = createClient<paths>({ baseUrl: "http://localhost:3000" })
-const { data } = await client.POST("/api/sessions/upload-url", { body: { files } })
+// ✅ Allowed — AtomHttpApi backed by the shared Api definition
+import { ShipwrightApi } from "@shipwright/web/store/api"
+
+const sessionAtom = ShipwrightApi.instance.query("system", "getAgentSessionById", {
+  params: { id: sessionId },
+  reactivityKeys: ["session", sessionId],
+  timeToLive: "30 seconds",
+})
+
+const submitAnswers = ShipwrightApi.instance.mutation("system", "submitSessionAnswers")
+
+// ✅ Allowed — HttpApiClient for imperative one-off calls
+import { HttpApiClient } from "effect/unstable/httpapi"
+import { Api } from "@shipwright/shared/api"
+
+const client = yield* HttpApiClient.make(Api, { ... })
+yield* client.system.getAgentSessionById({ params: { id } })
 
 // ❌ Blocked — raw fetch
-const res = await fetch("http://localhost:3000/api/sessions/upload-url", {
+const res = await fetch("/api/sessions/upload-url", {
   method: "POST",
   body: JSON.stringify({ files }),
 })
+
+// ❌ Blocked — openapi-fetch or openapi-typescript generated client
+import createClient from "openapi-fetch"
+import type { paths } from "./generated/api"
 ```
 
-**Why:** Manual fetch calls lose type safety. The typed client ensures request and
-response shapes are verified at compile time against the same schema the server uses.
+**Why:** The `Api` definition is the single source of truth shared between server
+and client. Both sides import the same runtime object — request encoding, response
+decoding, and error types are guaranteed to be in sync at compile time with zero
+code generation or build steps.
 
 ---
 

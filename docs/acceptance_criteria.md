@@ -222,7 +222,9 @@ it "mostly works".
 - [ ] `apps/api/package.json` exists with name `@shipwright/api`
 - [ ] `apps/web/package.json` exists with name `@shipwright/web` (scaffold only — no components yet)
 - [ ] `packages/shared/package.json` exists with name `@shipwright/shared`
-- [ ] `packages/shared` has an `exports` field covering `.`, `./schemas`, `./domain`, `./lib`
+- [ ] `packages/shared` has an `exports` field covering `.`, `./api`, `./schemas`, `./domain`, `./lib`
+- [ ] `src/server/api/api.ts` (the `HttpApi` definition) has moved to `packages/shared/src/api/index.ts`
+- [ ] `apps/api` imports `Api` from `@shipwright/shared/api` — not from a local `src/server/api/` path
 - [ ] All files from `src/server/`, `src/agent/`, `src/db/`, `src/storage/` are under `apps/api/src/`
 - [ ] All files from `src/shared/` are under `packages/shared/src/`
 - [ ] Gate test scripts (`test-phase4-gate.ts`, `test-phase5-gate.ts`, `test-phase5b-gate.ts`) are in `apps/api/tests/gates/`
@@ -296,17 +298,21 @@ it "mostly works".
 ## Phase 10 — React SPA
 
 - [ ] `apps/web` has Vite + React + TanStack Router configured
-- [ ] `apps/web` declares `@shipwright/shared: workspace:*` as a dependency
-- [ ] `apps/web/src/generated/api.ts` is generated from `GET http://localhost:3000/openapi.json` via `openapi-typescript`
-- [ ] All API calls in `apps/web` go through the typed `openapi-fetch` client — no raw `fetch()` (Rule 10)
-- [ ] Route `/` renders an upload form — selecting files calls `POST /api/sessions/upload-url`
-- [ ] Route `/sessions/:id/questions` renders questions from `GET /api/sessions/:id` and accepts answers
+- [ ] `apps/web` declares `@shipwright/shared: workspace:*` and `@effect/atom-react: workspace:*` (or published version) as dependencies
+- [ ] `apps/web/src/store/api.ts` declares `ShipwrightApi` via `AtomHttpApi.Service` using `Api` from `@shipwright/shared/api`
+- [ ] `RegistryProvider` from `@effect/atom-react` wraps the app root in `apps/web/src/main.tsx`
+- [ ] All API calls in `apps/web` go through `ShipwrightApi.instance.query` or `ShipwrightApi.instance.mutation` — no raw `fetch()`, no TanStack Query (Rule 10)
+- [ ] Session status polling while processing uses `Atom.withRefresh` — not a `setInterval` or TanStack Query `refetchInterval`
+- [ ] Route `/` renders an upload form — selecting files calls the `sessionUploadUrl` mutation atom
+- [ ] Route `/sessions/:id/questions` renders questions from the `getAgentSessionById` query atom and accepts answers via the `submitSessionAnswers` mutation atom
 - [ ] Route `/sessions/:id/output` renders the Brief and PRD side by side in Markdown
-- [ ] Download buttons call `GET /api/sessions/:id/output/:type/download-url` and open the presigned URL
+- [ ] Download buttons call the `getOutputDownloadUrl` query atom and open the presigned URL
 - [ ] CORS is enabled on `apps/api` for `http://localhost:5173`
 - [ ] Full end-to-end run in the browser: upload 2+ files → confirm → answer questions → view outputs → download Brief
+- [ ] Zero TanStack Query imports (`@tanstack/react-query`) in `apps/web/src/`
+- [ ] Zero `openapi-fetch` or `openapi-typescript` imports in `apps/web/src/`
 
-**Gate:** Full end-to-end in the browser without errors. Zero raw `fetch()` calls in `apps/web/src/`.
+**Gate:** Full end-to-end in the browser without errors. Zero raw `fetch()` calls in `apps/web/src/`. Zero TanStack Query imports in `apps/web/src/`.
 
 ---
 
@@ -343,4 +349,5 @@ it "mostly works".
 - [ ] No file writes to the filesystem with `fs.writeFile` or `fs.writeFileSync` directly — all file I/O goes through `StorageAdapter` (Rule 4)
 - [ ] No structured output pass uses manual `JSON.parse` — all structured passes use `LanguageModel.generateObject({ schema })` (Rule 6)
 - [ ] No cross-workspace relative imports — all `packages/shared` imports use `@shipwright/shared/...` (Rule 14)
+- [ ] No raw `fetch()` calls and no `openapi-fetch`/`openapi-typescript` imports in `apps/web/src/` — all API calls go through `AtomHttpApi` (Rule 10)
 - [ ] All `query_chunks` tool implementations filter by `sessionId` (Rule 15)

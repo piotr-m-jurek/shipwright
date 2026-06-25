@@ -689,7 +689,21 @@ pnpm-workspace.yaml  — declares apps/* and packages/*
 
 - All imports of `../../shared/...` in `apps/api` become `@shipwright/shared/...`
 - `packages/shared` exports via `package.json` `exports` field:
-  `"."`, `"./schemas"`, `"./domain"`, `"./lib"`
+  `"."`, `"./api"`, `"./schemas"`, `"./domain"`, `"./lib"`
+
+### The `Api` definition moves to `packages/shared`
+
+The `HttpApi` class (currently `src/server/api/api.ts`) is **not server code** — it
+is a pure schema definition shared between the server and the client. It moves to
+`packages/shared/src/api/` as part of this phase.
+
+- `src/server/api/api.ts` → `packages/shared/src/api/index.ts`
+- `apps/api` imports `Api` from `@shipwright/shared/api` to build `HttpApiBuilder`
+- `apps/web` imports the same `Api` from `@shipwright/shared/api` to build `AtomHttpApi.Service`
+
+This is the mechanism that replaces `openapi-typescript` code generation: both sides
+reference the same runtime object, so request/response types are guaranteed in sync
+with zero build steps.
 
 ### What does not move
 
@@ -852,18 +866,44 @@ after the core pipeline is working and evals pass.
 
 - Vite + React setup in `apps/web` (already scaffolded in Phase 7 monorepo)
 - TanStack Router — three routes: `/`, `/sessions/:id/questions`, `/sessions/:id/output`
-- TanStack Query — mutations for upload and answer submission, queries for session status
-- assistant-ui + shadcn/ui + Tailwind — Thread/Composer for question loop,
-  dual-panel Markdown viewer for outputs
-- **Typed API client via `openapi-fetch`** — generated from `/openapi.json` (Rule 10).
-  No `hc<typeof app>` Hono RPC — the server is Effect HttpApi, not Hono.
-  Generate types: `openapi-typescript http://localhost:3000/openapi.json -o src/generated/api.ts`
-- Download buttons for Brief and PRD wired to the `GET /output/:type/download-url` endpoint
-- CORS enabled on the Effect HttpApi server for `localhost:5173` (deferred from Phase 6)
-- `packages/shared` imported directly — no duplicated type definitions in the frontend
+- **`AtomHttpApi.Service`** — built from `Api` imported from `@shipwright/shared/api`.
+  No code generation, no OpenAPI file. Declare once in `apps/web/src/store/api.ts`:
+
+  ```ts
+  import { AtomHttpApi } from "effect/unstable/reactivity"
+  import { Api } from "@shipwright/shared/api"
+  import { BrowserHttpClient } from "@effect/platform-browser"
+
+  export class ShipwrightApi extends ... {
+    static readonly instance = AtomHttpApi.Service<ShipwrightApi>()(
+      "shipwright/Api",
+      { api: Api, httpClient: BrowserHttpClient.layerFetch, baseUrl: "http://localhost:3000" }
+    )
+  }
+  ```
+
+- **`@effect/atom-react`** — all async server state lives in atoms, not TanStack Query.
+  `useAtomValue` / `useAtom` / `useAtomSuspense` from `@effect/atom-react` are the
+  only React hooks needed for data fetching:
+
+  - Queries: `ShipwrightApi.instance.query(group, endpoint, { reactivityKeys, timeToLive })`
+  - Mutations: `ShipwrightApi.instance.mutation(group, endpoint)` → write to trigger
+  - Polling while processing: `Atom.withRefresh(sessionAtom, "2 seconds")` while
+    `status !== "awaiting_answers"`
+  - Cache invalidation after mutation: `reactivityKeys: ["session", id]`
+
+- **`RegistryProvider`** from `@effect/atom-react` wraps the app root — provides the
+  `AtomRegistry` that runs all atom effects.
+- shadcn/ui + Tailwind for layout and form controls
+- Standard question/answer form (not a chat UI — no assistant-ui needed)
+- Dual-panel Markdown viewer for Brief and PRD outputs
+- Download buttons wired to `GET /api/sessions/:id/output/:type/download-url`
+- CORS enabled on `apps/api` for `http://localhost:5173` (deferred from Phase 6)
+- `@shipwright/shared` imported directly — no duplicated type definitions in the frontend
 
 **Gate:** Full end-to-end run in the browser — upload files, answer questions,
 view both outputs, download Markdown files. Zero raw `fetch()` calls in `apps/web/src/`.
+Zero TanStack Query imports in `apps/web/src/`.
 
 ---
 

@@ -56,29 +56,36 @@ boundaries (Rule 14).
 
 ## Layer Map
 
-### 1. 🖥️ UI — Vite + React SPA · TanStack Router · TanStack Query · assistant-ui · shadcn/ui + Tailwind · Vercel AI SDK UI
+### 1. 🖥️ UI — Vite + React SPA · TanStack Router · @effect/atom-react · AtomHttpApi · shadcn/ui + Tailwind
 
-**Why:** Clean client/backend separation — frontend is a static SPA, backend is Hono,
-no server/client component confusion. TanStack Router handles the three-phase wizard
-(Upload → Questions → Output) as typed client-side routes. TanStack Query owns all
-async state: mutations for file upload and answer submission, queries for session
-status. assistant-ui provides Thread/Composer/Message components built directly on
-shadcn/ui primitives. Vercel AI SDK UI (`useChat` from `@ai-sdk/react`) handles
-streaming consumption, connecting assistant-ui's `AssistantChatTransport` to Hono's
-streaming endpoints.
+**Why:** Clean client/backend separation — frontend is a static SPA, backend is
+Effect HttpApi, no server/client component confusion. TanStack Router handles the
+three-phase wizard (Upload → Questions → Output) as typed client-side routes.
 
-**Control rationale:** Raw Anthropic SDK + Vercel AI SDK on the backend (not Mastra)
-gives full visibility into every LLM call. Mastra would abstract too much of the
-backend learning surface for an upskilling project.
+**Reactive state:** `@effect/atom-react` + `AtomHttpApi` — Effect atoms own all
+async server state. `AtomHttpApi.Service` wraps the shared `Api` definition and
+exposes typed query atoms and mutation `AtomResultFn`s. React components subscribe
+via `useAtomValue`, `useAtom`, and `useAtomSuspense` from `@effect/atom-react`.
+TanStack Query is not used — atoms cover caching (`timeToLive`), polling
+(`Atom.withRefresh`), stale-while-revalidate (`Atom.swr`), and cache invalidation
+(`reactivityKeys`) natively.
 
-**Typed API client:** `openapi-fetch` + `openapi-typescript` — generates a fully-typed
-client from the Effect HttpApi `/openapi.json` schema. This replaces `hc<typeof app>`
-(Hono RPC), which does not apply since the server is Effect HttpApi. Rule 10 requires
-all API calls to go through this typed client — no raw `fetch()` in the frontend.
+**Typed API client:** `AtomHttpApi.Service` built from the shared `Api` definition
+in `@shipwright/shared/api`. Both `apps/api` and `apps/web` import the same
+`HttpApi` object — request encoding, response decoding, and error types are
+guaranteed in sync with zero code generation or build steps. Rule 10 requires all
+API calls to go through this client — no raw `fetch()` in the frontend.
 
-**Rejected:** Next.js App Router — SSR/client boundary adds complexity for a tool
-focused on agent logic. Mastra client SDK — trades control for convenience.
-CopilotKit — too opinionated, heavier than needed.
+**UI components:** shadcn/ui + Tailwind for layout and controls. No assistant-ui —
+the question/answer loop is a standard form, not a chat UI. Streaming output
+rendered as Markdown in a two-panel viewer.
+
+**Rejected:** TanStack Query — adds a second async state system alongside atoms;
+the atom layer covers the same ground natively and keeps the frontend in the same
+Effect model as the backend. `openapi-fetch` + `openapi-typescript` — code
+generation step that becomes unnecessary when both sides share the `Api` definition
+directly. Next.js App Router — SSR complexity not needed for this SPA.
+Mastra client SDK — trades control for convenience.
 
 ---
 
@@ -400,8 +407,8 @@ Braintrust — smaller community. Helicone — proxy-based, weak eval story.
 | Layer                 | Winner                                                                                                   |
 | --------------------- | -------------------------------------------------------------------------------------------------------- |
 | Repo structure        | pnpm workspaces · apps/api · apps/web · packages/shared                                                  |
-| UI                    | Vite + React · TanStack Router · TanStack Query · assistant-ui · shadcn/ui · Vercel AI SDK UI            |
-| API client (frontend) | openapi-fetch + openapi-typescript (generated from /openapi.json)                                        |
+| UI                    | Vite + React · TanStack Router · @effect/atom-react · AtomHttpApi · shadcn/ui + Tailwind                 |
+| API client (frontend) | AtomHttpApi.Service + HttpApiClient (from shared Api definition in @shipwright/shared/api)                |
 | API                   | Effect HttpApi (`effect/unstable/httpapi`) · NodeRuntime                                                 |
 | Agent / Orchestration | `@effect/ai` (`LanguageModel`, `EmbeddingModel`) + XState + Effect                                      |
 | RAG                   | pgvector retrieval mode + `query_chunks` `@effect/ai` tool (Phase 11)                                    |
