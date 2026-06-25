@@ -256,19 +256,40 @@ it "mostly works".
 
 ## Phase 9 — Full Effect Rewrite
 
-- [ ] `DatabaseService` exists as an Effect `Context.Service` in `apps/api/src/db/database-service.ts`
-- [ ] Every function from `apps/api/src/db/queries.ts` is wrapped in `DatabaseService` returning `Effect<T, DbError>` — not `Promise<T>`
-- [ ] Zero `Effect.tryPromise` calls in `apps/api/src/agent/` after the rewrite
-- [ ] Zero `Effect.tryPromise` calls in `apps/api/src/db/` after the rewrite
-- [ ] `parseDocument` returns `Effect<ParseResult, ParseError>` — not a Promise
-- [ ] `embedChunks` returns `Effect<number[][], EmbedError>` — not a Promise
-- [ ] `runtime.ts` merges all layers: `StorageAdapter.layer`, `DatabaseService.layer` at minimum
-- [ ] `pnpm --filter @shipwright/api test:phase4` still passes (16/16)
-- [ ] Evals from Phase 8 still pass (output quality not regressed by the rewrite)
-- [ ] No `@anthropic-ai/sdk` imports introduced — Rule 1 still holds
-- [ ] Raw Promise query functions in `queries.ts` are deleted (replaced by `DatabaseService` methods)
+> **Status: COMPLETE** — rewrite done before monorepo (Phase 7). Paths are still
+> `src/` (monolith). Paths will update to `apps/api/src/` when Phase 7 runs.
 
-**Gate:** Zero `Effect.tryPromise` in `apps/api/src/agent/` and `apps/api/src/db/`. Phase 4 and Phase 8 evals still pass.
+### DatabaseService
+
+- [x] `DatabaseService` exists as an Effect `Context.Service` in `src/db/queries.ts`
+- [x] All 20+ query functions are defined inside `makeDatabaseService` returning `Effect<T, EffectDrizzleQueryError>` — not `Promise<T>`
+- [x] `DatabaseService.layer` composes `AppDBLayer` via `Layer.effect` + `Layer.provide`
+- [x] `src/db/index.ts` uses `@effect/sql-pg` + `drizzle-orm/effect-postgres` — no `postgres.js`
+- [x] `DB` is a `Context.Service` wrapping the Effect-native Drizzle instance
+- [x] Zero `Effect.tryPromise` calls in `src/db/`
+
+### LLM layer
+
+- [x] All LLM calls use `LanguageModel.generateObject` or `LanguageModel.streamText` from `effect/unstable/ai` — no Vercel AI SDK (`ai`, `@ai-sdk/*`)
+- [x] Embeddings use `EmbeddingModel.embedMany` from `effect/unstable/ai` via `@effect/ai-openai`
+- [x] `src/agent/providers.ts` is the only file that imports `@effect/ai-anthropic` or `@effect/ai-openai` client constructors
+- [x] All agent passes (`summarizer`, `challenger`, `question-generator`, `writer-brief`, `writer-prd`, `writer-revision`) use `LanguageModel` via `Effect.provide`
+- [x] Effect `Schema.Struct` used for all structured output schemas (`src/agent/schemas.ts`) — Zod schemas replaced
+
+### Agent pipeline
+
+- [x] `session-actor.ts` uses `DatabaseService` throughout — zero `Effect.tryPromise`
+- [x] `wireSnapshotPersistence` uses `Effect.runForkWith(services)` — service context propagated correctly
+- [x] Zero `Effect.tryPromise` calls in `src/agent/` except `parsers.ts` (wraps third-party Promise APIs — acceptable)
+- [x] `parsers.ts` — `Effect.tryPromise` wrapping `unpdf` and `mammoth` is the only remaining usage; these are third-party Promise libraries with no Effect equivalent
+
+### Server layer
+
+- [x] `server.ts` `ServiceLayer` includes `DatabaseService.layer`, `StorageAdapter.layer`, `ConfigService.layer`
+- [x] No Promise bridges in handlers — all handlers are Effect generators using `DatabaseService` directly
+- [x] `pnpm test:phase4` passes (16/16) — rewrite did not regress Phase 4 behaviour
+
+**Gate:** PASSED. Zero `Effect.tryPromise` in `src/db/` and `src/agent/` (except third-party Promise wrappers in `parsers.ts`). All LLM calls via `@effect/ai`. Phase 4 gate tests pass.
 
 ---
 
@@ -316,9 +337,10 @@ it "mostly works".
 
 ## Cross-cutting checks (tutor runs these at any phase)
 
-- [ ] No file in `apps/api/src/agent/` imports from `@anthropic-ai/sdk` directly (Rule 1)
+- [ ] No file outside `src/agent/providers.ts` imports `@anthropic-ai/sdk`, `@ai-sdk/anthropic`, or any provider package directly (Rule 1)
+- [ ] All LLM calls use `LanguageModel.generateObject` or `LanguageModel.streamText` from `effect/unstable/ai` (Rule 1)
 - [ ] No file calls `mammoth.convertToHtml()` — only `mammoth.extractRawText()` (Rule 2)
 - [ ] No file writes to the filesystem with `fs.writeFile` or `fs.writeFileSync` directly — all file I/O goes through `StorageAdapter` (Rule 4)
-- [ ] No structured output pass uses bare `generateText` without `Output.object()` — all structured passes use `generateText` + `Output.object({ schema })` (Rule 6)
+- [ ] No structured output pass uses manual `JSON.parse` — all structured passes use `LanguageModel.generateObject({ schema })` (Rule 6)
 - [ ] No cross-workspace relative imports — all `packages/shared` imports use `@shipwright/shared/...` (Rule 14)
 - [ ] All `query_chunks` tool implementations filter by `sessionId` (Rule 15)

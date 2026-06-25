@@ -118,68 +118,66 @@ type safety.
 
 ---
 
-### 3. 🤖 Agent / Orchestration — Vercel AI SDK Core + XState
+### 3. 🤖 Agent / Orchestration — `@effect/ai` + XState
 
-**Why:** Vercel AI SDK Core provides the LLM primitives (`streamText`, `generateObject`,
-`tool`). XState owns the execution flow — states, transitions, guards, parallel actors,
-and the suspend/resume pattern needed for the HITL clarifying loop. Together they
-assemble a Mastra-equivalent orchestration layer from first principles, without the
-framework abstraction hiding what's actually happening.
+**Why:** `@effect/ai` (`effect/unstable/ai`) provides provider-agnostic LLM primitives:
+`LanguageModel.generateObject`, `LanguageModel.streamText`, `EmbeddingModel.embedMany`.
+Provider clients (`AnthropicClient` via `@effect/ai-anthropic`, `OpenAiClient` via
+`@effect/ai-openai`) are registered once as layers in `src/agent/providers.ts` and
+injected via `Layer.provide` at the call site — every agent pass is completely
+provider-agnostic. XState owns the execution flow.
 
-**Vercel AI SDK is the only LLM interface — no direct Anthropic SDK calls.**
-The Anthropic SDK is installed as a provider and registered once:
-`import { anthropic } from '@ai-sdk/anthropic'`. Every LLM call in the codebase
-goes through `generateObject()` or `streamText()`. Nothing calls
-`anthropic.messages.create()` directly. This keeps provider flexibility intact —
-swapping to GPT-4o or Gemini is one line, not a refactor.
+**`@effect/ai` is the only LLM interface — no Vercel AI SDK, no direct `@anthropic-ai/sdk`.**
+Provider registration happens once in `providers.ts`. Swapping Claude for GPT-4o or
+Gemini is a layer swap in `providers.ts`, not a refactor across agent passes. This is
+strictly better provider isolation than the previous Vercel AI SDK approach — call
+sites are decoupled from the provider at the type level via the `LanguageModel` service.
 
 **Design intent — DIY Mastra:**
 The goal is to build what Mastra gives you out of the box, but manually:
 
-- Vercel AI SDK `tool()` → tool definition and routing
+- `@effect/ai` `LanguageModel` → provider-agnostic LLM calls
 - XState machines → workflow orchestration and agent loop control
-- XState actors → each async LLM pass as an invoked actor
+- XState actors → each async LLM pass invoked from the machine
 - XState context → state flowing through the pipeline (docs, questions, answers)
 - XState guards → stop conditions for the clarifying loop
-- Postgres + Drizzle → memory and conversation history
+- Postgres + Drizzle + `DatabaseService` → memory and conversation history
 - pgvector + Drizzle → retrieval when context exceeds the window
 - Langfuse → observability
-  This is the full Mastra bill of materials, assembled by hand.
 
-**Effect-TS integration:** Effect wraps all side-effecting work inside XState actors
-via `Effect.runPromise`. The full backend is Effect — storage, DB, LLM calls, parsing,
-chunking, summarization. XState owns state transitions and the HITL suspend/resume
-pattern. Effect owns typed errors, dependency injection, and structured concurrency
-within each actor. This is the chosen architecture, not a stretch goal.
+**Effect integration:** XState actors bridge into the Effect runtime via
+`Effect.runForkWith(services)(effect)` — the full service context (DB, storage,
+config) is available inside every actor without thread-local state or globals.
+Effect owns typed errors, dependency injection, and structured concurrency.
 
 **RAG additions (Phase 11):**
 
 - **Retrieval mode** — when `tokensBelowThreshold` guard fires `false`, the pipeline
   switches from stuffing all summaries into context to querying pgvector for the
   top-k most relevant summaries by cosine similarity.
-- **`query_chunks` tool** — a Vercel AI SDK `tool()` available to all agent passes
-  (Challenger, Question Generator, all Writers). Lets the model issue targeted
-  pgvector queries during a pass when it needs more detail on a specific area.
-  Primary use case: Revision Writer resolving targeted feedback ("the auth section
-  needs more detail"). The tool is wired and optional — the model decides when to call it.
+- **`query_chunks` tool** — available to all agent passes (Challenger, Question
+  Generator, all Writers). Lets the model issue targeted pgvector queries when it
+  needs more detail. Primary use case: Revision Writer. Optional — the model decides
+  when to call it.
 
 **Rejected:** LangChain.js — leaky abstractions. Mastra — pre-assembles exactly what
-we want to learn to assemble. Raw loop control without XState — works for V1 single
-agent but becomes unmanageable as the graph grows.
+we want to learn to assemble. Vercel AI SDK — replaced by `@effect/ai` for full
+Effect consistency; no mixed dependency model.
 
 ---
 
-### 4. 🧠 LLM / Prompt — Claude 3.7 Sonnet · Zod · Prompt Caching
+### 4. 🧠 LLM / Prompt — Claude · Effect Schema · Prompt Caching
 
-**Why:** Claude 3.7 Sonnet is the primary model — best-in-class instruction following,
-structured output reliability, and faithfulness to source material (critical: hallucinated
+**Why:** Claude is the primary model — best-in-class instruction following, structured
+output reliability, and faithfulness to source material (critical: hallucinated
 requirements are the worst failure mode). 200k context handles most realistic input
-bundles. Accessed exclusively via the Anthropic provider in Vercel AI SDK.
+bundles. Accessed exclusively via `@effect/ai-anthropic` through the `LanguageModel`
+abstraction.
 
 **Gemini 2.5 Pro as explicit overflow fallback:** when a single document exceeds what
 fits in 200k alongside system prompt and output buffer, Gemini's 1M window handles it
-without chunking. Provider switch is wired via Vercel AI SDK from day one — one line
-change.
+without chunking. Provider switch is a layer swap in `providers.ts` — one change, no
+call-site refactor.
 
 **Each pass has a purpose-built system prompt:**
 
@@ -192,17 +190,15 @@ change.
   file/module hints, non-goals, edge cases, stack hints. Meta-prompting exercise.
 - Revision Writer — receives existing outputs + free-form feedback + summaries; regenerates both outputs
 
-**Zod schemas as anti-hallucination layer:** `generateObject` + Zod on the analysis
-and question-generation passes. Schemas require `sourceDocument` fields on every
-requirement — uncited claims are structurally impossible, not just instructed against.
+**Effect Schema as anti-hallucination layer:** `LanguageModel.generateObject` +
+`Schema.Struct` on the analysis and question-generation passes. Schemas require
+`sourceDocument` fields on every requirement — uncited claims are structurally
+impossible, not just instructed against. Schema decode failures are typed errors,
+not runtime crashes.
 
-**Prompt caching:** document context is identical across Extractor, Challenger, and
-Writer passes. Claude's prompt caching pays the token cost once. Wired from day one —
-few lines of Anthropic provider config.
-
-**Instructor-js:** deferred. Vercel AI SDK `generateObject` + Zod covers structured
-output for V1. Instructor-js (automatic retry on schema validation failure) added only
-if reliability becomes a measured problem in testing.
+**Prompt caching:** document context is identical across Challenger and Writer passes.
+Claude's prompt caching pays the token cost once. Configured via `@effect/ai-anthropic`
+provider options.
 
 **Rejected:** GPT-4o as primary — weaker on long-context faithfulness. Gemini as
 primary — strong context window but weaker instruction following for this task shape.
@@ -295,21 +291,19 @@ weaker production story.
 
 ---
 
-### 7. 🗄️ Database — PostgreSQL + Drizzle ORM + postgres.js + Effect DatabaseService
+### 7. 🗄️ Database — PostgreSQL + Drizzle ORM + `@effect/sql-pg` + `DatabaseService`
 
 **Why:** PostgreSQL hosts both relational data and pgvector embeddings — one service,
 one migration pipeline, one connection string. Drizzle ORM is TypeScript-first:
 schema defined in TypeScript, `vector()` column type maps directly to pgvector,
-no code generation step, no separate schema file. `postgres.js` as the driver —
-faster than `pg`, TypeScript-native, clean API.
+no code generation step, no separate schema file.
 
-**Effect DB layer migration (in progress):** All Drizzle query functions in
-`src/db/queries.ts` will be wrapped in a `DatabaseService` Effect `Context.Service`.
-Each query returns `Effect<T, DbError>` instead of `Promise<T>`. This eliminates
-`Effect.tryPromise` wrappers at every call site, enables test layers with mock DB,
-and keeps the full backend in one consistent Effect pipeline. Migration happens
-incrementally alongside the phase build — raw promise queries in `queries.ts` are
-replaced with Effect service methods as each phase is built.
+**Effect-native DB layer (complete):** `@effect/sql-pg` + `drizzle-orm/effect-postgres`
+replace `postgres.js`. The `DB` service (`src/db/index.ts`) exposes a Drizzle instance
+whose query methods return `Effect` directly — no `Effect.tryPromise` wrappers anywhere.
+All 20+ query functions live in `DatabaseService` (`src/db/queries.ts`) as a
+`Context.Service` — each method returns `Effect<T, EffectDrizzleQueryError>`. Zero
+Promise bridges in the DB layer.
 
 **Schema tables:**
 
@@ -409,12 +403,12 @@ Braintrust — smaller community. Helicone — proxy-based, weak eval story.
 | UI                    | Vite + React · TanStack Router · TanStack Query · assistant-ui · shadcn/ui · Vercel AI SDK UI            |
 | API client (frontend) | openapi-fetch + openapi-typescript (generated from /openapi.json)                                        |
 | API                   | Effect HttpApi (`effect/unstable/httpapi`) · NodeRuntime                                                 |
-| Agent / Orchestration | Vercel AI SDK Core + XState + Effect (typed errors, DI, concurrency)                                    |
-| RAG                   | pgvector retrieval mode + `query_chunks` Vercel AI SDK tool (Phase 11)                                   |
+| Agent / Orchestration | `@effect/ai` (`LanguageModel`, `EmbeddingModel`) + XState + Effect                                      |
+| RAG                   | pgvector retrieval mode + `query_chunks` `@effect/ai` tool (Phase 11)                                    |
 | LLM / Prompt          | Claude 3.7 Sonnet · Zod · Prompt Caching                                                                 |
 | Document Processing   | unpdf + mammoth (extractRawText) + Node.js fs                                                            |
 | Vector DB / Retrieval | pgvector (Postgres) + OpenAI text-embedding-3-small                                                      |
-| Database              | PostgreSQL + Drizzle ORM + postgres.js + Effect DatabaseService (Phase 9)                                |
+| Database              | PostgreSQL + Drizzle ORM + `@effect/sql-pg` + `DatabaseService` (Effect-native, complete)                |
 | File Storage          | StorageAdapter (Effect Context.Service) · @aws-sdk/client-s3 · rustfs → Supabase Storage                |
 | Observability / Evals | Langfuse (full stack: Postgres + ClickHouse + Redis + S3)                                                |
 
@@ -423,7 +417,7 @@ Braintrust — smaller community. Helicone — proxy-based, weak eval story.
 ## Open questions for V2
 
 - Does the multi-agent stretch goal warrant adopting LangGraph.js from the start,
-  or is Vercel AI SDK Core sufficient for V1?
+  or is `@effect/ai` sufficient for V1?
 - pgvector is now the vector store — does the Drizzle schema need a dedicated
   chunks table or can embeddings live alongside the documents table?
 - Langfuse Cloud vs self-hosted during active development — which is less friction?

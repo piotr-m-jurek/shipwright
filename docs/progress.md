@@ -45,23 +45,27 @@ pnpm --filter @shipwright/api test:phase4       run Phase 4 gate tests
 | Effect errors | `Schema.TaggedErrorClass`, tag: `"shipwright/module/ErrorName"` |
 | Effect services | `Context.Service` + static `layer` |
 | Effect functions | `Effect.fn("span/name")(generator, ...combinators)` |
-| Zod schemas | agent layer only — `Output.object({ schema })` for LLM structured output |
-| Effect schemas | HTTP layer — `Schema.Class` in `src/shared/schemas/api.ts` |
+| Effect schemas (agent) | `Schema.Struct` in `src/agent/schemas.ts` — used with `LanguageModel.generateObject` |
+| Effect schemas (HTTP) | `Schema.Class` in `src/shared/schemas/api.ts` — request/response types |
+| LLM structured output | `LanguageModel.generateObject({ schema: EffectSchema, prompt })` via `@effect/ai` |
+| LLM streaming | `LanguageModel.streamText({ prompt })` via `@effect/ai` |
+| Provider registration | `src/agent/providers.ts` only — `AnthropicClientLayer`, `OpenAiClientLayer` |
 | Route handlers | `HttpApiBuilder.group` Effect generators — no Promise bridges |
 | LLM message format | documents as `messages` user content with `=== filename ===` headers, not in system prompt |
 | Schema changes with new enums | apply via `psql` directly, then update `src/db/schema.ts` |
 
 **Architecture deviations from original plan:**
-- **API layer:** Effect HttpApi (`effect/unstable/httpapi`) instead of Hono + Hono RPC. The entire backend is Effect — no bridge layer needed. See `docs/stack.md` §2.
-- **DB layer:** migrating to Effect `DatabaseService` incrementally (storage done, queries next). Phase 9 "Full Effect Rewrite" is an ongoing migration, not a single phase.
+- **API layer:** Effect HttpApi (`effect/unstable/httpapi`) instead of Hono + Hono RPC. See `docs/stack.md` §2.
+- **LLM layer:** `@effect/ai` (`@effect/ai-anthropic`, `@effect/ai-openai`) instead of Vercel AI SDK. Rule 1 updated accordingly. See `docs/architecture_rules.md` Rule 1.
+- **DB layer:** `@effect/sql-pg` + `drizzle-orm/effect-postgres` instead of `postgres.js`. `DatabaseService` complete. Zero Promise bridges. See Phase 9 in this log.
 - **Folder:** `src/api/` does not exist — server is in `src/server/`.
-- **`summarizing` state deferred (Phase 4):** The `tokensBelowThreshold` guard correctly needs `documentSummaries[]` populated before it fires, which requires a `summarizing` state between `uploading` and `processing`, with `SUMMARIZATION_DONE` fired after all summaries are stored. V1 implementation runs summarization inside the analysis pipeline after `USER_CONFIRM`, so the guard always sees empty `documentSummaries[]` and defaults to `context` mode. Acceptable for V1 corpus sizes. Correct fix documented in `build_sequence.md` Phase 4 and tracked in `acceptance_criteria.md` Phase 4 as a known deviation.
+- **`summarizing` state deferred (Phase 4):** `tokensBelowThreshold` guard always defaults to `context` mode in V1. Correct fix is the `summarizing` state (Phase 11a). See `build_sequence.md` Phase 11.
 
 **Build sequence:** Phases 1–6 (complete) → Phase 7 (Monorepo) → Phase 8 (Evals) → Phase 9 (Effect rewrite) → Phase 10 (React SPA) → Phase 11 (RAG)
 
-**Note:** CLI (original Phase 7) is cut. See `docs/build_sequence.md` for the revised sequence.
+**Note:** CLI (original Phase 7) is cut. Phase 9 (Effect rewrite) was done before Phase 7 (Monorepo). See `docs/build_sequence.md` for the revised sequence.
 
-**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE (gate passed 17.06.2026) · **Phase 7 (Monorepo) next**
+**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE · Phase 9 COMPLETE (gate passed 25.06.2026) · **Phase 7 (Monorepo) next**
 
 ---
 
@@ -320,3 +324,50 @@ Full audit of `src/` vs docs completed.
 - `docs/architecture_rules.md` — Rules 6, 7, 8, 10 updated for Effect HttpApi and AI SDK v6 (`Output.object()`)
 - `docs/build_sequence.md` — Phase 0 structure updated to actual layout; Phase 6 updated from Hono to Effect HttpApi wiring
 - **22.06.2026 — Build sequence revised:** CLI (Phase 7) cut. New sequence: Phase 7 Monorepo → Phase 8 Evals → Phase 9 Effect rewrite → Phase 10 React SPA → Phase 11 RAG (retrieval mode + agentic `query_chunks` tool). `stack.md`, `architecture_rules.md` (Rules 14 + 15 added), `acceptance_criteria.md` (Phases 7–11 gates added) all updated.
+- **25.06.2026 — Phase 9 COMPLETE (Effect rewrite, done out of sequence before Phase 7):** See Phase 9 section below.
+
+---
+
+## Phase 9 — Full Effect Rewrite (COMPLETE — 25.06.2026)
+
+**Gate passed. Done before Phase 7 (Monorepo). Paths are still `src/` — will update to `apps/api/src/` in Phase 7.**
+
+### What was built
+
+**DB layer — fully Effect-native:**
+
+- `src/db/index.ts` — `@effect/sql-pg` + `drizzle-orm/effect-postgres` replace `postgres.js`. `DB` is a `Context.Service` wrapping the Effect-native Drizzle instance. `PgClientLive` constructs the `@effect/sql-pg` client from `ConfigService`. `AppDBLayer` composes them. Zero Promise bridges.
+- `src/db/queries.ts` — `DatabaseService` as `Context.Service` with 20+ query methods, all returning `Effect<T, EffectDrizzleQueryError>`. Implemented via `makeDatabaseService` generator that yields `DB` and defines all methods as `Effect.fnUntraced` generators. `DatabaseService.layer` provides `AppDBLayer` internally — consumers only need `DatabaseService`.
+
+**LLM layer — Vercel AI SDK replaced by `@effect/ai`:**
+
+- `src/agent/providers.ts` — `AnthropicClientLayer` and `OpenAiClientLayer` using `@effect/ai-anthropic` and `@effect/ai-openai`. Only file that touches provider packages.
+- `src/agent/schemas.ts` — new file with Effect `Schema.Struct` equivalents of former Zod schemas: `DocumentSummaryEffectSchema`, `GapReportEffectSchema`, `ClarifyingQuestionsEffectSchema`. These are what `LanguageModel.generateObject` validates against.
+- All agent passes rewritten to use `LanguageModel.generateObject` / `LanguageModel.streamText` from `effect/unstable/ai`: `summarizer.ts`, `challenger.ts`, `question-generator.ts`, `writer-brief.ts`, `writer-prd.ts`, `writer-revision.ts`.
+- `src/agent/embedder.ts` — uses `EmbeddingModel.embedMany` from `effect/unstable/ai` via `@effect/ai-openai`.
+
+**Agent pipeline — zero tryPromise:**
+
+- `session-actor.ts` — fully rewritten with `DatabaseService`. `wireSnapshotPersistence` uses `Effect.runForkWith(services)` to propagate service context into the XState subscriber callback. Zero `Effect.tryPromise`.
+- `parsers.ts` — 4 `Effect.tryPromise` calls remain; these wrap `unpdf` and `mammoth` which are third-party Promise APIs. No Effect alternative exists. This is the correct and expected residual usage.
+
+### Key decisions
+
+- **`@effect/ai` over Vercel AI SDK** — eliminates the dependency boundary between Effect and a non-Effect LLM library. Rule 1 updated accordingly.
+- **`@effect/sql-pg` + `drizzle-orm/effect-postgres`** — Drizzle's Effect-native adapter means query methods return `Effect` directly; no tryPromise wrapping needed at any query call site.
+- **`Effect.runForkWith(services)`** — the correct pattern for bridging XState subscriber callbacks (synchronous) into the Effect runtime with full service context. Avoids losing DI context at the XState boundary.
+- **`Effect.fnUntraced` for query methods** — query methods don't need individual spans; `DatabaseService` itself is the tracing boundary.
+- **Zod schemas kept for HTTP layer only** — `src/shared/schemas/api.ts` still uses Effect `Schema.Class` for HTTP request/response types. The agent-layer Zod schemas (`src/shared/schemas/agent.ts`) are superseded by `src/agent/schemas.ts` Effect schemas.
+
+### Gate verification — 25.06.2026
+
+```
+grep -rn "Effect.tryPromise" src/agent/ src/db/
+→ src/agent/parsers.ts:55,60,78,93  (third-party Promise wrappers only — acceptable)
+
+grep -rn "from \"ai\"\|@ai-sdk" src/
+→ (no output — Vercel AI SDK fully removed)
+
+pnpm test:phase4
+→ 16/16 ✓
+```

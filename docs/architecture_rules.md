@@ -5,24 +5,32 @@
 
 ---
 
-## Rule 1 — Vercel AI SDK is the only LLM interface
+## Rule 1 — `@effect/ai` is the only LLM interface
 
-**Never** import or call `@anthropic-ai/sdk` directly anywhere in the codebase
-except in the provider registration file.
+All LLM calls go through `LanguageModel` and `EmbeddingModel` from
+`effect/unstable/ai`. Provider clients (`AnthropicClient`, `OpenAiClient`) are
+registered once in `src/agent/providers.ts` and injected via `Layer`. No code
+outside `providers.ts` imports a provider package directly.
 
+```ts
+// ✅ Allowed — provider registration in providers.ts only
+import { AnthropicClient } from "@effect/ai-anthropic";
+export const AnthropicClientLayer = ...
+
+// ✅ Allowed — consuming the abstraction anywhere
+import { LanguageModel } from "effect/unstable/ai";
+yield* LanguageModel.generateObject({ schema, prompt })
+
+// ❌ Blocked — importing a provider outside providers.ts
+import { AnthropicLanguageModel } from "@effect/ai-anthropic"; // in challenger.ts
+import Anthropic from "@anthropic-ai/sdk"; // anywhere
 ```
-// ✅ Allowed — provider registration only
-import { anthropic } from '@ai-sdk/anthropic'
-const model = anthropic('claude-sonnet-4-5')
 
-// ❌ Blocked — anywhere in the codebase
-import Anthropic from '@anthropic-ai/sdk'
-const client = new Anthropic()
-client.messages.create(...)
-```
-
-**Why:** Provider flexibility. Switching to GPT-4o or Gemini must be a one-line
-change, not a refactor across multiple files.
+**Why:** Provider flexibility. Swapping Claude for GPT-4o or Gemini is a
+one-layer change in `providers.ts`, not a refactor across every agent pass.
+`@effect/ai`'s `LanguageModel` abstraction is strictly better for this than
+the previous Vercel AI SDK approach — provider switching happens at the `Layer`
+level, call sites are completely provider-agnostic.
 
 ---
 
@@ -115,30 +123,35 @@ current. Stale snapshots cause incorrect state restoration.
 
 ---
 
-## Rule 6 — Output.object() for structured passes, streamText for writing passes
+## Rule 6 — `LanguageModel.generateObject` for structured passes, `LanguageModel.streamText` for writing passes
 
 The choice of output mode is not arbitrary.
 
-- `generateText` + `Output.object({ schema })` → Summarizer, Challenger, Question generator (structured JSON output)
-- `streamText` → Brief writer, PRD writer (streaming Markdown to the client)
+- `LanguageModel.generateObject({ schema })` → Summarizer, Challenger, Question generator (structured output validated against an Effect `Schema.Struct`)
+- `LanguageModel.streamText(...)` → Brief writer, PRD writer, Revision writer (streaming Markdown)
 
 ```ts
-// ✅ Allowed — structured output
-const { output } = await generateText({
-  model, output: Output.object({ schema: DocumentSummarySchema }), ...
+// ✅ Allowed — structured output via @effect/ai
+yield* LanguageModel.generateObject({
+  schema: GapReportEffectSchema,
+  prompt: Prompt.make([...]),
 })
 
-// ✅ Allowed — streaming prose
-const stream = streamText({ model, system: briefPrompt, ... })
+// ✅ Allowed — streaming prose via @effect/ai
+yield* LanguageModel.streamText({ prompt: Prompt.make([...]) })
 
-// ❌ Blocked — manual JSON parsing from bare generateText
-const { text } = await generateText({ model, ... })
-const parsed = JSON.parse(text)
+// ❌ Blocked — manual JSON parsing
+const text = yield* LanguageModel.generateText(...)
+const parsed = JSON.parse(text) // no schema validation
+
+// ❌ Blocked — Vercel AI SDK patterns (project no longer uses Vercel AI SDK)
+const { output } = await generateText({ output: Output.object({ schema }) })
 ```
 
-**Why:** `Output.object()` enforces the schema contract at the Vercel AI SDK level.
-Manual JSON parsing has no validation and will silently produce invalid data.
-Note: `generateObject` is deprecated in AI SDK v6 — use `generateText` + `Output.object()`.
+**Why:** `LanguageModel.generateObject` enforces the schema contract at the
+`@effect/ai` level — the response is decoded through the Effect `Schema` and
+a decode failure is a typed error, not a runtime crash. Manual JSON parsing
+has no validation and will silently produce invalid data.
 
 ---
 
