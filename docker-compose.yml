@@ -1,9 +1,4 @@
 services:
-  # postgres service:
-  # - Image: pgvector/pgvector:pg17
-  # - Environment: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
-  # - Port: 5432:5432
-  # - Volume: named volume so data persists across restarts
   postgres:
     image: pgvector/pgvector:pg17
     environment:
@@ -15,11 +10,6 @@ services:
     volumes:
       - db_data:/etc/pg/data
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
-
-  # - Image: rustfs/rustfs (check Docker Hub for the exact tag)
-  # - Environment: RUSTFS_ACCESS_KEY, RUSTFS_SECRET_KEY
-  # - Port: 9000:9000 (S3-compatible API)
-  # - Volume: named volume for data
   rustfs:
     image: rustfs/rustfs
     environment:
