@@ -1,7 +1,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { config, ConfigService } from "../config.js";
-import * as schema from "./schema.js";
 import { relations } from "./schema.js";
 import { Context, Effect, Layer, pipe } from "effect";
 import * as PgDrizzle from "drizzle-orm/effect-postgres";
@@ -17,7 +16,7 @@ import { types } from "pg";
 // const migrationClient = postgres(config.db.url, { max: 1 });
 // await migrate(drizzle({ client: migrationClient }), config.db.migrationConfig);
 const client = postgres(config.db.url, { max: 1 });
-export const db = drizzle({ client, relations, schema });
+export const db = drizzle({ client, relations });
 
 // ==================================================
 // ==================================================
@@ -46,6 +45,6 @@ export const PgClientLive = Layer.unwrap(
 
 // Composed: consumers only need to provide AppDBLayer
 export const AppDBLayer = pipe(
-  Layer.effect(DB, PgDrizzle.makeWithDefaults({ schema, relations })),
+  Layer.effect(DB, PgDrizzle.makeWithDefaults({ relations })),
   Layer.provide(PgClientLive),
 );

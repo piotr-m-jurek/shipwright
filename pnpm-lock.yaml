@@ -20,6 +20,12 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: 3.1057.0
         version: 3.1057.0
+      '@effect/ai-anthropic':
+        specifier: 4.0.0-beta.87
+        version: 4.0.0-beta.87(effect@4.0.0-beta.87)
+      '@effect/ai-openai':
+        specifier: 4.0.0-beta.87
+        version: 4.0.0-beta.87(effect@4.0.0-beta.87)
       '@effect/platform-node':
         specifier: 4.0.0-beta.87
         version: 4.0.0-beta.87(effect@4.0.0-beta.87)(ioredis@5.11.1)
@@ -270,6 +276,16 @@ packages:
 
   '@drizzle-team/brocli@0.11.0':
     resolution: {integrity: sha512-hD3pekGiPg0WPCCGAZmusBBJsDqGUR66Y452YgQsZOnkdQ7ViEPKuyP4huUGEZQefp8g34RRodXYmJ2TbCH+tg==}
+
+  '@effect/ai-anthropic@4.0.0-beta.87':
+    resolution: {integrity: sha512-HBGbvdz946YMLA8P8REkuoTBKBqYhNL7D8oc3aqLOOpoPBAMdmtW9XuXkhc5S/XJdN4VvFeaCsNW0Rz9+4+YfA==}
+    peerDependencies:
+      effect: ^4.0.0-beta.87
+
+  '@effect/ai-openai@4.0.0-beta.87':
+    resolution: {integrity: sha512-tWOlN3+2XELv2Vuqg5AAVfVMuuglOXaEWf4XKwMU6Whzb6rx0QDsFIdWH9lVLp3qDAgRkwdYY/p8DRgFc/QkuQ==}
+    peerDependencies:
+      effect: ^4.0.0-beta.87
 
   '@effect/language-service@0.86.2':
     resolution: {integrity: sha512-SaPln+8srOqDJDUwNTDmP5e+IYpEDr9+1epGznnsLqu8xvo6VnxyWARdeLpqvZJlb0Pgy9ca7ppqvvdWbHPXAg==}
@@ -2344,6 +2360,14 @@ snapshots:
   '@borewit/text-codec@0.2.2': {}
 
   '@drizzle-team/brocli@0.11.0': {}
+
+  '@effect/ai-anthropic@4.0.0-beta.87(effect@4.0.0-beta.87)':
+    dependencies:
+      effect: 4.0.0-beta.87
+
+  '@effect/ai-openai@4.0.0-beta.87(effect@4.0.0-beta.87)':
+    dependencies:
+      effect: 4.0.0-beta.87
 
   '@effect/language-service@0.86.2': {}
 

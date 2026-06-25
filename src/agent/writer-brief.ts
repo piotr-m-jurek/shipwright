@@ -1,8 +1,10 @@
-import { streamText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { Effect, Schema } from "effect";
+import { Effect, Schema, Stream } from "effect";
 import type { ReconstructedSummary } from "../db/queries.js";
 import { MachineContext } from "../shared/schemas/machine.js";
+import { LanguageModel, Response } from "effect/unstable/ai";
+import { AnthropicLanguageModel } from "@effect/ai-anthropic";
+import "@effect/ai-anthropic/AnthropicLanguageModel";
+import { AnthropicClientLayer } from "./providers.js";
 
 export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(
   "shipwright/agent/BriefWriterError",
@@ -64,6 +66,8 @@ function formatSummariesForBrief(
     .join("\n\n");
 }
 
+const sonnetModel = AnthropicLanguageModel.model("claude-sonnet-4-6");
+
 /**
  * Run the Brief writer pass. Returns the full text after streaming completes.
  * Uses prompt caching on the document summaries (static across both writer passes).
@@ -75,32 +79,25 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(function* (
 ) {
   const userContent = formatSummariesForBrief(summaries, answers, questions);
 
-  const result = yield* Effect.tryPromise({
-    try: async () => {
-      const stream = streamText({
-        model: anthropic("claude-sonnet-4-6"),
-        system: BriefSystemPrompt,
-        messages: [
+  return yield* LanguageModel.streamText({
+    prompt: [
+      { role: "system", content: BriefSystemPrompt },
+      {
+        role: "user",
+        content: [
           {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: userContent,
-                // Prompt caching: document summaries are identical across Brief and PRD passes
-                providerOptions: {
-                  anthropic: { cacheControl: { type: "ephemeral" } },
-                },
-              },
-            ],
+            type: "text",
+            text: userContent,
+            // Prompt caching: document summaries are identical across Brief and PRD passes
+            options: { anthropic: { cacheControl: { type: "ephemeral" } } },
           },
         ],
-      });
-      // Consume the stream and return the full text
-      return await stream.text;
-    },
-    catch: (cause) => new BriefWriterError({ cause }),
-  });
-
-  return result;
-});
+      },
+    ],
+  }  ).pipe(
+    Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
+    Stream.map((part) => part.delta),
+    Stream.runFold(() => "", (acc, delta) => acc + delta),
+    Effect.mapError((cause) => new BriefWriterError({ cause })),
+  );
+}, Effect.provide(sonnetModel), Effect.provide(AnthropicClientLayer));

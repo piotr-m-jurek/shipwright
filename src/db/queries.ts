@@ -7,7 +7,8 @@ import type {
   SelectChunk,
   SelectDocument,
 } from "../shared/schemas/index.js";
-import { DocumentSummary } from "../shared/schemas/agent.js";
+type ItemWithSource = { text: string; sourceDocument: string; confidence: "high" | "medium" | "low" };
+type DocumentSummary = { sourceDocument: string; summary: string; requirements: readonly ItemWithSource[]; constraints: readonly ItemWithSource[]; assumptions: readonly ItemWithSource[] };
 import { AppDBLayer, DB, db } from "./index.js";
 import {
   agentSessions,

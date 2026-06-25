@@ -1,8 +1,10 @@
-import { streamText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { Effect, Schema } from "effect";
+import { Effect, Schema, Stream } from "effect";
 import type { ReconstructedSummary } from "../db/queries.js";
 import { MachineContext } from "../shared/schemas/machine.js";
+import { LanguageModel, Response } from "effect/unstable/ai";
+import { AnthropicLanguageModel } from "@effect/ai-anthropic";
+import "@effect/ai-anthropic/AnthropicLanguageModel";
+import { AnthropicClientLayer } from "./providers.js";
 
 export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()(
   "shipwright/agent/PrdWriterError",
@@ -85,6 +87,8 @@ function formatSummariesForPrd(
     .join("\n\n");
 }
 
+const sonnetModel = AnthropicLanguageModel.model("claude-sonnet-4-6");
+
 /**
  * Run the PRD writer pass. Returns the full text after streaming completes.
  * Uses prompt caching on the document summaries (shared with Brief writer pass).
@@ -96,31 +100,25 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(function* (
 ) {
   const userContent = formatSummariesForPrd(summaries, answers, questions);
 
-  const result = yield* Effect.tryPromise({
-    try: async () => {
-      const stream = streamText({
-        model: anthropic("claude-sonnet-4-6"),
-        system: PrdSystemPrompt,
-        messages: [
+  return yield* LanguageModel.streamText({
+    prompt: [
+      { role: "system", content: PrdSystemPrompt },
+      {
+        role: "user",
+        content: [
           {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: userContent,
-                // Prompt caching: same document summaries as Brief pass — pays token cost once
-                providerOptions: {
-                  anthropic: { cacheControl: { type: "ephemeral" } },
-                },
-              },
-            ],
+            type: "text",
+            text: userContent,
+            // Prompt caching: same document summaries as Brief pass — pays token cost once
+            options: { anthropic: { cacheControl: { type: "ephemeral" } } },
           },
         ],
-      });
-      return await stream.text;
-    },
-    catch: (cause) => new PrdWriterError({ cause }),
-  });
-
-  return result;
-});
+      },
+    ],
+  }  ).pipe(
+    Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
+    Stream.map((part) => part.delta),
+    Stream.runFold(() => "", (acc, delta) => acc + delta),
+    Effect.mapError((cause) => new PrdWriterError({ cause })),
+  );
+}, Effect.provide(sonnetModel), Effect.provide(AnthropicClientLayer));

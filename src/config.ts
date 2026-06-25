@@ -17,6 +17,7 @@ type StorageConfig = {
 
 type AIConfig = {
   openaiApiKey: string;
+  anthropicApiKey: string;
 };
 
 const migrationConfig: MigrationConfig = {
@@ -42,6 +43,7 @@ export const config: APIConfig = {
   },
   ai: {
     openaiApiKey: envOrThrow("OPENAI_API_KEY"),
+    anthropicApiKey: envOrThrow("ANTHROPIC_API_KEY"),
   },
 };
 
@@ -70,12 +72,12 @@ export class ConfigService extends Context.Service<
   {
     db: { url: Redacted.Redacted<string>; migrationConfig: MigrationConfig };
     storage: StorageConfig;
-    ai: AIConfig;
+    ai: { openaiApiKey: Redacted.Redacted<string>; anthropicApiKey: Redacted.Redacted<string> };
   }
 >()("shipwright/config/ConfigService") {
   static readonly layer = Layer.sync(ConfigService, () => ({
     db: {
-      url: pipe(envOrThrowEffect("DATABASE_URL"), Redacted.make),
+      url: Redacted.make(envOrThrowEffect("DATABASE_URL")),
       migrationConfig,
     },
     storage: {
@@ -85,7 +87,8 @@ export class ConfigService extends Context.Service<
       bucket: envOrThrowEffect("S3_BUCKET"),
     },
     ai: {
-      openaiApiKey: envOrThrow("OPENAI_API_KEY"),
+      openaiApiKey: pipe(envOrThrowEffect("OPENAI_API_KEY"), Redacted.make),
+      anthropicApiKey: Redacted.make(envOrThrowEffect("ANTHROPIC_API_KEY")),
     },
   }));
 }

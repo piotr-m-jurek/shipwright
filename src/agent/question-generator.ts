@@ -1,13 +1,10 @@
-import { generateText, ModelMessage, Output } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { Effect } from "effect";
-import {
-  ClarifyingQuestionsSchema,
-  GapReport,
-  ClarifyingQuestions,
-} from "../shared/schemas/agent.js";
+import { Effect, pipe } from "effect";
+import { ClarifyingQuestionsEffectSchema, GapReportEffect, ClarifyingQuestionsEffect } from "./schemas.js";
 import { TextGenerationError } from "./errors.js";
 import type { ReconstructedSummary } from "../db/queries.js";
+import { LanguageModel, Prompt } from "effect/unstable/ai";
+import { AnthropicLanguageModel } from "@effect/ai-anthropic";
+import { AnthropicClientLayer } from "./providers.js";
 
 const QuestionGeneratorSystemPrompt = `You are a requirements analyst preparing clarifying questions for a project team.
 
@@ -26,28 +23,27 @@ RULES:
 6. Do not ask about issues that can be reasonably assumed or inferred from the documents.
 7. If fewer than 3 meaningful questions exist, still produce exactly 3 — ask about the most important open decisions.`;
 
+const haikuModel = AnthropicLanguageModel.model("claude-haiku-4-5");
+
 export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(function* (
-  gapReport: GapReport,
+  gapReport: GapReportEffect,
   summaries: ReconstructedSummary[],
-): Effect.fn.Return<ClarifyingQuestions, TextGenerationError> {
-  const userContent = formatInput(gapReport, summaries);
-  const messages: ModelMessage[] = [{ role: "user", content: userContent }];
+) {
+  const { value } = yield* pipe(
+    LanguageModel.generateObject({
+      schema: ClarifyingQuestionsEffectSchema,
+      prompt: Prompt.make([
+        { role: "system", content: QuestionGeneratorSystemPrompt },
+        { role: "user", content: formatInput(gapReport, summaries) },
+      ]),
+    }),
+    Effect.mapError((cause) => new TextGenerationError({ cause })),
+  );
 
-  const result = yield* Effect.tryPromise({
-    try: () =>
-      generateText({
-        model: anthropic("claude-haiku-4-5"),
-        output: Output.object({ schema: ClarifyingQuestionsSchema }),
-        system: QuestionGeneratorSystemPrompt,
-        messages,
-      }),
-    catch: (cause) => new TextGenerationError({ cause }),
-  });
+  return value;
+}, Effect.provide(haikuModel), Effect.provide(AnthropicClientLayer));
 
-  return result.output;
-});
-
-function formatInput(gapReport: GapReport, summaries: ReconstructedSummary[]): string {
+function formatInput(gapReport: GapReportEffect, summaries: ReconstructedSummary[]): string {
   const summarySection = summaries
     .map((s) => `=== ${s.sourceDocument} ===\n${s.summary}`)
     .join("\n\n");

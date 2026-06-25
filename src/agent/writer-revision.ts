@@ -1,8 +1,9 @@
-import { streamText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { Effect, Schema } from "effect";
+import { Effect, Schema, Stream } from "effect";
 import type { ReconstructedSummary } from "../db/queries.js";
-import { MachineContext } from "../shared/schemas/machine.js";
+import { LanguageModel, Response } from "effect/unstable/ai";
+import { AnthropicLanguageModel } from "@effect/ai-anthropic";
+import "@effect/ai-anthropic/AnthropicLanguageModel";
+import { AnthropicClientLayer } from "./providers.js";
 
 export class RevisionWriterError extends Schema.TaggedErrorClass<RevisionWriterError>()(
   "shipwright/agent/RevisionWriterError",
@@ -68,6 +69,8 @@ function formatRevisionInput(
   ].join("\n\n");
 }
 
+const sonnetModel = AnthropicLanguageModel.model("claude-sonnet-4-6");
+
 /**
  * Run the revision Brief writer. Incorporates user feedback into existing Brief.
  */
@@ -79,31 +82,27 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
 ) {
   const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
 
-  return yield* Effect.tryPromise({
-    try: async () => {
-      const stream = streamText({
-        model: anthropic("claude-sonnet-4-6"),
-        system: RevisionBriefSystemPrompt,
-        messages: [
+  return yield* LanguageModel.streamText({
+    prompt: [
+      { role: "system", content: RevisionBriefSystemPrompt },
+      {
+        role: "user",
+        content: [
           {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: userContent,
-                providerOptions: {
-                  anthropic: { cacheControl: { type: "ephemeral" } },
-                },
-              },
-            ],
+            type: "text",
+            text: userContent,
+            options: { anthropic: { cacheControl: { type: "ephemeral" } } },
           },
         ],
-      });
-      return await stream.text;
-    },
-    catch: (cause) => new RevisionWriterError({ cause }),
-  });
-});
+      },
+    ],
+  }  ).pipe(
+    Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
+    Stream.map((part) => part.delta),
+    Stream.runFold(() => "", (acc, delta) => acc + delta),
+    Effect.mapError((cause) => new RevisionWriterError({ cause })),
+  );
+}, Effect.provide(sonnetModel), Effect.provide(AnthropicClientLayer));
 
 /**
  * Run the revision PRD writer. Incorporates user feedback into existing PRD.
@@ -116,28 +115,25 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(func
 ) {
   const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
 
-  return yield* Effect.tryPromise({
-    try: async () => {
-      const stream = streamText({
-        model: anthropic("claude-sonnet-4-6"),
-        system: RevisionPrdSystemPrompt,
-        messages: [
+  return yield* LanguageModel.streamText({
+    prompt: [
+      { role: "system", content: RevisionPrdSystemPrompt },
+      {
+        role: "user",
+        content: [
           {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: userContent,
-                providerOptions: {
-                  anthropic: { cacheControl: { type: "ephemeral" } },
-                },
-              },
-            ],
+            type: "text",
+            text: userContent,
+            options: { anthropic: { cacheControl: { type: "ephemeral" } } },
           },
         ],
-      });
-      return await stream.text;
-    },
-    catch: (cause) => new RevisionWriterError({ cause }),
-  });
-});
+      },
+    ],
+  }  ).pipe(
+    Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
+    Stream.map((part) => part.delta),
+    Stream.runFold(() => "", (acc, delta) => acc + delta),
+    Effect.mapError((cause) => new RevisionWriterError({ cause })),
+  );
+}, Effect.provide(sonnetModel), Effect.provide(AnthropicClientLayer));
+

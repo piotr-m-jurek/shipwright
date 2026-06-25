@@ -1,12 +1,13 @@
 import { Effect, Schema, Option, pipe } from "effect";
 import { SelectChunk } from "../shared/schemas/index.js";
-import { DocumentSummary, DocumentSummarySchema } from "../shared/schemas/agent.js";
 import { DatabaseService } from "../db/queries.js";
 import { SummaryItemInsert } from "../db/schema.js";
-import { generateText, ModelMessage, Output } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
 import { TextGenerationError } from "./errors.js";
 import { estimateTokenCount } from "./estimate-token-count.js";
+import { LanguageModel, Prompt } from "effect/unstable/ai";
+import { AnthropicLanguageModel } from "@effect/ai-anthropic";
+import { DocumentSummaryEffect, DocumentSummaryEffectSchema } from "./schemas.js";
+import { AnthropicClientLayer } from "./providers.js";
 
 class ChunksRetrievalError extends Schema.TaggedErrorClass<ChunksRetrievalError>()(
   "ChunksRetrievalError",
@@ -60,7 +61,7 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
     Effect.mapError((cause) => new DocumentSummaryReadError({ cause })),
   );
 
-  let current: Option.Option<DocumentSummary> = Option.none();
+  let current: Option.Option<DocumentSummaryEffect> = Option.none();
   for (const chunk of chunks) {
     const summary = yield* runReducePass(current, chunk, filename);
     yield* persistSummary({
@@ -95,7 +96,7 @@ const persistSummary = Effect.fn("persistSummary")(
     sessionId,
     version,
   }: {
-    summary: DocumentSummary;
+    summary: DocumentSummaryEffect;
     summaryType: "map_intermediate" | "final";
     batchIndex?: number;
     documentId: string;
@@ -115,7 +116,7 @@ const persistSummary = Effect.fn("persistSummary")(
     });
 
     const toItems = (
-      items: DocumentSummary["requirements"],
+      items: DocumentSummaryEffect["requirements"],
       itemType: SummaryItemInsert["itemType"],
     ): SummaryItemInsert[] =>
       items.map((item, i) => ({
@@ -164,29 +165,31 @@ ANTI-HALLUCINATION RULE: Do not add any requirement, constraint, or assumption t
 When a running summary is present: the new chunk is additional evidence, not a replacement. Merge both into a single coherent output.
   `;
 
+const haikuModel = AnthropicLanguageModel.model("claude-haiku-4-5");
+
 export const runReducePass = Effect.fn("agent/runReducePass")(function* (
-  current: Option.Option<DocumentSummary>,
+  current: Option.Option<DocumentSummaryEffect>,
   chunk: SelectChunk,
   sourceDocument: string,
 ) {
   const userContent = formatChunk(current, chunk, sourceDocument);
-  const messages: ModelMessage[] = [{ role: "user", content: userContent }];
 
-  const result = yield* Effect.tryPromise({
-    try: () =>
-      generateText({
-        model: anthropic("claude-haiku-4-5"),
-        output: Output.object({ schema: DocumentSummarySchema }),
-        system: MapReduceSystemPrompt,
-        messages,
-      }),
-    catch: (cause) => new TextGenerationError({ cause }),
-  });
-  return result.output;
-});
+  const { value } = yield* pipe(
+    LanguageModel.generateObject({
+      schema: DocumentSummaryEffectSchema,
+      prompt: Prompt.make([
+        { role: "system", content: MapReduceSystemPrompt },
+        { role: "user", content: userContent },
+      ]),
+    }),
+    Effect.mapError((cause) => new TextGenerationError({ cause })),
+  );
+
+  return value;
+}, Effect.provide(haikuModel), Effect.provide(AnthropicClientLayer));
 
 const formatChunk = (
-  summary: Option.Option<DocumentSummary>,
+  summary: Option.Option<DocumentSummaryEffect>,
   chunk: SelectChunk,
   sourceDocument: string,
 ) => {

@@ -82,7 +82,7 @@ const processDoc = ({
         sessionId,
         documentId: doc.id,
         documentType: doc.documentType,
-        embedding: embedding || [],
+        embedding: [...embedding],
         chunkIndex: index,
         content: chunk?.content ?? "",
         charOffset: chunk?.charOffset,

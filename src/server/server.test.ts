@@ -40,7 +40,7 @@ const TestRoutes = pipe(
   Layer.provide(ConfigService.layer),
 );
 
-const { handler, dispose } = HttpRouter.toWebHandler(TestRoutes, {
+const { handler, dispose } = HttpRouter.toWebHandler(TestRoutes as Layer.Layer<never, never, never>, {
   disableLogger: true,
 });
 

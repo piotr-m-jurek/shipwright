@@ -12,11 +12,7 @@
 import { Effect, pipe, Schema } from "effect";
 import { StorageAdapter } from "../storage/index.js";
 import { createAgentActor, restoreAgentActor, type AgentActor } from "./machine.js";
-import {
-  MachineContextEffectSchema,
-  MachineContextSchema,
-  type MachineContext,
-} from "../shared/schemas/machine.js";
+import { MachineContextEffectSchema, type MachineContext } from "../shared/schemas/machine.js";
 import { summarizeAllDocuments } from "./summarizer.js";
 import { runChallenger } from "./challenger.js";
 import { runQuestionGenerator } from "./question-generator.js";
@@ -167,11 +163,11 @@ export const runAnalysisPipeline = Effect.fn("agent/runAnalysisPipeline")(
       Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
       Effect.flatMap(({ questions: generatedQuestions }) =>
         db.createQuestions(
-          generatedQuestions.map((q, i) => ({
+          [...generatedQuestions].map((q, i) => ({
             sessionId,
             text: q.text,
             rationale: q.rationale,
-            sourceDocuments: q.sourceDocuments,
+            sourceDocuments: [...q.sourceDocuments],
             orderIndex: i,
           })),
         ),

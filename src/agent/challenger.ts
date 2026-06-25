@@ -1,9 +1,10 @@
-import { generateText, ModelMessage, Output } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { GapReport, GapReportSchema } from "../shared/schemas/agent.js";
-import { Effect } from "effect";
+import { Effect, pipe } from "effect";
 import { TextGenerationError } from "./errors.js";
 import type { ReconstructedSummary } from "../db/queries.js";
+import { GapReportEffectSchema } from "./schemas.js";
+import { LanguageModel, Prompt } from "effect/unstable/ai";
+import { AnthropicClientLayer } from "./providers.js";
+import { AnthropicLanguageModel } from "@effect/ai-anthropic";
 
 const ChallengerSystemPrompt = `You are an adversarial requirements reviewer. Your job is to find everything wrong, missing, or contradictory across a set of project document summaries.
 
@@ -26,29 +27,24 @@ RULES:
 4. A conflict requires evidence from both sides. If only one document says something, it is not a conflict — it may be a gap or ambiguity.
 5. Priority: conflicts are the most critical, then gaps, then ambiguities.`;
 
+const launchPlanModel = AnthropicLanguageModel.model("claude-haiku-4-5");
+
 export const runChallenger = Effect.fn("agent/run-challenger")(function* (
   summaries: ReconstructedSummary[],
-): Effect.fn.Return<GapReport, TextGenerationError> {
-  const messages: ModelMessage[] = [
-    {
-      role: "user",
-      content: summaries.map(prepareDocument).join("\n\n"),
-    },
-  ];
+) {
+  const { value } = yield* pipe(
+    LanguageModel.generateObject({
+      schema: GapReportEffectSchema,
+      prompt: Prompt.make([
+        { role: "system", content: ChallengerSystemPrompt },
+        { role: "user", content: summaries.map(prepareDocument).join("\n\n") },
+      ]),
+    }),
+    Effect.mapError((cause) => new TextGenerationError({ cause })),
+  );
 
-  const results = yield* Effect.tryPromise({
-    try: () =>
-      generateText({
-        model: anthropic("claude-haiku-4-5"),
-        output: Output.object({ schema: GapReportSchema }),
-        system: ChallengerSystemPrompt,
-        messages,
-      }),
-    catch: (cause) => new TextGenerationError({ cause }),
-  });
-
-  return results.output;
-});
+  return value;
+}, Effect.provide(launchPlanModel), Effect.provide(AnthropicClientLayer));
 
 function prepareDocument(doc: ReconstructedSummary): string {
   return [
