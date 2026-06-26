@@ -779,6 +779,119 @@ Completeness eval passes. Conflict detection: `plantedConflictFound: true`.
 
 ---
 
+## Phase 8b — Queue Port (~1 day)
+
+> Runs after Phase 8 (Evals). All async work that currently fires from HTTP
+> handlers gets routed through a `QueuePort` hexagonal port. Rule 16 enforces
+> this at the architecture level.
+
+### What to build
+
+**1. Job union type** in `packages/shared/src/schemas/queue.ts`:
+
+```ts
+export type DocumentProcessingJob = { type: "DocumentProcessingJob"; sessionId: string }
+export type SummarizationJob      = { type: "SummarizationJob";      sessionId: string }
+export type AnalysisJob           = { type: "AnalysisJob";           sessionId: string }
+export type GenerationJob         = { type: "GenerationJob";         sessionId: string; round: number }
+export type RevisionJob           = { type: "RevisionJob";           sessionId: string; feedback: string }
+
+export type Job =
+  | DocumentProcessingJob
+  | SummarizationJob
+  | AnalysisJob
+  | GenerationJob
+  | RevisionJob
+```
+
+Each job carries `{ type, sessionId, ...payload }` — the minimum context needed
+to execute the work and route the completion event back to XState.
+
+**2. `QueuePort`** as `Context.Service` in `apps/api/src/queue/index.ts`:
+
+```ts
+export class QueuePort extends Context.Service<QueuePort>()(
+  "shipwright/queue/QueuePort",
+  {
+    enqueue: <J extends Job>(job: J): Effect.Effect<void, QueueError> => ...,
+    subscribe: <J extends Job>(
+      type: J["type"],
+      handler: (job: J) => Effect.Effect<void, never>
+    ): Effect.Effect<void, never> => ...,
+  }
+) {}
+```
+
+**3. `InMemoryQueueLive`** in `apps/api/src/queue/in-memory.ts`:
+
+Wraps the existing `p-queue` singleton. One `PQueue` instance per job type,
+concurrency configurable. `subscribe` registers the handler; `enqueue` adds to
+the relevant queue. `InMemoryQueueLive` is the `QueuePort.layer` used in V1.
+
+**4. Job handlers** in `apps/api/src/queue/job-handlers.ts`:
+
+Register one handler per job type. Each handler:
+1. Executes the pipeline work (calling existing agent functions via `Effect.provide(runtime)`)
+2. Calls `sendMachineEvent(sessionId, completionEvent)` on success
+3. Calls `sendMachineEvent(sessionId, { type: "ERROR", ... })` on failure
+
+| Job | Pipeline | XState completion event |
+|---|---|---|
+| `DocumentProcessingJob` | `processUploadedDocuments(sessionId)` | `PROCESSING_DONE` |
+| `SummarizationJob` | `summarizeAllDocuments(sessionId)` | `SUMMARIZATION_DONE` |
+| `AnalysisJob` | `runChallenger` + `runQuestionGenerator` | `ANALYSIS_DONE` |
+| `GenerationJob` | `runWriterBrief` + `runWriterPrd` | `OUTPUT_READY` |
+| `RevisionJob` | `runRevisionWriter(sessionId, feedback)` | `OUTPUT_READY` |
+
+**5. Register `QueuePort.layer` in `runtime.ts`:**
+
+```ts
+export const runtime = ManagedRuntime.make(
+  Layer.mergeAll(
+    StorageAdapter.layer,
+    DatabaseService.layer,
+    AnthropicClientLayer,
+    OpenAiClientLayer,
+    QueuePort.layer,   // ← add
+  ),
+  { memoMap: appMemoMap },
+)
+```
+
+**6. Migrate `apps/api/src/server/handlers.ts`:**
+
+Every handler that triggers async work:
+- Remove direct `Effect.runForkWith` / `Effect.forkDaemon` calls
+- Replace with `yield* QueuePort.enqueue({ type: "...", sessionId })`
+- Return `202 Accepted` immediately
+
+**7. Migrate `apps/api/src/agent/session-actor.ts`:**
+
+XState actors that currently invoke agent pipelines directly:
+- Replace inline agent calls with `QueuePort.enqueue(job)`
+- The job handler fires `sendMachineEvent` back when done — XState advances
+
+**Exemption:** `wireSnapshotPersistence` retains `Effect.runForkWith(services)`.
+XState subscriber callbacks are synchronous — this is the only correct bridge
+pattern. It is not async work initiated by an HTTP handler.
+
+### Gate
+
+```bash
+# Only wireSnapshotPersistence should remain — everything else must be gone
+grep -rn "Effect\.runFork\|forkDaemon" apps/api/src/server/ apps/api/src/agent/
+# Expected: apps/api/src/agent/session-actor.ts (wireSnapshotPersistence only)
+
+# All 202 routes must call QueuePort.enqueue — no inline agent calls
+grep -rn "processUploadedDocuments\|summarizeAllDocuments\|runChallenger\|runWriterBrief" \
+  apps/api/src/server/
+# Expected: no output
+```
+
+All existing gate tests (`test:phase4`, corpus test) still pass.
+
+---
+
 ## Phase 9 — Full Effect Rewrite (~2 days)
 
 > **Reordering note:** This was Phase 9 in the original sequence. It now runs
@@ -987,6 +1100,164 @@ review the system prompt to ensure the model knows it's available.
 **Gate:** Retrieval mode activates on a test bundle where total summary tokens
 exceed the threshold. Agentic tool calls appear in at least one Langfuse trace.
 `tokensBelowThreshold` guard correctly evaluates real token counts (not always `true`).
+
+---
+
+## Phase 12 — Auth: Better Auth (~2 days)
+
+> **Prerequisite:** `better-auth/better-auth#9489` (Drizzle Relations v2 support)
+> merged into better-auth's `next` branch.
+>
+> A preview build exists at `pkg.pr.new/better-auth@9489` and
+> `pkg.pr.new/@better-auth/drizzle-adapter@9489` — do not use in production until
+> the PR merges; it changes as the PR is revised.
+>
+> Do not start this phase until the prerequisite is met.
+
+### What to build
+
+**1. Install dependencies:**
+
+```bash
+pnpm --filter @shipwright/api add better-auth @better-auth/drizzle-adapter
+```
+
+**2. Schema additions** (`apps/api/src/db/schema.ts`):
+
+Better Auth manages `users` and `sessions` tables. Add them via the drizzle
+adapter's schema generation (or manually — same result):
+
+```ts
+// users table — Better Auth managed
+export const users = pgTable("users", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  image: text("image"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+})
+
+// sessions table — Better Auth managed (separate from agent_sessions)
+export const authSessions = pgTable("sessions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+})
+```
+
+Add `userId` FK to `agent_sessions`:
+
+```ts
+export const agentSessions = pgTable("agent_sessions", {
+  // ... existing columns
+  userId: text("user_id").references(() => users.id), // nullable first
+})
+```
+
+**3. Better Auth config** (`apps/api/src/auth/auth.ts`):
+
+```ts
+import { betterAuth } from "better-auth"
+import { drizzleAdapter } from "@better-auth/drizzle-adapter"
+import { db } from "../db/index.ts"
+import { schema } from "../db/schema.ts"
+
+export const auth = betterAuth({
+  database: drizzleAdapter(db, { schema }),
+  socialProviders: {
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    },
+  },
+})
+```
+
+**4. Mount auth routes** in `apps/api/src/server/server.ts`:
+
+Better Auth exposes `auth.handler: (Request) => Promise<Response>`.
+Mount as a catch-all at `/api/auth/*` in the `HttpRouter` before `HttpApiBuilder`:
+
+```ts
+const authRoutes = HttpRouter.empty.pipe(
+  HttpRouter.all("/api/auth/*", (req) =>
+    Effect.promise(() => auth.handler(req.source))
+  )
+)
+```
+
+**5. `CurrentUser` middleware** (`apps/api/src/server/middleware.ts`):
+
+```ts
+export class CurrentUser extends Context.Tag("shipwright/CurrentUser")<
+  CurrentUser,
+  { id: string; email: string; name: string }
+>() {}
+
+export const AuthMiddleware = HttpApiMiddleware.make(CurrentUser, {
+  // validate session cookie via auth.api.getSession
+  // yield CurrentUser on success, HttpApiError.unauthorized on failure
+})
+```
+
+**6. Protect session routes:**
+
+Apply `AuthMiddleware` to the `SessionsApiGroup` in `packages/shared/src/api/api.ts`.
+Handlers that access `CurrentUser` won't compile without the middleware present.
+
+**7. Row-level isolation** — update `DatabaseService` query methods:
+
+Every method touching `agent_sessions`, `documents`, `chunks`, `outputs` gains a
+`userId` parameter and a `WHERE user_id = userId` filter. No query may return
+another user's data. Pattern:
+
+```ts
+getSessionById(id: string, userId: string): Effect.Effect<SelectAgentSession, DbError | SessionNotFoundError>
+// → WHERE id = $id AND user_id = $userId
+```
+
+**8. `.env.example` additions:**
+
+```
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+BETTER_AUTH_SECRET=   # random 32-byte secret for session signing
+BETTER_AUTH_URL=      # e.g. http://localhost:3000
+```
+
+**9. Run migrations:**
+
+```bash
+pnpm --filter @shipwright/api db:push
+```
+
+### Gate
+
+```
+Authenticated user completes full E2E flow:
+  upload files → confirm → answer questions → view outputs → download
+
+Unauthenticated request to any /api/sessions/* → 401 Unauthorized
+
+User isolation:
+  user A creates session S
+  user B calls GET /api/sessions/S → 404 (not 403 — do not leak existence)
+
+pnpm --filter @shipwright/api test:phase4 still passes
+```
 
 ---
 

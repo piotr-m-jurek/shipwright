@@ -371,6 +371,58 @@ analysis and leaking data.
 
 ---
 
+## Rule 16 — All async work from HTTP handlers goes through QueuePort
+
+Every HTTP handler that returns `202 Accepted` must enqueue a job via
+`QueuePort.enqueue`. No handler may call agent functions directly, fork
+an Effect, or invoke `Effect.runForkWith` / `Effect.forkDaemon` inline.
+
+Handler contract: **validate → enqueue → return 202**. Nothing else.
+
+```ts
+// ✅ Allowed — handler enqueues, QueuePort executes
+h.handle("confirmUpload", ({ params }) =>
+  Effect.gen(function* () {
+    yield* QueuePort.enqueue({ type: "DocumentProcessingJob", sessionId: params.id })
+    return ConfirmUploadResponse.make({ ok: true })
+  })
+)
+
+// ❌ Blocked — handler forks work directly
+h.handle("confirmUpload", ({ params }) =>
+  Effect.gen(function* () {
+    yield* Effect.forkDaemon(processUploadedDocuments(params.id)) // bypasses QueuePort
+    return ConfirmUploadResponse.make({ ok: true })
+  })
+)
+
+// ❌ Blocked — handler calls agent function directly (also Rule 8)
+h.handle("confirm", ({ params }) =>
+  Effect.gen(function* () {
+    yield* runSummarizer(params.id) // agent function called from handler
+    return ConfirmResponse.make({ ok: true })
+  })
+)
+```
+
+**Single exemption:** `wireSnapshotPersistence` in `session-actor.ts` uses
+`Effect.runForkWith(services)` inside an XState subscriber callback. XState
+subscribers are synchronous — this is the correct and only way to bridge into
+the Effect runtime from a synchronous callback. It is not async work triggered
+by an HTTP handler; it is a reactive side effect on state transition.
+
+**Job completion → XState events:** job handlers fire `sendMachineEvent(sessionId, event)`
+on completion. QueuePort notifies the XState machine; the machine transitions.
+This keeps XState as the single source of truth for session state.
+
+**Why:** Rule 8 says handlers don't call agent functions. Rule 16 extends this:
+handlers don't fork async work at all. Everything async is observable,
+retryable, and swappable because it goes through the port. The in-memory
+implementation is replaced by `pg-boss` (durable, Postgres-backed) with zero
+call-site changes.
+
+---
+
 ## Rule 13 — Analysis passes read chunks from DB, never raw document text
 
 No Summarizer, Challenger, or Writer pass may read `documents.rawText`

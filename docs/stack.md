@@ -402,6 +402,127 @@ Braintrust — smaller community. Helicone — proxy-based, weak eval story.
 
 ---
 
+### 10. 📬 Queue — QueuePort (hexagonal) · InMemoryQueueLive · pg-boss (production)
+
+**Why:** Every HTTP handler that returns `202 Accepted` triggers async work. That
+work must be observable, retryable, and swappable without touching call sites.
+A `QueuePort` Effect `Context.Service` gives a single enqueue/subscribe interface;
+the implementation is swapped from in-memory to durable without changing any
+handler or agent code. Rule 16 enforces this: no handler may fork work directly.
+
+**Port definition** (`apps/api/src/queue/index.ts`):
+
+```ts
+export class QueuePort extends Context.Service<QueuePort>()(
+  "shipwright/queue/QueuePort",
+  {
+    enqueue: <J extends Job>(job: J): Effect.Effect<void, QueueError> => ...,
+    subscribe: <J extends Job>(
+      type: J["type"],
+      handler: (job: J) => Effect.Effect<void, never>
+    ): Effect.Effect<void, never> => ...,
+  }
+) {}
+```
+
+**Job types** (defined in `packages/shared/src/schemas/queue.ts`):
+
+| Job | Trigger | Completion event |
+|---|---|---|
+| `DocumentProcessingJob` | `POST /api/sessions/:id/confirm-upload` | `PROCESSING_DONE` |
+| `SummarizationJob` | after `PROCESSING_DONE` or `UPLOAD_COMPLETE` | `SUMMARIZATION_DONE` |
+| `AnalysisJob` | `POST /api/sessions/:id/confirm` (user confirm) | `ANALYSIS_DONE` |
+| `GenerationJob` | `ANSWERS_SUFFICIENT` or `roundLimitReached` | `OUTPUT_READY` |
+| `RevisionJob` | `POST /api/sessions/:id/revise` | `OUTPUT_READY` |
+
+Each job carries `{ type, sessionId, ...payload }`. Job handler fires
+`sendMachineEvent(sessionId, completionEvent)` on success. XState remains
+the single source of truth for session state.
+
+**`InMemoryQueueLive`** — wraps the existing `p-queue` singleton. Concurrency
+configurable per job type. Not durable: jobs lost on server restart. Acceptable
+for V1 — XState snapshot rehydration can re-trigger any stuck session on restart.
+
+**Production upgrade:** `pg-boss` — Postgres-backed job queue using the existing
+DB connection. At-least-once delivery, retry with backoff, dead-letter queue.
+No new infrastructure — same port, different `Layer`. Deferred to fine-tuning phase.
+
+**Rejected:** bare `p-queue` singleton without a port — not swappable, not testable,
+violates Rule 16. BullMQ directly — requires Redis before pg-boss (Postgres) is
+exhausted. RabbitMQ/SQS — external service dependency not justified at this scale.
+
+---
+
+### 11. 🔐 Auth — Better Auth + drizzleAdapter (Phase 12)
+
+**Prerequisite:** `better-auth/better-auth#9489` (Drizzle Relations v2 support)
+merged into better-auth's `next` branch. A preview build is available at
+`pkg.pr.new/better-auth@9489` and `pkg.pr.new/@better-auth/drizzle-adapter@9489`
+but is not used until the PR merges — it changes as the PR is revised.
+
+**What it adds:**
+
+- `users` table (Better Auth managed)
+- `sessions` table (Better Auth managed — separate from `agent_sessions`)
+- `agent_sessions.userId` FK — every agent session belongs to a user
+- OAuth providers: GitHub + Google
+- Auth routes: `auth.handler` mounted at `/api/auth/*` as a fetch passthrough
+  in `HttpRouter` — no adapter needed, `(Request) => Promise<Response>` drops in
+- `CurrentUser` `Context.Tag` + `HttpApiMiddleware` — typed user injected into
+  every protected handler context; a handler that touches user data won't compile
+  without the middleware present
+
+**Row-level security (application-level):** every `DatabaseService` query method
+that touches `agent_sessions`, `documents`, `chunks`, or `outputs` must filter
+by `userId`. Pattern: `WHERE user_id = currentUser.id` on every query.
+Postgres RLS policies deferred — application-level enforcement is sufficient for V1.
+
+**`HttpApiMiddleware` pattern:**
+
+```ts
+class CurrentUser extends Context.Tag("shipwright/CurrentUser")<
+  CurrentUser,
+  { id: string; email: string }
+>() {}
+
+const AuthMiddleware = HttpApiMiddleware.make(CurrentUser, {
+  // extract session from cookie, validate via Better Auth, yield CurrentUser
+})
+
+// Protected group — won't compile without CurrentUser in scope
+class SessionsApiGroup extends HttpApiGroup.make("sessions")
+  .middleware(AuthMiddleware)
+  .add(...)
+{}
+```
+
+**Why Better Auth over alternatives:**
+
+| | Better Auth | Auth.js | Lucia |
+|---|---|---|---|
+| Drizzle adapter | yes (PR #9489) | no | manual |
+| TypeScript-first | yes | partial | yes |
+| Session management | built in | built in | manual |
+| Relations v2 compatible | yes (PR #9489) | n/a | n/a |
+| Maintenance | active | active | archived |
+
+Lucia is archived. Auth.js has no Drizzle v1 adapter. Better Auth with
+`@better-auth/drizzle-adapter` is the only option that shares the existing
+Drizzle v1 schema without a second ORM or connection pool.
+
+---
+
+### 12. 🚀 Deployment
+
+See `docs/deployment.md` for the full plan.
+
+**Short version:** single Docker image (multi-stage build), Effect server serves
+API + static SPA, `drizzle-kit migrate` as pre-deploy step, secrets via env vars,
+GitHub Actions CI/CD. Platform (Fly.io / AWS ECS / Railway / Render) decided when
+traffic requirements are known.
+
+---
+
 ## Final Stack Summary
 
 | Layer                 | Winner                                                                                                   |
@@ -417,7 +538,10 @@ Braintrust — smaller community. Helicone — proxy-based, weak eval story.
 | Vector DB / Retrieval | pgvector (Postgres) + OpenAI text-embedding-3-small                                                      |
 | Database              | PostgreSQL + Drizzle ORM + `@effect/sql-pg` + `DatabaseService` (Effect-native, complete)                |
 | File Storage          | StorageAdapter (Effect Context.Service) · @aws-sdk/client-s3 · rustfs → Supabase Storage                |
+| Queue                 | QueuePort (Effect Context.Service) · InMemoryQueueLive (p-queue) → pg-boss (production)                 |
+| Auth                  | Better Auth + @better-auth/drizzle-adapter · CurrentUser HttpApiMiddleware (Phase 12)                    |
 | Observability / Evals | Langfuse (full stack: Postgres + ClickHouse + Redis + S3)                                                |
+| Deployment            | Docker (multi-stage) · GitHub Actions · Terraform (platform TBD) — see docs/deployment.md               |
 
 ---
 
