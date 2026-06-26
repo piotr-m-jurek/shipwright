@@ -1,15 +1,17 @@
 {
   "name": "shipwright",
+  "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently --names api,web --prefix-colors cyan,green \"tsx --watch src/server/server.ts\" \"vite\"",
-    "dev:api": "tsx --watch src/server.ts",
-    "dev:web": "vite",
-    "build": "vite build",
-    "fmt": "oxfmt",
-    "fmt:check": "oxfmt --check",
-    "lint": "oxlint -c oxlint.config.js",
-    "lint:fix": "oxlint --fix",
+    "dev": "concurrently --names api,web --prefix-colors cyan,green \"pnpm --filter @shipwright/api dev\" \"pnpm --filter @shipwright/web dev\"",
+    "dev:api": "pnpm --filter @shipwright/api dev",
+    "dev:web": "pnpm --filter @shipwright/web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r --parallel lint",
+    "fmt": "pnpm -r --parallel fmt",
     "docs:effect-update": "git subtree pull --prefix docs/effect-smol effect-smol main --squash"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
   }
 }

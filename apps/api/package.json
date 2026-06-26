@@ -13,7 +13,9 @@
     "test:corpus": "node --env-file=../../.env --import tsx/esm src/agent/tests/test-corpus.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "lint": "oxlint -c oxlint.config.js .",
+    "fmt": "oxfmt src"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1055.0",

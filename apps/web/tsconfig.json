@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "target": "esnext",
+    "outDir": "dist",
+    "plugins": [{ "name": "@effect/language-service" }],
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*", "index.tsx"],
+  "exclude": ["node_modules", "dist"]
+}

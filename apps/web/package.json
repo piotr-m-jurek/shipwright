@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "oxlint -c oxlint.config.js src",
+    "fmt": "oxfmt src"
   },
   "dependencies": {
     "@shipwright/shared": "workspace:*",

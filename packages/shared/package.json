@@ -2,6 +2,9 @@
   "name": "@shipwright/shared",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./api": "./src/api/api.ts",
