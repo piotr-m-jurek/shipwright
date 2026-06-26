@@ -1,0 +1,43 @@
+{
+  "name": "@shipwright/api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=../../.env --import tsx/esm --watch src/server/server.ts",
+    "start": "node --env-file=../../.env --import tsx/esm src/server/server.ts",
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "test:phase4": "node --env-file=../../.env --import tsx/esm src/agent/tests/test-phase4-gate.ts",
+    "test:phase5": "node --env-file=../../.env --import tsx/esm src/agent/tests/test-phase5-gate.ts",
+    "test:phase5b": "node --env-file=../../.env --import tsx/esm src/agent/tests/test-phase5b-gate.ts",
+    "test:corpus": "node --env-file=../../.env --import tsx/esm src/agent/tests/test-corpus.ts",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1055.0",
+    "@aws-sdk/s3-request-presigner": "3.1057.0",
+    "@effect/ai-anthropic": "4.0.0-beta.87",
+    "@effect/ai-openai": "4.0.0-beta.87",
+    "@effect/platform-node": "4.0.0-beta.87",
+    "@effect/sql-pg": "4.0.0-beta.87",
+    "@shipwright/shared": "workspace:*",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "1.0.0-rc.3",
+    "effect": "4.0.0-beta.87",
+    "file-type": "22.0.1",
+    "js-tiktoken": "1.0.21",
+    "mammoth": "1.12.0",
+    "pg": "^8.22.0",
+    "unpdf": "1.6.2",
+    "xstate": "5.32.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3",
+    "drizzle-kit": "^0.31.4",
+    "tsx": "4.22.3",
+    "typescript": "~5.8.3",
+    "vitest": "4.1.8"
+  }
+}

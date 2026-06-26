@@ -1,0 +1,23 @@
+{
+  "name": "@shipwright/shared",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api/api.ts",
+    "./api.js": "./src/api/api.ts",
+    "./schemas": "./src/schemas/index.ts",
+    "./schemas.js": "./src/schemas/index.ts",
+    "./schemas/api": "./src/schemas/api.ts",
+    "./schemas/api.js": "./src/schemas/api.ts",
+    "./schemas/machine": "./src/schemas/machine.ts",
+    "./schemas/machine.js": "./src/schemas/machine.ts",
+    "./domain": "./src/domain/errors.ts",
+    "./domain.js": "./src/domain/errors.ts",
+    "./domain/errors": "./src/domain/errors.ts",
+    "./domain/errors.js": "./src/domain/errors.ts"
+  },
+  "dependencies": {
+    "effect": "4.0.0-beta.87"
+  }
+}

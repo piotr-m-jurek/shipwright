@@ -2,5 +2,10 @@ allowBuilds:
   "@parcel/watcher": set this to true or false
   esbuild: true
   msgpackr-extract: false
+
 blockExoticSubdeps: true
 minimumReleaseAge: 1440
+
+packages:
+  - "apps/*"
+  - "packages/*"
