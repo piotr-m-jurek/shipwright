@@ -10,12 +10,9 @@
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { config } from "dotenv";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../../../");
-
-config({ path: resolve(REPO_ROOT, ".env") });
 
 import {
   agentSessions,

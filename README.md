@@ -1,33 +1,90 @@
 # Shipwright
 
-An AI agent that ingests a messy bundle of project inputs — briefs, PRD drafts, RFPs, meeting transcripts — analyses them for gaps and contradictions, asks a targeted set of clarifying questions, and produces two outputs: a human-readable **Project Brief** and a coding-agent-ready **Implementation PRD**.
+AI agent that ingests messy project inputs — briefs, PRD drafts, RFPs, transcripts — analyses them for gaps and contradictions, asks a targeted set of clarifying questions, and produces two outputs: a human-readable **Project Brief** and a coding-agent-ready **Implementation PRD**.
 
 ## Stack
 
-| Layer                 | Technology                                           |
-| --------------------- | ---------------------------------------------------- |
-| API                   | Hono + Hono RPC                                      |
-| Agent / Orchestration | Vercel AI SDK Core + XState                          |
-| LLM                   | Claude 3.7 Sonnet (Anthropic via Vercel AI SDK)      |
-| Document Processing   | unpdf + mammoth + Node.js fs                         |
-| Vector DB             | PostgreSQL + pgvector + Drizzle ORM                  |
-| Embeddings            | OpenAI text-embedding-3-small                        |
-| File Storage          | StorageAdapter + @aws-sdk/client-s3 + rustfs (local) |
-| Observability         | Langfuse                                             |
+| Layer | Technology |
+|---|---|
+| Repo | pnpm workspaces — `apps/api`, `apps/web`, `packages/shared` |
+| API | Effect HttpApi (`effect/unstable/httpapi`) |
+| Agent / Orchestration | `@effect/ai` + XState v5 |
+| LLM | Claude via `@effect/ai-anthropic` |
+| Embeddings | OpenAI `text-embedding-3-small` via `@effect/ai-openai` |
+| Document Processing | unpdf + mammoth + Node.js fs |
+| Database | PostgreSQL + pgvector + Drizzle ORM + `@effect/sql-pg` |
+| File Storage | `StorageAdapter` + `@aws-sdk/client-s3` + rustfs (local) |
+| Observability | Langfuse (Phase 8) |
 
 ## Build progress
 
-Session history, completed phases, decisions, and deviations are tracked in [`docs/progress.md`](docs/progress.md). Read this first when resuming work in a new session.
+Session history, completed phases, decisions, and deviations: [`docs/progress.md`](docs/progress.md).
+
+Current status: **Phases 1–7 + Phase 9 complete. Phase 8 (Evals) next.**
 
 ## Local setup
 
 ```bash
-cp .env.example .env
-# fill in .env values
+# 1. Infra
 docker compose up -d
+
+# 2. Install workspace deps
 pnpm install
-pnpm db:push
-pnpm dev
+
+# 3. App env (API)
+cp apps/api/.env.example apps/api/.env
+# fill in OPENAI_API_KEY and ANTHROPIC_API_KEY
+
+# 4. Apply DB schema
+pnpm --filter @shipwright/api db:push
+
+# 5. Start
+pnpm dev                          # both api + web (concurrently)
+pnpm --filter @shipwright/api start   # api only
+pnpm --filter @shipwright/web dev     # web only
+```
+
+**Env file split:**
+- `.env` — infra vars for docker-compose (`POSTGRES_*`, `RUSTFS_*`)
+- `apps/api/.env` — server vars (`DATABASE_URL`, `S3_*`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
+- `apps/web/.env` — frontend vars (`VITE_API_URL`)
+
+## Workspace layout
+
+```
+apps/
+  api/              Effect HttpApi server, agent pipeline, DB, storage
+    src/
+      server/       handlers.ts, server.ts
+      agent/        summarizer, challenger, question-generator, writers
+        tests/      gate tests (phase4, phase5, phase5b, corpus)
+      db/           schema.ts, queries.ts (DatabaseService), index.ts
+      storage/      StorageAdapter (Effect Context.Service)
+      config/       ConfigService
+    drizzle.config.ts
+  web/              React SPA (Phase 10 — scaffold only)
+packages/
+  shared/           HttpApi definition, HTTP schemas, domain errors
+    src/
+      api/          api.ts — HttpApi + HttpApiGroup (imported by both apps)
+      schemas/      api.ts, machine.ts
+      domain/       errors.ts
+```
+
+## Agent pipeline
+
+```
+Upload → HeadObject verify → parse → chunk → embed → pgvector
+  → USER_CONFIRM
+  → Summarizer (map-reduce per document → document_summaries table)
+  → Challenger (cross-document gap report)
+  → Question Generator (3–7 targeted questions)
+  → [HITL suspend — awaiting_answers]
+  → USER_ANSWERED → sufficiency check → loop or proceed
+  → Writer Brief + Writer PRD (streamText, prompt caching)
+  → outputs table + S3
+  → [complete]
+  → optional: REVISION_REQUESTED → Revision Writer → version++
 ```
 
 ## State machine
@@ -35,10 +92,10 @@ pnpm dev
 ```mermaid
 stateDiagram-v2
     [*] --> idle
-    idle --> uploading: FILES_SELECTED_BY_USER
-    uploading --> processing: UPLOAD_COMPLETE
+    idle --> uploading: UPLOAD_COMPLETE
+    uploading --> processing: SUMMARIZATION_DONE
     uploading --> uploading_error: ERROR
-    processing --> analyzing: USER_CONFIRM [hasEnoughContext && tokensBelowThreshold]
+    processing --> analyzing: USER_CONFIRM [tokensBelowThreshold]
     processing --> processing_error: ERROR
     analyzing --> awaiting_answers: ANALYSIS_DONE
     analyzing --> analyzing_error: ERROR
@@ -50,258 +107,36 @@ stateDiagram-v2
     generating --> complete: OUTPUT_READY
     generating --> generating_error: ERROR
     complete --> revising: REVISION_REQUESTED
-    revising --> awaiting_answers: ANALYSIS_DONE [new questions surfaced]
-    revising --> generating: ANALYSIS_DONE [no new questions]
+    revising --> generating: no new questions
+    revising --> awaiting_answers: new questions surfaced
     revising --> revising_error: ERROR
-
-    state Error {
-        uploading_error
-        processing_error
-        analyzing_error
-        re_evaluating_error
-        generating_error
-        revising_error
-    }
-
-    note right of analyzing
-        Suspend point — waits for external
-        USER_CONFIRM event.
-        Does not proceed autonomously.
-    end note
-
-    note right of awaiting_answers
-        Suspend point — waits for external
-        USER_ANSWERED event. Does not
-        proceed autonomously.
-    end note
-
-    note right of revising
-        Triggered by REVISION_REQUESTED
-        carrying free-form feedback string.
-        outputVersion increments on each
-        pass through generating.
-    end note
 ```
 
-**Machine context shape:**
-`sessionId`, `documents[]`, `documentSummaries[]`, `questions[]`, `answers[]`,
-`round`, `inputMode (context | retrieval)`, `agentAnalysis`, `revisionFeedback`,
-`outputVersion`, `outputs{}`
+Machine context: `sessionId`, `documents[]`, `documentSummaries[]`, `questions[]`, `answers[]`, `round`, `inputMode (context | retrieval)`, `agentAnalysis`, `revisionFeedback`, `outputVersion`, `outputs{}`
 
-Full schema: `src/shared/schemas/machine.ts`
+Schema: `packages/shared/src/schemas/machine.ts`
 
-## Processing:
+## API
 
-```mermaid
-flowchart TD
-    A([User opens app]) --> B[Session created\nstored in localStorage]
-    B --> C[User uploads documents\nPDF / DOCX / TXT / MD]
+OpenAPI schema: `GET http://localhost:3000/openapi.json`  
+Scalar docs UI: `GET http://localhost:3000/docs`
 
-    C --> D[POST /api/sessions/upload-url\nreturns presigned S3 URL per file]
-    D --> E[Client PUTs files directly to S3\nHono never sees file bytes]
-    E --> F[POST /api/sessions/:id/confirm-upload\nBE calls HeadObject to verify]
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/sessions/upload-url` | Generate presigned S3 PUT URLs, create session |
+| POST | `/api/sessions/:id/confirm-upload` | Verify upload via HeadObject |
+| POST | `/api/sessions/:id/confirm` | Trigger analysis pipeline |
+| GET | `/api/sessions/:id` | Session status + questions |
+| POST | `/api/sessions/:id/answers` | Submit clarifying answers |
+| GET | `/api/sessions/:id/output` | Retrieve generated outputs |
+| GET | `/api/sessions/:id/output/:type/download-url` | Presigned S3 GET URL |
+| POST | `/api/sessions/:id/revise` | Submit revision feedback |
 
-    F --> G[XState: idle → processing\nsnapshot persisted to DB]
+## Gate tests
 
-    G --> H[process-uploaded-documents\nEffect.forEach concurrency 2]
-    H --> I[Parse from S3\nunpdf / mammoth / fs]
-    I --> J[Chunk + embed\nrecursive splitter + location metadata\nOpenAI text-embedding-3-small → pgvector]
-    J --> K[Store tokenCount on documents\nsummaryStatus = pending]
-
-    K --> L[User reviews uploaded files\nconfirms ready to analyse]
-    L --> M[USER_CONFIRM event\nmachine → analyzing]
-
-    M --> N[Summarizer — loop over all docs]
-
-    subgraph SUMMARIZE [Per-document summarization]
-        N --> O[Load chunks from DB\nordered by chunkIndex]
-        O --> P{Chunks fit\nin one call?}
-        P -- yes --> Q[Single summarization call\nchunks → DocumentSummary]
-        P -- no --> R[Map: batch N chunks\neach batch → intermediate summary]
-        R --> S[Reduce: intermediates\n→ final DocumentSummary]
-    end
-
-    Q --> T[Store summary + summaryStatus=ready\non documents table]
-    S --> T
-
-    T --> U{All docs\nsummarised?}
-    U -- no --> N
-    U -- yes --> V[ANALYSIS_DONE\nmachine → awaiting_answers]
-
-    V --> W[Challenger pass\nreads all per-doc summaries\n→ GapReport\nconflicts + gaps + ambiguities]
-
-    W --> X[Question Generator\nranks gaps by impact\nselects 3–7 questions\nstored to questions table]
-
-    X --> Y[Machine suspends\nawaiting_answers]
-    Y --> Z[User reads questions\ntypes answers in UI]
-
-    Z --> AA[POST /api/sessions/:id/answers\nUSER_ANSWERED event\nanswers persisted to DB]
-
-    AA --> AB[machine → re_evaluating\nAre answers sufficient?]
-    AB --> AC{Sufficient or\nround >= 2?}
-    AC -- insufficient and round < 2 --> AD[ANSWERS_INSUFFICIENT\nnew targeted questions]
-    AD --> Y
-    AC -- sufficient or limit reached --> AE[ANSWERS_SUFFICIENT\nmachine → generating]
-
-    AE --> AF[Writer Brief\nstreamText\nsummaries + answers → Project Brief\ncitations to sourceDocument]
-    AE --> AG[Writer PRD\nstreamText\nsummaries + answers → Implementation PRD\nwritten for coding agent]
-
-    AF --> AH[Store outputs table\ntype=project_brief version=1]
-    AG --> AI[Store outputs table\ntype=implementation_prd version=1]
-
-    AH --> AJ[OUTPUT_READY\nmachine → complete]
-    AI --> AJ
-
-    AJ --> AK[User downloads outputs\nGET /api/sessions/:id/output/:type/download-url\n→ presigned S3 GET URL\nshort TTL, bytes direct from S3]
-
-    AK --> AL{User wants\nto revise?}
-    AL -- no --> AM([Done])
-    AL -- yes --> AN[User types free-form feedback\nPOST /api/sessions/:id/revise]
-
-    AN --> AO[REVISION_REQUESTED event\nmachine → revising\nrevisionFeedback stored in context]
-
-    AO --> AP[Revision Writer pass\nexisting outputs + feedback + summaries\noptional: re-RAG chunks for specific areas]
-
-    AP --> AQ{New questions\nsurfaced?}
-    AQ -- yes --> AR[machine → awaiting_answers\nnew clarifying questions]
-    AR --> Y
-    AQ -- no --> AS[machine → generating\nregenerate both outputs\noutputVersion increments]
-
-    AS --> AT[Store outputs table\nversion=2 or higher]
-    AT --> AJ
+```bash
+pnpm --filter @shipwright/api test:phase4   # 16 checks — clarifying loop
+pnpm --filter @shipwright/api test:phase5   # writer passes
+pnpm --filter @shipwright/api test:phase5b  # export + revision
+pnpm --filter @shipwright/api test:corpus   # 5-doc corpus, 5/5 planted issues
 ```
-
----
-
-## TODO:
-- rustfs requires more configuration in docker compose
-  - https://docs.rustfs.com/installation/docker/#docker-compose-installation
-
-
----
-18.06.2026
-
-- [ ] durable workflows - resume processability (any step, process-uploaded-documents, summarize etc.) when the server dies, and is revived
-- [ ] summary UI - what If it was a text that you can highlight right click and instruct the agent to correct, or sth.
-  - this is important for UX in Agentic world
-
-- agent sessions could have a title based on the summary, amount of files, file titles (or assigned by user)
-- dashboard with all user sessions to come back and revise
-- after finishing the PRD generation, nice to have an option to upload more files, that change the summaries - redoing the whole summary with additional input, or whole new summary, not just iteratively added
-
-- LLM costs, multi agent split, or AGENT ORCHESTRATION in general - to know what to use in certain situations
-
-infra: 
-- switch to monorepo
-- microservices and a queue
-- durability ~~better~~ different than saving xState to DB
-- workflow durability - to have the workflows start from where they stopped
-
----
-
-11.06.2026
-
-- [ ] refine prompts using rules from anthropic course
-- [ ] refine testing corpus using rules from anthropic course - prompt evals
-- [ ] concurrency works for now, but later on, we might need a real queue -
-- [ ] find out if RAG was not ommited in the plan - where do we retrieve chunks? where llm is answering our questions based on the acquired knowledge
-
-  - extractor
-    - extractor is wrong - it should use DB with RAG capabilities to read and answer files.
-  - ask questions to the rag
-  - working memory - go through all the documents in the system and summarize the main topic or problem that we are trying to solve
-  - based on the summary formulate questions (to user) that have to be asked wherever there are discrepancies inside summarized knowledge
-  - save user answers (with corresponding question, preferably with corresponding related documents)
-
-
-  - retrieval is programmatic
-  - but could be an agent that does this agentically with Tools (query database, summarizing similar chunks)
-    - this is how you read
-    - this is how you write
-    - analyze the documents and make sense of it all
-
-- how do we do the loop of summarizing and finding discrepancies?
-  - how to build working memory
-    - graphRAG
-- **optional** graph RAG
-  - complicated
-  -
----
-
-03.07.2026
-
-- [ ] consider data transfer object for db instead of raw dogging db queries in /db/queries.ts
-- [ ] `agent/parsers.ts` - use `extname` from node to double check file extension (a .txt file can actually be a binary that's gonna run unexpectedly somewhere in the process)
-- [ ] chunker.ts - make sure we don't split into too small chunks. what if we have very short paragraphs?
-- [ ] chunker.ts - return not just list of chunks, but also metadata about those chunks, for pdf -> page number, maybe for markdown -> paragraph list, for all
-  - imagine the situation that something is on one page in a very long chapter of very long paragraph, metadata needed
-- [ ] content and embedding are technically the same thing
-- [ ] try typing jsons in drizzle schema with $type() method on builder
-- [ ] file-type -> fileTypeFromStream - connect that with downloadPartialObject
-- [ ] parsing and chunking should be on a stream not on a buffer. because we might kill the server when parsing a big file, or we parse files from multiple users. we don't have the capacity. unless you have queues and you can process only 1-3 files at a time...
-  - can chunking go on streams? unpdf?
-  - embedChunks has to be queued or handles queueing itself?
-- [ ] deleting all the documents from everything
-  - background job/schedule to remove documents that are not connected to any existing session (and remove docs chunks and from bucket)
-  - consider that for one of the last phases of the project - fine tuning
-
----
-
-- step 1 - parsing/indexing/chunkgin
-  - consider **pictures** or **text about pictures**
-    - [text] either AI is guessing what's on the pictures and the content lands in the RAG
-      - [description] of what's on the picture
-    - [picture] or we just put picture to the RAG
-      - you can semantically compare to other pictures
-      - if we have to compare pictures, then it makes sense, for knowledge retrieval - doesn't make much sense
-
-  - authentication
-    - SSO with github
-
-    - Backend sessions
-      - check out frameworks
-    - session cookies instead of JWT
-      - opening session
-      - revoking session
-
-  - authorization
-    - roles: member, admin, superadmin,
-    - RBAC? ABAC etc. (read about it)
-    - [policy system in effect](https://lucas-barake.github.io/building-a-composable-policy-system/)
-
-  - upload size
-    - 100MB what if multiple users do it?
-      - ALBO stream FE -> BE -> S3 - jazda bez trzymanki i można zepsuć
-      - ALBO presigned URLs - client -> Bucket
-        - public, or session guarded
-
-        - **background jobs** for listening for upload (we want to start processing uploaded file)
-          - queues
-          - pubsub
-          - event bus in the simplest form
-
-
-  - verify uploading files
-    - [`file-type`](https://github.com/sindresorhus/file-type) is one of the libraries
-    - if the mime type and the content actually match
-
-  - chunking strategies
-    - pdf
-    - docx
----
-
-- [ ] better error handling in `storage/index.ts`
-- [ ] embedMany in `src/agent/embedder.ts` has a default batch limit, after which it throws,
-remember for later
-- [ ] `src/shared/schemas/api.ts` has some wild types. figure out the way and nomenclature of typing endpoints
-  - {Resource}{Action}{Role}
-  - Resource - what the endpoint operates on
-  - Action - the operation (Create, Confirm, Upload)
-  - Role - Request for input, Response for output
-
-- [ ] Consider Effect-ts
-  - error handling
-  - type safe routes
-  - mixing types between backend and frontend
-  - use effect-atom on the frontend for fun
-````

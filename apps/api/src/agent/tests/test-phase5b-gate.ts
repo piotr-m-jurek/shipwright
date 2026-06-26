@@ -7,12 +7,10 @@
  * Usage: pnpm tsx src/agent/test-phase5b-gate.ts
  * Requires: server on port 3000, ANTHROPIC_API_KEY set
  */
-import { config } from "dotenv";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../../../");
-config({ path: resolve(REPO_ROOT, ".env") });
 
 import { readFile } from "fs/promises";
 import { Effect, Layer, ManagedRuntime } from "effect";

@@ -3,12 +3,8 @@
  * then waits until awaiting_answers and prints the session ID and question IDs.
  * Used for the server restart recovery gate test.
  *
- * Usage: pnpm tsx src/agent/restart-test-setup.ts
+ * Usage: node --env-file=.env --import tsx/esm src/agent/restart-test-setup.ts
  */
-import { config } from "dotenv";
-import { resolve } from "path";
-config({ path: resolve(process.cwd(), ".env") });
-
 import { readFile } from "fs/promises";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { StorageAdapter } from "../storage/index.js";
