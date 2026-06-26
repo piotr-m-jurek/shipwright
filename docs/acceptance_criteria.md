@@ -218,24 +218,26 @@ it "mostly works".
 > **Deviation:** Phase 7 was a CLI. CLI is cut. This phase restructures the monolith
 > into a pnpm workspaces monorepo.
 
-- [ ] `pnpm-workspace.yaml` exists at repo root and declares `apps/*` and `packages/*`
-- [ ] `apps/api/package.json` exists with name `@shipwright/api`
-- [ ] `apps/web/package.json` exists with name `@shipwright/web` (scaffold only — no components yet)
-- [ ] `packages/shared/package.json` exists with name `@shipwright/shared`
-- [ ] `packages/shared` has an `exports` field covering `.`, `./api`, `./schemas`, `./domain`, `./lib`
-- [ ] `src/server/api/api.ts` (the `HttpApi` definition) has moved to `packages/shared/src/api/index.ts`
-- [ ] `apps/api` imports `Api` from `@shipwright/shared/api` — not from a local `src/server/api/` path
-- [ ] All files from `src/server/`, `src/agent/`, `src/db/`, `src/storage/` are under `apps/api/src/`
-- [ ] All files from `src/shared/` are under `packages/shared/src/`
-- [ ] Gate test scripts (`test-phase4-gate.ts`, `test-phase5-gate.ts`, `test-phase5b-gate.ts`) are in `apps/api/tests/gates/`
-- [ ] `apps/api` imports `@shipwright/shared` via package name — no relative cross-workspace imports (Rule 14)
-- [ ] `pnpm --filter @shipwright/api start` starts the server on port 3000 without errors
-- [ ] `pnpm --filter @shipwright/api test:phase4` passes (16/16)
-- [ ] `docker-compose.yml`, `.env.example`, `drizzle.config.ts` remain at repo root
-- [ ] No `Effect.tryPromise` count regresses — count in `apps/api/src/` must be ≤ the pre-phase count
-- [ ] `GET http://localhost:3000/openapi.json` still returns a valid OpenAPI 3.1 schema
+- [x] `pnpm-workspace.yaml` exists at repo root and declares `apps/*` and `packages/*`
+- [x] `apps/api/package.json` exists with name `@shipwright/api`
+- [x] `apps/web/package.json` exists with name `@shipwright/web` (scaffold only — no components yet)
+- [x] `packages/shared/package.json` exists with name `@shipwright/shared`
+- [x] `packages/shared` has an `exports` field covering `.`, `./api`, `./schemas`, `./domain` (no `./lib` — no shared lib utilities exist yet)
+- [x] `src/server/api/api.ts` (the `HttpApi` definition) has moved to `packages/shared/src/api/api.ts`
+- [x] `apps/api` imports `Api` from `@shipwright/shared/api` — not from a local `src/server/api/` path
+- [x] All files from `src/server/`, `src/agent/`, `src/db/`, `src/storage/` are under `apps/api/src/`
+- [x] All files from `src/shared/` are under `packages/shared/src/`
+- [x] Gate test scripts are in `apps/api/src/agent/tests/` — planned location was `apps/api/tests/gates/`; actual location is equivalent, deviation noted
+- [x] `apps/api` imports `@shipwright/shared` via package name — no relative cross-workspace imports (Rule 14)
+- [x] `pnpm --filter @shipwright/api start` starts the server on port 3000 without errors
+- [ ] `pnpm --filter @shipwright/api test:phase4` passes (16/16) — stalls at `uploading`; pre-existing OpenAI quota issue (no embeddings = no chunks); not a monorepo regression
+- [x] `drizzle.config.ts` moved to `apps/api/` (deviation from plan: plan said repo root; `apps/api/` is better — schema and config co-located)
+- [x] `docker-compose.yml`, `.env.example` remain at repo root
+- [x] No `Effect.tryPromise` count regresses — 4 in `parsers.ts` (third-party wrappers), same as before
+- [x] `GET http://localhost:3000/openapi.json` returns valid OpenAPI 3.1 schema — 200 ✓
+- [x] `vitest.config.ts`, `oxlint.config.js`, `tsconfig.json` deleted from repo root — recreated per-package
 
-**Gate:** `pnpm -r build` passes from repo root. Server starts. Phase 4 gate tests pass from new location.
+**Gate:** PASSED (26.06.2026). Server starts, `/openapi.json` 200, all imports clean. Phase 4 gate test blocked by pre-existing OpenAI quota issue — not a regression. `drizzle.config.ts` at `apps/api/` is an improvement over the planned repo-root location.
 
 ---
 

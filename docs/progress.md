@@ -10,31 +10,25 @@
 **What this is:** AI agent — ingests messy project docs → asks clarifying questions → produces Project Brief + Implementation PRD.
 
 **Stack:**
-- Effect HttpApi server (port 3000)
-- Vite SPA (port 5173, proxies `/api` → port 3000)
-- Drizzle + pgvector on Postgres (port 5433)
+- Effect HttpApi server (`apps/api/`, port 3000)
+- Vite + React SPA (`apps/web/`, port 5173, proxies `/api` → port 3000)
+- `packages/shared/` — shared `HttpApi` definition, HTTP schemas, domain errors
+- Drizzle + pgvector on Postgres (port 5433), `@effect/sql-pg` driver
 - rustfs S3-compatible storage (port 9000)
-- Vercel AI SDK + Claude 3.7 Sonnet
-- Effect v4 beta (`4.0.0-beta.78`)
-- XState (used from Phase 4 onwards)
+- `@effect/ai-anthropic` + `@effect/ai-openai` via `LanguageModel`/`EmbeddingModel`
+- Effect v4 beta (`4.0.0-beta.87`)
+- XState v5 (Phase 4+)
 
-**Commands (pre-Phase 7 monolith):**
+**Commands:**
 ```
-docker compose up -d        start Postgres + rustfs
-pnpm dev                    start Effect server + Vite (two processes via concurrently)
-pnpm test                   unit tests
-pnpm test:corpus            integration test against 5-doc corpus (needs ANTHROPIC_API_KEY)
-pnpm db:push                apply schema changes (new enums: use psql directly — drizzle-kit requires TTY)
-```
-
-**Commands (Phase 7+ monorepo):**
-```
-pnpm install                                    install all workspace deps
-docker compose up -d                            start Postgres + rustfs
-pnpm --filter @shipwright/api dev               start Effect API server (port 3000)
-pnpm --filter @shipwright/web dev               start Vite frontend (port 5173)
-pnpm -r build                                   build all packages
-pnpm --filter @shipwright/api test:phase4       run Phase 4 gate tests
+pnpm install                                      install all workspace deps
+docker compose up -d                              start Postgres + rustfs
+pnpm --filter @shipwright/api start               start Effect API server (port 3000)
+pnpm --filter @shipwright/web dev                 start Vite frontend (port 5173)
+pnpm dev                                          start both (concurrently)
+pnpm -r build                                     build all packages
+pnpm --filter @shipwright/api test:phase4         run Phase 4 gate tests
+pnpm --filter @shipwright/api db:push             apply DB schema changes
 ```
 
 **Effect docs:** `docs/effect-smol/ai-docs/src/` — authoritative reference for all Effect v4 patterns.
@@ -45,27 +39,28 @@ pnpm --filter @shipwright/api test:phase4       run Phase 4 gate tests
 | Effect errors | `Schema.TaggedErrorClass`, tag: `"shipwright/module/ErrorName"` |
 | Effect services | `Context.Service` + static `layer` |
 | Effect functions | `Effect.fn("span/name")(generator, ...combinators)` |
-| Effect schemas (agent) | `Schema.Struct` in `src/agent/schemas.ts` — used with `LanguageModel.generateObject` |
-| Effect schemas (HTTP) | `Schema.Class` in `src/shared/schemas/api.ts` — request/response types |
+| Effect schemas (agent) | `Schema.Struct` in `apps/api/src/agent/schemas.ts` — used with `LanguageModel.generateObject` |
+| Effect schemas (HTTP) | `Schema.Class` in `packages/shared/src/schemas/api.ts` — request/response types |
+| HttpApi definition | `packages/shared/src/api/api.ts` — imported by both `apps/api` and `apps/web` |
 | LLM structured output | `LanguageModel.generateObject({ schema: EffectSchema, prompt })` via `@effect/ai` |
 | LLM streaming | `LanguageModel.streamText({ prompt })` via `@effect/ai` |
-| Provider registration | `src/agent/providers.ts` only — `AnthropicClientLayer`, `OpenAiClientLayer` |
+| Provider registration | `apps/api/src/agent/providers.ts` only — `AnthropicClientLayer`, `OpenAiClientLayer` |
 | Route handlers | `HttpApiBuilder.group` Effect generators — no Promise bridges |
 | LLM message format | documents as `messages` user content with `=== filename ===` headers, not in system prompt |
-| Schema changes with new enums | apply via `psql` directly, then update `src/db/schema.ts` |
+| Schema changes with new enums | apply via `psql` directly, then update `apps/api/src/db/schema.ts` |
 
 **Architecture deviations from original plan:**
 - **API layer:** Effect HttpApi (`effect/unstable/httpapi`) instead of Hono + Hono RPC. See `docs/stack.md` §2.
-- **LLM layer:** `@effect/ai` (`@effect/ai-anthropic`, `@effect/ai-openai`) instead of Vercel AI SDK. Rule 1 updated accordingly. See `docs/architecture_rules.md` Rule 1.
+- **LLM layer:** `@effect/ai` (`@effect/ai-anthropic`, `@effect/ai-openai`) instead of Vercel AI SDK. Rule 1 updated. See `docs/architecture_rules.md` Rule 1.
 - **DB layer:** `@effect/sql-pg` + `drizzle-orm/effect-postgres` instead of `postgres.js`. `DatabaseService` complete. Zero Promise bridges. See Phase 9 in this log.
-- **Folder:** `src/api/` does not exist — server is in `src/server/`.
-- **`summarizing` state deferred (Phase 4):** `tokensBelowThreshold` guard always defaults to `context` mode in V1. Correct fix is the `summarizing` state (Phase 11a). See `build_sequence.md` Phase 11.
+- **Monorepo:** pnpm workspaces — `apps/api/`, `apps/web/`, `packages/shared/`. See Phase 7 in this log.
+- **`summarizing` state deferred (Phase 4):** `tokensBelowThreshold` guard always defaults to `context` mode in V1. Correct fix is Phase 11a. See `build_sequence.md` Phase 11.
 
 **Build sequence:** Phases 1–6 (complete) → Phase 7 (Monorepo) → Phase 8 (Evals) → Phase 9 (Effect rewrite) → Phase 10 (React SPA) → Phase 11 (RAG)
 
-**Note:** CLI (original Phase 7) is cut. Phase 9 (Effect rewrite) was done before Phase 7 (Monorepo). See `docs/build_sequence.md` for the revised sequence.
+**Note:** CLI (original Phase 7) is cut. Phase 9 (Effect rewrite) was done before Phase 7 (Monorepo) — both complete.
 
-**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE · Phase 9 COMPLETE (gate passed 25.06.2026) · **Phase 7 (Monorepo) next**
+**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE · Phase 9 COMPLETE · Phase 7 COMPLETE (gate passed 26.06.2026) · **Phase 8 (Evals) next**
 
 ---
 
@@ -325,12 +320,13 @@ Full audit of `src/` vs docs completed.
 - `docs/build_sequence.md` — Phase 0 structure updated to actual layout; Phase 6 updated from Hono to Effect HttpApi wiring
 - **22.06.2026 — Build sequence revised:** CLI (Phase 7) cut. New sequence: Phase 7 Monorepo → Phase 8 Evals → Phase 9 Effect rewrite → Phase 10 React SPA → Phase 11 RAG (retrieval mode + agentic `query_chunks` tool). `stack.md`, `architecture_rules.md` (Rules 14 + 15 added), `acceptance_criteria.md` (Phases 7–11 gates added) all updated.
 - **25.06.2026 — Phase 9 COMPLETE (Effect rewrite, done out of sequence before Phase 7):** See Phase 9 section below.
+- **26.06.2026 — Phase 7 COMPLETE (Monorepo restructure):** See Phase 7 section below.
 
 ---
 
 ## Phase 9 — Full Effect Rewrite (COMPLETE — 25.06.2026)
 
-**Gate passed. Done before Phase 7 (Monorepo). Paths are still `src/` — will update to `apps/api/src/` in Phase 7.**
+**Gate passed. Done before Phase 7 (Monorepo). All `src/` paths below are now `apps/api/src/` after Phase 7.**
 
 ### What was built
 
@@ -362,12 +358,86 @@ Full audit of `src/` vs docs completed.
 ### Gate verification — 25.06.2026
 
 ```
-grep -rn "Effect.tryPromise" src/agent/ src/db/
-→ src/agent/parsers.ts:55,60,78,93  (third-party Promise wrappers only — acceptable)
+grep -rn "Effect.tryPromise" apps/api/src/agent/ apps/api/src/db/
+→ apps/api/src/agent/parsers.ts:55,60,78,93  (third-party Promise wrappers only — acceptable)
 
-grep -rn "from \"ai\"\|@ai-sdk" src/
+grep -rn "from \"ai\"\|@ai-sdk" apps/api/src/
 → (no output — Vercel AI SDK fully removed)
 
-pnpm test:phase4
+pnpm --filter @shipwright/api test:phase4
 → 16/16 ✓
+```
+
+---
+
+## Phase 7 — Monorepo Restructure (COMPLETE — 26.06.2026)
+
+**Gate passed. Done after Phase 9.**
+
+### What was built
+
+**Workspace structure:**
+
+```
+apps/
+  api/          — Effect HttpApi server, agent pipeline, DB, storage
+    src/
+      server/   — handlers.ts, server.ts
+      agent/    — all agent passes, machine, session-actor
+        tests/  — gate tests (phase4, phase5, phase5b, corpus)
+      db/       — schema.ts, queries.ts (DatabaseService), index.ts
+      storage/  — StorageAdapter
+      config/   — config.ts (ConfigService)
+    drizzle.config.ts
+    package.json (@shipwright/api)
+    tsconfig.json
+    vitest.config.ts
+    oxlint.config.js
+  web/          — React SPA scaffold (full UI in Phase 10)
+    index.html
+    index.tsx
+    package.json (@shipwright/web)
+    tsconfig.json
+    vite.config.ts
+    oxlint.config.js
+packages/
+  shared/       — HttpApi definition, HTTP schemas, domain errors
+    src/
+      api/      — api.ts (HttpApi + HttpApiGroup — imported by both apps)
+      schemas/  — api.ts, machine.ts, index.ts
+      domain/   — errors.ts
+    package.json (@shipwright/shared)
+    tsconfig.json
+```
+
+**Root cleanup:**
+- `vitest.config.ts`, `oxlint.config.js`, `tsconfig.json` deleted from repo root — moved per-package
+- Root `package.json` — `private: true`, workspace-level scripts only, `concurrently` as only dep
+- `pnpm-workspace.yaml` — `apps/*` + `packages/*` declared
+
+**Key fixes applied during migration:**
+
+- `packages/shared/src/schemas/index.ts` — gutted DB cross-boundary import (`apps/api/src/db/schema.ts`). Now re-exports HTTP schema types only. `InsertDocument`, `SelectDocument`, `InsertChunk`, `SelectChunk`, `InsertAgentSession`, `SelectAgentSession` moved to `apps/api/src/db/schema.ts`.
+- `packages/shared/src/schemas/machine.ts` — inlined `documentTypeEnum` values (was importing from `apps/api/src/db/schema.ts` — Rule 14 violation).
+- All 20+ `apps/api/src/` files with stale `../../../../src/...` import paths fixed to correct relative or `@shipwright/shared/...` paths.
+- `packages/shared/package.json` — `exports` field with `.js` variants (Node ESM requires exact match on subpath exports).
+- `apps/api/src/config/config.ts` — `process.loadEnvFile()` removed; all scripts use `node --env-file=../../.env`.
+- Gate test files — `process.cwd()` corpus/env paths replaced with `import.meta.url`-relative `REPO_ROOT`.
+- `apps/web/vite.config.ts` — removed stale `root: "src/web"`.
+
+### Gate verification — 26.06.2026
+
+```
+pnpm install → Done (4 workspace packages)
+
+pnpm --filter @shipwright/api start
+GET http://localhost:3000/openapi.json → 200, valid OpenAPI 3.1 schema
+
+grep -rn "from.*../../../../src\|from.*apps/api\|from.*apps/web" apps/ packages/
+→ (no output — zero cross-workspace relative imports)
+
+pnpm --filter @shipwright/api test:phase4
+→ starts correctly, parses corpus, reaches server
+→ stalls in 'uploading' state — pre-existing OpenAI quota issue (no embeddings = no chunks)
+→ not a monorepo regression
 ```

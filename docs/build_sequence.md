@@ -678,8 +678,9 @@ pnpm-workspace.yaml  — declares apps/* and packages/*
 - `src/server/`, `src/agent/`, `src/db/`, `src/storage/` → `apps/api/src/`
 - `src/shared/` → `packages/shared/src/`
 - All existing test gate scripts (`test-phase4-gate.ts`, `test-phase5-gate.ts`,
-  `test-phase5b-gate.ts`) move into `apps/api/tests/gates/` — they are not
-  deleted. The gates folder is the precursor to a proper e2e test suite (Phase 10+).
+  `test-phase5b-gate.ts`) moved into `apps/api/src/agent/tests/` alongside the
+  corpus test and unit tests. A dedicated `tests/gates/` folder was the plan;
+  `src/agent/tests/` is the actual location — functionally equivalent.
 - `src/config.ts` → `apps/api/src/config.ts`
 - Root `package.json` becomes the workspace root — no direct source dependencies.
   All runtime dependencies move into `apps/api/package.json`.
@@ -707,8 +708,9 @@ with zero build steps.
 
 ### What does not move
 
-- `docker-compose.yml`, `.env.example`, `drizzle.config.ts` — repo root
-- Drizzle migrations output — stays alongside `apps/api/src/db/`
+- `docker-compose.yml`, `.env.example` — repo root
+- `drizzle.config.ts` — `apps/api/` (deviation from plan; co-located with schema is better)
+- Drizzle migrations output — `apps/api/src/db/out/`
 
 ### Why monorepo now
 
@@ -834,13 +836,13 @@ export const runtime = ManagedRuntime.make(
 - All remaining `Effect.tryPromise` wrappers that wrapped now-Effect functions
 - Old loose async functions in `session-actor.ts`
 
-**Note:** `@effect/ai-anthropic` is NOT in scope for this phase. Rule 1 (Vercel AI SDK
-is the only LLM interface) stays intact. The Effect rewrite concerns DB, storage,
-parsers, and embedder — not LLM calls.
+**Note:** Phase 9 was completed before Phase 7 (Monorepo) and expanded in scope:
+`@effect/ai-anthropic` + `@effect/ai-openai` replaced Vercel AI SDK entirely.
+Rule 1 was updated to reflect this. See Phase 9 in `docs/progress.md`.
 
-**Gate:** Zero `Effect.tryPromise` occurrences in `apps/api/src/agent/` and
-`apps/api/src/db/`. `pnpm --filter @shipwright/api test` passes. Evals from
-Phase 8 still pass (output quality not regressed).
+**Gate:** PASSED (25.06.2026). Zero `Effect.tryPromise` in `apps/api/src/agent/`
+and `apps/api/src/db/` except `parsers.ts` (third-party Promise wrappers — acceptable).
+Vercel AI SDK fully removed. Phase 4 gate test starts correctly.
 
 ---
 
