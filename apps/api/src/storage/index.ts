@@ -7,7 +7,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { ConfigService } from "../config/config.js";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { Context, Layer, Schema, Effect } from "effect";
+import { Context, Layer, Schema, Effect, Redacted } from "effect";
 
 export class UploadError extends Schema.TaggedErrorClass<UploadError>()(
   "shipwright/storage/UploadError",
@@ -62,8 +62,8 @@ export class StorageAdapter extends Context.Service<
       const client = new S3Client({
         endpoint: config.storage.endpoint,
         credentials: {
-          accessKeyId: config.storage.accessKey,
-          secretAccessKey: config.storage.secretKey,
+          accessKeyId: Redacted.value(config.storage.accessKey),
+          secretAccessKey: Redacted.value(config.storage.secretKey),
         },
         forcePathStyle: true,
       });

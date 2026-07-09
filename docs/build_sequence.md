@@ -728,54 +728,103 @@ with zero build steps.
 
 ## Phase 8 — Langfuse + Evals (~2 days)
 
-> **Reordering note:** This phase runs after the monorepo restructure (Phase 7)
-> and before the Effect rewrite (Phase 9). Reason: tracing is easier to wire
-> into the clean Effect pipeline that Phase 9 produces than into Promise chains.
-> Running evals here also gives a baseline to verify the rewrite doesn't regress
-> output quality.
+> **Reordering note:** Runs after Phase 7 (Monorepo) and Phase 9 (Effect rewrite,
+> done out of sequence). Phase 9 is complete — the full backend is Effect-native,
+> which makes OTLP tracing wiring straightforward.
 
-- Wire `@langfuse/vercel` — wraps Vercel AI SDK calls with trace/span context
-- Note: if using Langfuse Cloud free tier (recommended for dev), just add API keys.
-  Self-hosted requires Postgres + ClickHouse + Redis + S3 — defer until needed.
-- Test corpus already built in Phase 3 (`docs/test_corpus/`). Use it here.
-- Run **faithfulness eval**: no hallucinated requirements (LLM-as-judge)
-- Run **completeness eval**: nothing important dropped (LLM-as-judge)
-- Run **conflict detection eval**: contradiction between transcript and PRD
-  is correctly surfaced (deterministic check)
-- Verify clarifying loop stop condition fires at the right time
+### Tracing — Effect OTLP → Langfuse self-hosted
 
-**Zod schema for LLM-as-judge responses in `packages/shared/src/schemas/evals.ts`:**
+No `@langfuse/vercel` or Langfuse SDK. Integration path:
 
-```ts
-const EvalResultSchema = z.object({
-  score: z.number().min(0).max(1),
-  reasoning: z.string(),
-  pass: z.boolean(),
-  citations: z.array(z.string()).optional(), // which parts of source supported score
-});
-
-const FaithfulnessEvalSchema = z.object({
-  hallucinatedRequirements: z.array(
-    z.object({
-      text: z.string(),
-      reason: z.string(), // why this was deemed hallucinated
-    }),
-  ),
-  result: EvalResultSchema,
-});
-
-const ConflictDetectionEvalSchema = z.object({
-  conflictsSurfaced: z.array(z.string()), // descriptions of found conflicts
-  plantedConflictFound: z.boolean(), // deterministic check
-  result: EvalResultSchema,
-});
+```
+@effect/ai-anthropic (gen_ai.* spans) → Otlp.layerJson → Langfuse /api/public/otel
 ```
 
-Parse every LLM-as-judge response through these schemas. An unparseable judge
-response is a failed eval, not a passing one with a warning.
+Effect `4.0.0-beta.87` ships `effect/unstable/observability` with `Otlp.layerJson` —
+a built-in OTLP/HTTP JSON exporter. No extra packages needed.
 
-**Gate:** All 4/4 planted issues surfaced. Faithfulness eval passes (score ≥ 0.9).
-Completeness eval passes. Conflict detection: `plantedConflictFound: true`.
+**Langfuse self-hosted** via docker-compose (added to project `docker-compose.yml`):
+- `langfuse-web` on port **3001** (remapped from default 3000 — api server is on 3000)
+- `langfuse-worker`, `langfuse-postgres`, `clickhouse`, `redis`, `minio` — all separate
+  from shipwright's postgres (port 5433) and rustfs (port 9000)
+- Headless init: project/keys created on first boot, no manual signup needed
+
+**Wire in `apps/api/src/observability/observability.ts`:**
+
+```ts
+import { Otlp } from "effect/unstable/observability"
+import { FetchHttpClient } from "effect/unstable/http"
+
+export const OtlpLayer = pipe(
+  ConfigService,
+  Effect.map((config) => {
+    if (!config.observability) return Layer.empty  // disabled when vars absent
+    const auth = btoa(`${Redacted.value(config.observability.publicKey)}:${...}`)
+    return Otlp.layerJson({
+      baseUrl: config.observability.otlpEndpoint,
+      headers: { "Authorization": `Basic ${auth}`, "x-langfuse-ingestion-version": "4" },
+      resource: { serviceName: "shipwright" },
+    })
+  }),
+  Layer.unwrap,
+  Layer.provide(FetchHttpClient.layer),
+  Layer.provide(ConfigService.layer),
+)
+```
+
+Add to `apps/api/.env`:
+```
+LANGFUSE_OTLP_ENDPOINT=http://localhost:3001/api/public/otel
+LANGFUSE_PUBLIC_KEY=pk-lf-shipwright
+LANGFUSE_SECRET_KEY=sk-lf-shipwright
+```
+
+**Span annotations** — add `Effect.annotateCurrentSpan` to all pipeline entry points
+and agent passes. Key attributes:
+- `langfuse.session.id` — groups all spans for one session in Langfuse
+- `shipwright.pass` — identifies which agent pass produced a span
+- `shipwright.document.count`, `shipwright.answer.count`, etc.
+
+### Eval schemas in `packages/shared/src/schemas/evals.ts`
+
+Use Effect `Schema.Struct` (consistent with rest of codebase — no Zod):
+
+```ts
+export const EvalResultSchema = Schema.Struct({
+  score: Schema.Number,   // check >= 0.9 in eval logic
+  reasoning: Schema.String,
+  pass: Schema.Boolean,
+  citations: Schema.optional(Schema.Array(Schema.String)),
+})
+```
+
+Unparseable judge response throws at `Schema.decodeUnknownSync` — counted as failed eval.
+
+### Eval runner — `apps/api/src/agent/tests/evals.ts`
+
+Three parts:
+
+**Part A — conflict detection (deterministic, Anthropic only):**
+Runs corpus through summarizer + challenger. Checks GapReport AND per-document
+summaries against all 5 planted issues. Issue 2 (EU data residency) is checked
+in rfp.md's extracted constraints — it's a "buried constraint" test, not a
+cross-document conflict.
+
+```bash
+pnpm --filter @shipwright/api test:evals -- --conflict-only
+```
+
+**Parts B+C — LLM-as-judge (require full pipeline):**
+Set `EVAL_SESSION_ID=<uuid>` to a complete session with outputs in DB.
+```bash
+EVAL_SESSION_ID=<uuid> pnpm --filter @shipwright/api test:evals
+```
+
+**Gate:** Part A 5/5 planted issues ✓. Parts B+C pass when full pipeline is available.
+
+**Known bug fixed:** `Effect.map` → `Effect.flatMap` in `summarizeAllDocuments` —
+was producing `Effect<Effect<...>>`, silently discarding all summaries. Affected
+test-corpus, phase4 gate, and evals.
 
 ---
 

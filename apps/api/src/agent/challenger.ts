@@ -1,4 +1,5 @@
 import { Effect, pipe } from "effect";
+import { Spans } from "../observability/spans.js";
 import { TextGenerationError } from "./errors.js";
 import type { ReconstructedSummary } from "../db/queries.js";
 import { GapReportEffectSchema } from "./schemas.js";
@@ -31,6 +32,10 @@ const launchPlanModel = AnthropicLanguageModel.model("claude-haiku-4-5");
 export const runChallenger = Effect.fn("agent/run-challenger")(function* (
   summaries: ReconstructedSummary[],
 ) {
+  yield* Effect.annotateCurrentSpan({
+    ...Spans.pass("challenger"),
+    ...Spans.counts({ documents: summaries.length }),
+  });
   const { value } = yield* pipe(
     LanguageModel.generateObject({
       schema: GapReportEffectSchema,

@@ -1,4 +1,5 @@
 import { Effect, pipe } from "effect";
+import { Spans } from "../observability/spans.js";
 import { ClarifyingQuestionsEffectSchema, GapReportEffect, ClarifyingQuestionsEffect } from "./schemas.js";
 import { TextGenerationError } from "./errors.js";
 import type { ReconstructedSummary } from "../db/queries.js";
@@ -29,6 +30,15 @@ export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(func
   gapReport: GapReportEffect,
   summaries: ReconstructedSummary[],
 ) {
+  yield* Effect.annotateCurrentSpan({
+    ...Spans.pass("question-generator"),
+    ...Spans.counts({
+      documents: summaries.length,
+      conflicts: gapReport.conflicts.length,
+      gaps: gapReport.gaps.length,
+      ambiguities: gapReport.ambiguities.length,
+    }),
+  });
   const { value } = yield* pipe(
     LanguageModel.generateObject({
       schema: ClarifyingQuestionsEffectSchema,

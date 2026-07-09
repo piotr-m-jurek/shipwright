@@ -1,14 +1,11 @@
 {
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "strict": true,
-    "jsx": "react-jsx",
-    "jsxImportSource": "react",
     "moduleResolution": "bundler",
     "module": "esnext",
-    "target": "esnext",
-    "outDir": "dist",
-    "plugins": [{ "name": "@effect/language-service" }],
-    "skipLibCheck": true
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "outDir": "dist"
   },
   "include": ["src/**/*", "index.tsx"],
   "exclude": ["node_modules", "dist"]

@@ -1,4 +1,5 @@
 import { Effect, Schema, Option, pipe } from "effect";
+import { Spans } from "../observability/spans.js";
 import { SelectChunk } from "../db/schema.js";
 import { DatabaseService } from "../db/queries.js";
 import { SummaryItemInsert } from "../db/schema.js";
@@ -29,10 +30,11 @@ class DocumentSummaryReadError extends Schema.TaggedErrorClass<DocumentSummaryRe
 export const summarizeAllDocuments = Effect.fn("agent/summarizeAllDocuments")(function* (
   sessionId: string,
 ) {
+  yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
   const db = yield* DatabaseService;
   return yield* pipe(
     db.getDocumentsBySessionId(sessionId),
-    Effect.map(
+    Effect.flatMap(
       Effect.forEach((doc) => summarizeDocument(doc.id, sessionId, doc.filename), {
         concurrency: 2,
       }),
@@ -46,6 +48,10 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
   sessionId: string,
   filename: string,
 ) {
+  yield* Effect.annotateCurrentSpan({
+    ...Spans.session(sessionId),
+    ...Spans.document({ filename, id: documentId }),
+  });
   const db = yield* DatabaseService;
   const chunks = yield* pipe(
     db.getChunksByDocumentId(documentId),
@@ -85,8 +91,6 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
   });
 });
 
-// Shared persist helper — inserts into document_summaries then batch-inserts items.
-// Used by both intermediate and final persists.
 const persistSummary = Effect.fn("persistSummary")(
   function* ({
     summary,
@@ -172,6 +176,10 @@ export const runReducePass = Effect.fn("agent/runReducePass")(function* (
   chunk: SelectChunk,
   sourceDocument: string,
 ) {
+  yield* Effect.annotateCurrentSpan({
+    ...Spans.document({ filename: sourceDocument }),
+    ...Spans.chunk(chunk.chunkIndex),
+  });
   const userContent = formatChunk(current, chunk, sourceDocument);
 
   const { value } = yield* pipe(

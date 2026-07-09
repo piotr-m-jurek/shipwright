@@ -1,93 +1,70 @@
 import type { MigrationConfig } from "drizzle-orm/migrator";
-import { Config, Context, Effect, Layer, pipe, Redacted, Schema } from "effect";
-
-
-type DBConfig = {
-  url: string;
-  migrationConfig: MigrationConfig;
-};
-
-type StorageConfig = {
-  endpoint: string;
-  secretKey: string;
-  accessKey: string;
-  bucket: string;
-};
-
-type AIConfig = {
-  openaiApiKey: string;
-  anthropicApiKey: string;
-};
-
-const migrationConfig: MigrationConfig = {
-  migrationsFolder: "./src/db/out",
-};
-
-type APIConfig = {
-  db: DBConfig;
-  storage: StorageConfig;
-  ai: AIConfig;
-};
-
-export const config: APIConfig = {
-  db: {
-    url: envOrThrow("DATABASE_URL"),
-    migrationConfig,
-  },
+import { Config, Context, Effect, Layer, Option, Redacted } from "effect";
+type ConfigServiceInterface = {
+  db: { url: Redacted.Redacted<string>; migrationConfig: MigrationConfig };
   storage: {
-    endpoint: envOrThrow("S3_ENDPOINT"),
-    secretKey: envOrThrow("S3_SECRET_KEY"),
-    accessKey: envOrThrow("S3_ACCESS_KEY"),
-    bucket: envOrThrow("S3_BUCKET"),
-  },
+    endpoint: string;
+    secretKey: Redacted.Redacted<string>;
+    accessKey: Redacted.Redacted<string>;
+    bucket: string;
+  };
   ai: {
-    openaiApiKey: envOrThrow("OPENAI_API_KEY"),
-    anthropicApiKey: envOrThrow("ANTHROPIC_API_KEY"),
-  },
+    openaiApiKey: Redacted.Redacted<string>;
+    anthropicApiKey: Redacted.Redacted<string>;
+  };
+  observability:
+    | {
+        otlpEndpoint: string;
+        publicKey: Redacted.Redacted<string>;
+        secretKey: Redacted.Redacted<string>;
+      }
+    | undefined;
 };
 
-function envOrThrow(key: string) {
-  const raw = process.env[key];
-  if (!raw) {
-    throw new Error(key);
-  }
-  return raw;
-}
+export class ConfigService extends Context.Service<ConfigService, ConfigServiceInterface>()(
+  "shipwright/config/ConfigService",
+) {
+  static readonly layer = Layer.effect(
+    ConfigService,
+    Effect.gen(function* () {
+      const observability = yield* Config.string("LANGFUSE_OTLP_ENDPOINT").pipe(
+        Effect.map((otlpEndpoint) =>
+          Effect.gen(function* () {
+            return {
+              otlpEndpoint,
+              publicKey: yield* Config.redacted("LANGFUSE_PUBLIC_KEY"),
+              secretKey: yield* Config.redacted("LANGFUSE_SECRET_KEY"),
+            };
+          }),
+        ),
+        Effect.option,
+        Effect.flatMap(
+          Option.match({
+            onNone: () => Effect.succeed(undefined),
+            onSome: (eff) => eff,
+          }),
+        ),
+      );
 
-class EnvMissing extends Schema.TaggedErrorClass<EnvMissing>()("EnvMissing", {
-  key: Schema.String,
-}) {}
-
-function envOrThrowEffect(key: string) {
-  const raw = process.env[key];
-  if (!raw) {
-    throw new EnvMissing({ key });
-  }
-  return raw;
-}
-
-export class ConfigService extends Context.Service<
-  ConfigService,
-  {
-    db: { url: Redacted.Redacted<string>; migrationConfig: MigrationConfig };
-    storage: StorageConfig;
-    ai: { openaiApiKey: Redacted.Redacted<string>; anthropicApiKey: Redacted.Redacted<string> };
-  }
->()("shipwright/config/ConfigService") {
-  static readonly layer = Layer.sync(ConfigService, () => ({
-    db: {
-      url: Redacted.make(envOrThrowEffect("DATABASE_URL")),
-      migrationConfig,
-    },
-    storage: {
-      endpoint: envOrThrowEffect("S3_ENDPOINT"),
-      secretKey: envOrThrowEffect("S3_SECRET_KEY"),
-      accessKey: envOrThrowEffect("S3_ACCESS_KEY"),
-      bucket: envOrThrowEffect("S3_BUCKET"),
-    },
-    ai: {
-      openaiApiKey: pipe(envOrThrowEffect("OPENAI_API_KEY"), Redacted.make),
-      anthropicApiKey: Redacted.make(envOrThrowEffect("ANTHROPIC_API_KEY")),
-    },
-  }));
+      return {
+        db: {
+          url: yield* Config.redacted("DATABASE_URL"),
+          migrationConfig: {
+            migrationsFolder: "./src/db/out",
+          },
+        },
+        storage: {
+          endpoint: yield* Config.string("S3_ENDPOINT"),
+          secretKey: yield* Config.redacted("S3_SECRET_KEY"),
+          accessKey: yield* Config.redacted("S3_ACCESS_KEY"),
+          bucket: yield* Config.string("S3_BUCKET"),
+        },
+        ai: {
+          openaiApiKey: yield* Config.redacted("OPENAI_API_KEY"),
+          anthropicApiKey: yield* Config.redacted("ANTHROPIC_API_KEY"),
+        },
+        observability,
+      };
+    }),
+  );
 }

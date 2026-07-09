@@ -33,6 +33,7 @@ import { estimateTokenCount } from "../estimate-token-count.js";
 import { DatabaseService } from "../../db/queries.js";
 import { StorageAdapter } from "../../storage/index.js";
 import { ConfigService } from "../../config/config.js";
+import { AnthropicClientLayer } from "../providers.js";
 
 const runtime = ManagedRuntime.make(
   pipe(
@@ -139,7 +140,9 @@ async function main() {
     });
 
     console.log("\nRunning Challenger...");
-    const gapReport = await runtime.runPromise(runChallenger(finals));
+    const gapReport = await runtime.runPromise(
+      runChallenger(finals).pipe(Effect.provide(AnthropicClientLayer)),
+    );
 
     console.log("\n── CHALLENGER OUTPUT ───────────────────────────────────────");
     console.log(`Conflicts:    ${gapReport.conflicts.length}`);

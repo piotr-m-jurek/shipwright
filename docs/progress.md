@@ -60,7 +60,7 @@ pnpm --filter @shipwright/api db:push             apply DB schema changes
 
 **Note:** CLI (original Phase 7) is cut. Phase 9 (Effect rewrite) was done before Phase 7 (Monorepo) — both complete.
 
-**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE · Phase 9 COMPLETE · Phase 7 COMPLETE (gate passed 26.06.2026) · **Phase 8 (Evals) next**
+**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE · Phase 9 COMPLETE · Phase 7 COMPLETE · Phase 8 PARTIALLY COMPLETE (Part A 5/5 ✓, Parts B+C deferred — OpenAI quota) · **Phase 10 (React SPA) next**
 
 ---
 
@@ -321,6 +321,7 @@ Full audit of `src/` vs docs completed.
 - **22.06.2026 — Build sequence revised:** CLI (Phase 7) cut. New sequence: Phase 7 Monorepo → Phase 8 Evals → Phase 9 Effect rewrite → Phase 10 React SPA → Phase 11 RAG (retrieval mode + agentic `query_chunks` tool). `stack.md`, `architecture_rules.md` (Rules 14 + 15 added), `acceptance_criteria.md` (Phases 7–11 gates added) all updated.
 - **25.06.2026 — Phase 9 COMPLETE (Effect rewrite, done out of sequence before Phase 7):** See Phase 9 section below.
 - **26.06.2026 — Phase 7 COMPLETE (Monorepo restructure):** See Phase 7 section below.
+- **09.07.2026 — Phase 8 PARTIAL (Langfuse + Evals):** Part A 5/5 planted issues ✓. Infrastructure and tracing complete. Parts B+C deferred (OpenAI quota). Bug fixed: `Effect.map` → `Effect.flatMap` in `summarizeAllDocuments`. See Phase 8 section below.
 
 ---
 
@@ -440,4 +441,61 @@ pnpm --filter @shipwright/api test:phase4
 → starts correctly, parses corpus, reaches server
 → stalls in 'uploading' state — pre-existing OpenAI quota issue (no embeddings = no chunks)
 → not a monorepo regression
+```
+
+---
+
+## Phase 8 — Langfuse + Evals (PARTIAL — 09.07.2026)
+
+**Part A gate passed (5/5). Parts B+C deferred (OpenAI quota).**
+
+### What was built
+
+**Langfuse self-hosted in docker-compose:**
+- 6 new services: `langfuse-web` (port 3001), `langfuse-worker`, `langfuse-postgres`, `clickhouse`, `redis`, `minio`
+- Port remaps to avoid conflicts: langfuse-web 3001 (api is 3000), clickhouse native 9010 (rustfs is 9000)
+- Headless init vars create project `shipwright-dev` with static API keys on first boot — no manual signup
+- Separate Postgres from shipwright's (different container, different volume)
+
+**OTLP tracing — Effect native, no SDK:**
+- `apps/api/src/observability/observability.ts` — `OtlpLayer` using `Otlp.layerJson` from `effect/unstable/observability`
+- `ConfigService` extended with optional `observability` block — server starts without Langfuse
+- `OtlpLayer` added to `ServiceLayer` in `server.ts`
+- `langfuse.session.id` + `shipwright.*` annotations on all pipeline functions and agent passes
+- `@effect/ai-anthropic` emits `gen_ai.*` attributes automatically on every LLM span
+
+**Eval infrastructure:**
+- `packages/shared/src/schemas/evals.ts` — Effect Schema types for judge responses
+- `apps/api/src/agent/tests/evals.ts` — three-part eval runner
+  - Part A: deterministic conflict detection (Anthropic only, no embeddings needed)
+  - Part B: faithfulness LLM-as-judge on Brief (requires `EVAL_SESSION_ID`)
+  - Part C: completeness LLM-as-judge on PRD (requires `EVAL_SESSION_ID`)
+
+### Bug fixed
+
+`Effect.map` → `Effect.flatMap` in `summarizeAllDocuments` (`apps/api/src/agent/summarizer.ts`).
+`Effect.map(Effect.forEach(...))` produces `Effect<Effect<...>>` — the inner Effect is never
+executed, summaries are silently discarded. Was affecting `test-corpus.ts`, phase4 gate,
+and the new eval runner. Fixed to `Effect.flatMap`.
+
+### Key decisions
+
+- **`Otlp.layerJson`** — no protobuf needed; Langfuse accepts JSON OTLP. Simpler than `layerProtobuf`.
+- **Issue 2 check uses summaries, not GapReport** — EU data residency is a "buried constraint" issue. The planted test is whether the summarizer extracted it from rfp.md. Checking rfp summary constraints is the correct signal; checking GapReport gaps/conflicts is a fallback.
+- **Parts B+C via `EVAL_SESSION_ID`** — judges require a full pipeline run with both outputs. Rather than re-running the full pipeline inside the eval script (which needs working embeddings), pass an existing session ID from `apps/api/.env` or inline.
+
+### Gate verification — 09.07.2026
+
+```
+(cd apps/api && pnpm test:evals -- --conflict-only)
+
+✓ 5 final summaries produced
+GapReport: 4 conflicts, 19 gaps, 24 ambiguities
+✓ Issue 1: mobile scope conflict (prd_draft vs transcript)
+✓ Issue 2: EU data residency buried in rfp.md
+✓ Issue 3: delegation acceptance criteria gap
+✓ Issue 4: notification channel ambiguity
+✓ Issue 5: SSO/auth conflict (prd_draft vs hr_requirements)
+Planted issues surfaced: 5/5
+Eval suite PASSED.
 ```

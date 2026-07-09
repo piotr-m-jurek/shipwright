@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@effect/language-service':
+        specifier: ^0.86.4
+        version: 0.86.4
       concurrently:
         specifier: ^10.0.3
         version: 10.0.3
@@ -259,6 +262,10 @@ packages:
     resolution: {integrity: sha512-tWOlN3+2XELv2Vuqg5AAVfVMuuglOXaEWf4XKwMU6Whzb6rx0QDsFIdWH9lVLp3qDAgRkwdYY/p8DRgFc/QkuQ==}
     peerDependencies:
       effect: ^4.0.0-beta.87
+
+  '@effect/language-service@0.86.4':
+    resolution: {integrity: sha512-XzAPsbwCdm0gRh0E8wJu3wXECb00QraE3LnbObA4RgHn8u2TEbwAjmBadRnwSgOIElfzZjbsRqNR706/V54hDg==}
+    hasBin: true
 
   '@effect/platform-node-shared@4.0.0-beta.87':
     resolution: {integrity: sha512-I0X2aU+OSqLm76cMDWll9/kT+jmnGEt17uGJw/HlS8YdyfhkASjjKId+AqTqiJhQ3kp5+ciCHdJWjS6IBPtdBQ==}
@@ -2157,6 +2164,8 @@ snapshots:
   '@effect/ai-openai@4.0.0-beta.87(effect@4.0.0-beta.87)':
     dependencies:
       effect: 4.0.0-beta.87
+
+  '@effect/language-service@0.86.4': {}
 
   '@effect/platform-node-shared@4.0.0-beta.87(effect@4.0.0-beta.87)':
     dependencies:

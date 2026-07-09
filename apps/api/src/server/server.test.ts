@@ -3,7 +3,6 @@ import { Effect, Layer, pipe } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { S3Client, PutObjectCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
-import { config } from "../config/config.js";
 import { ConfigService } from "../config/config.js";
 import { StorageAdapter } from "../storage/index.js";
 import { ApiRoute } from "./server.js";
@@ -64,7 +63,7 @@ async function get(path: string) {
 
 async function ensureBucket() {
   try {
-    await makeS3Client().send(new CreateBucketCommand({ Bucket: config.storage.bucket }));
+    await makeS3Client().send(new CreateBucketCommand({ Bucket: process.env.S3_BUCKET! }));
   } catch {
     // bucket already exists
   }
@@ -72,10 +71,10 @@ async function ensureBucket() {
 
 function makeS3Client() {
   return new S3Client({
-    endpoint: config.storage.endpoint,
+    endpoint: process.env.S3_ENDPOINT!,
     credentials: {
-      accessKeyId: config.storage.accessKey,
-      secretAccessKey: config.storage.secretKey,
+      accessKeyId: process.env.S3_ACCESS_KEY!,
+      secretAccessKey: process.env.S3_SECRET_KEY!,
     },
     forcePathStyle: true,
     region: "us-east-1",
@@ -85,7 +84,7 @@ function makeS3Client() {
 async function putObjectToS3(key: string, content: string) {
   await makeS3Client().send(
     new PutObjectCommand({
-      Bucket: config.storage.bucket,
+      Bucket: process.env.S3_BUCKET!,
       Key: key,
       Body: Buffer.from(content),
       ContentType: "text/plain",

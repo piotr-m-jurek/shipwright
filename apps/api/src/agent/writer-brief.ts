@@ -1,4 +1,5 @@
 import { Effect, Schema, Stream } from "effect";
+import { Spans } from "../observability/spans.js";
 import type { ReconstructedSummary } from "../db/queries.js";
 import { MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel, Response } from "effect/unstable/ai";
@@ -68,15 +69,15 @@ function formatSummariesForBrief(
 
 const sonnetModel = AnthropicLanguageModel.model("claude-sonnet-4-6");
 
-/**
- * Run the Brief writer pass. Returns the full text after streaming completes.
- * Uses prompt caching on the document summaries (static across both writer passes).
- */
 export const runBriefWriter = Effect.fn("agent/runBriefWriter")(function* (
   summaries: ReconstructedSummary[],
   answers: MachineContext["answers"],
   questions: MachineContext["questions"],
 ) {
+  yield* Effect.annotateCurrentSpan({
+    ...Spans.pass("writer-brief"),
+    ...Spans.counts({ documents: summaries.length, answers: answers.length }),
+  });
   const userContent = formatSummariesForBrief(summaries, answers, questions);
 
   return yield* LanguageModel.streamText({

@@ -243,18 +243,55 @@ it "mostly works".
 
 ## Phase 8 — Langfuse + Evals
 
-- [ ] After running a session, traces appear in the Langfuse dashboard
-- [ ] Each agent pass (Summarizer, Challenger, Question generator, Brief writer, PRD writer) appears as a named span
-- [ ] The faithfulness eval runs and returns a score for at least one session
-- [ ] The completeness eval runs and returns a score for at least one session
-- [ ] Running the test corpus (5 files) through the full pipeline: Issue 1 surfaced — mobile scope conflict (prd_draft vs transcript)
-- [ ] Running the test corpus through the full pipeline: Issue 2 surfaced — EU data residency buried in rfp.md
-- [ ] Running the test corpus through the full pipeline: Issue 3 surfaced — delegation acceptance criteria gap (prd_draft vs hr_requirements.pdf)
-- [ ] Running the test corpus through the full pipeline: Issue 4 surfaced — notification channel ambiguity (prd_draft vs transcript vs hr_requirements.pdf)
-- [ ] Running the test corpus through the full pipeline: Issue 5 surfaced — SSO/auth conflict (prd_draft vs hr_requirements.pdf)
-- [ ] `EvalResultSchema` parsed through Zod — an unparseable judge response counts as a failed eval
+> **Architecture note:** Integration uses Effect's built-in OTLP exporter
+> (`effect/unstable/observability` `Otlp.layerJson`) pointing at self-hosted
+> Langfuse on port 3001. No `@langfuse/vercel` or Langfuse SDK needed.
+> Eval schemas use Effect `Schema.Struct`, not Zod.
 
-**Gate:** All 5/5 planted issues surfaced. Faithfulness eval score ≥ 0.9. `plantedConflictFound: true` in conflict detection eval.
+### Infrastructure
+
+- [x] Langfuse self-hosted running via docker-compose (port 3001, separate from api on 3000)
+- [x] `langfuse-web`, `langfuse-worker`, `langfuse-postgres`, `clickhouse`, `redis`, `minio` all healthy
+- [x] Headless init: project `shipwright-dev` created on first boot, no manual signup
+- [x] `GET http://localhost:3001/api/public/health` returns `{"status":"OK"}`
+- [x] `LANGFUSE_OTLP_ENDPOINT`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` in `apps/api/.env`
+
+### Tracing
+
+- [x] `OtlpLayer` wired in `server.ts` `ServiceLayer` using `Otlp.layerJson`
+- [x] `ConfigService` extended with optional `observability` block — server starts without Langfuse running (returns `Layer.empty`)
+- [x] `langfuse.session.id` annotated on all pipeline entry spans: `runAnalysisPipeline`, `submitAnswers`, `runGeneratingPipeline`, `startRevision`, `runRevisionPipeline`
+- [x] Per-pass annotations on: `summarizeAllDocuments`, `summarizeDocument`, `runReducePass`, `runChallenger`, `runQuestionGenerator`, `runBriefWriter`, `runPrdWriter`, `runRevisionBriefWriter`, `runRevisionPrdWriter`
+- [x] `gen_ai.*` attributes (model, token counts, finish reason) emitted automatically by `@effect/ai-anthropic` on every LLM span
+
+### Eval schemas
+
+- [x] `packages/shared/src/schemas/evals.ts` — Effect Schema types: `EvalResultSchema`, `FaithfulnessEvalSchema`, `CompletenessEvalSchema`, `ConflictDetectionEvalSchema`
+- [x] Exported at `@shipwright/shared/schemas/evals`
+- [x] Unparseable judge response throws at `Schema.decodeUnknownSync` — counted as failed eval
+
+### Eval runner
+
+- [x] `apps/api/src/agent/tests/evals.ts` — three-part eval script
+- [x] `pnpm --filter @shipwright/api test:evals -- --conflict-only` runs Part A only
+- [x] `pnpm --filter @shipwright/api test:evals` runs all three parts (Parts B+C require `EVAL_SESSION_ID`)
+
+### Planted issue checks (Part A — deterministic)
+
+- [x] Issue 1 surfaced: mobile scope conflict (prd_draft vs transcript) — `pnpm test:evals -- --conflict-only` ✓
+- [x] Issue 2 surfaced: EU data residency in rfp.md — extracted in rfp summary constraints ✓
+- [x] Issue 3 surfaced: delegation acceptance criteria gap ✓
+- [x] Issue 4 surfaced: notification channel ambiguity ✓
+- [x] Issue 5 surfaced: SSO/auth conflict (prd_draft vs hr_requirements) ✓
+
+### LLM-as-judge evals (Parts B+C — require full pipeline run)
+
+- [ ] Faithfulness eval: Project Brief score ≥ 0.9 — pending full pipeline run with working embeddings
+- [ ] Completeness eval: Implementation PRD score ≥ 0.9 — pending full pipeline run
+
+**Gate:** PARTIALLY PASSED (09.07.2026). Part A (conflict detection) 5/5 ✓. Parts B+C deferred — require full pipeline with OpenAI embeddings (quota). Bug fixed: `Effect.map` → `Effect.flatMap` in `summarizeAllDocuments` (was producing `Effect<Effect<...>>`, silently discarding summaries).
+
+---
 
 ---
 

@@ -1,4 +1,5 @@
 import { Effect, Schema, Stream } from "effect";
+import { Spans } from "../observability/spans.js";
 import type { ReconstructedSummary } from "../db/queries.js";
 import { MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel, Response } from "effect/unstable/ai";
@@ -89,15 +90,15 @@ function formatSummariesForPrd(
 
 const sonnetModel = AnthropicLanguageModel.model("claude-sonnet-4-6");
 
-/**
- * Run the PRD writer pass. Returns the full text after streaming completes.
- * Uses prompt caching on the document summaries (shared with Brief writer pass).
- */
 export const runPrdWriter = Effect.fn("agent/runPrdWriter")(function* (
   summaries: ReconstructedSummary[],
   answers: MachineContext["answers"],
   questions: MachineContext["questions"],
 ) {
+  yield* Effect.annotateCurrentSpan({
+    ...Spans.pass("writer-prd"),
+    ...Spans.counts({ documents: summaries.length, answers: answers.length }),
+  });
   const userContent = formatSummariesForPrd(summaries, answers, questions);
 
   return yield* LanguageModel.streamText({

@@ -1,5 +1,6 @@
 import { Effect, Schema, Stream } from "effect";
 import type { ReconstructedSummary } from "../db/queries.js";
+import { Spans } from "../observability/spans.js";
 import { LanguageModel, Response } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
 import "@effect/ai-anthropic/AnthropicLanguageModel";
@@ -71,15 +72,16 @@ function formatRevisionInput(
 
 const sonnetModel = AnthropicLanguageModel.model("claude-sonnet-4-6");
 
-/**
- * Run the revision Brief writer. Incorporates user feedback into existing Brief.
- */
 export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(function* (
   summaries: ReconstructedSummary[],
   existingBrief: string,
   existingPrd: string,
   feedback: string,
 ) {
+  yield* Effect.annotateCurrentSpan({
+    ...Spans.pass("writer-revision-brief"),
+    ...Spans.counts({ documents: summaries.length, feedbackLength: feedback.length }),
+  });
   const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
 
   return yield* LanguageModel.streamText({
@@ -104,15 +106,16 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
   );
 }, Effect.provide(sonnetModel), Effect.provide(AnthropicClientLayer));
 
-/**
- * Run the revision PRD writer. Incorporates user feedback into existing PRD.
- */
 export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(function* (
   summaries: ReconstructedSummary[],
   existingBrief: string,
   existingPrd: string,
   feedback: string,
 ) {
+  yield* Effect.annotateCurrentSpan({
+    ...Spans.pass("writer-revision-prd"),
+    ...Spans.counts({ documents: summaries.length, feedbackLength: feedback.length }),
+  });
   const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
 
   return yield* LanguageModel.streamText({

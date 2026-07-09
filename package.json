@@ -12,6 +12,7 @@
     "docs:effect-update": "git subtree pull --prefix docs/effect-smol effect-smol main --squash"
   },
   "devDependencies": {
+    "@effect/language-service": "^0.86.4",
     "concurrently": "^10.0.3"
   }
 }
