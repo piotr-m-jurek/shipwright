@@ -1,12 +1,14 @@
 import type { MigrationConfig } from "drizzle-orm/migrator";
-import { Config, Context, Effect, Layer, Option, Redacted } from "effect";
+import { Config, Context, Effect, Layer, Option, Redacted, Schema } from "effect";
 type ConfigServiceInterface = {
+  server: { allowedOrigins: readonly string[] };
   db: { url: Redacted.Redacted<string>; migrationConfig: MigrationConfig };
   storage: {
     endpoint: string;
     secretKey: Redacted.Redacted<string>;
     accessKey: Redacted.Redacted<string>;
     bucket: string;
+    allowedOrigins: readonly string[];
   };
   ai: {
     openaiApiKey: Redacted.Redacted<string>;
@@ -47,6 +49,9 @@ export class ConfigService extends Context.Service<ConfigService, ConfigServiceI
       );
 
       return {
+        server: {
+          allowedOrigins: yield* Config.schema(Config.Array(Schema.String), "ALLOWED_ORIGINS"),
+        },
         db: {
           url: yield* Config.redacted("DATABASE_URL"),
           migrationConfig: {
@@ -58,6 +63,7 @@ export class ConfigService extends Context.Service<ConfigService, ConfigServiceI
           secretKey: yield* Config.redacted("S3_SECRET_KEY"),
           accessKey: yield* Config.redacted("S3_ACCESS_KEY"),
           bucket: yield* Config.string("S3_BUCKET"),
+          allowedOrigins: yield* Config.schema(Config.Array(Schema.String), "S3_ALLOWED_ORIGINS"),
         },
         ai: {
           openaiApiKey: yield* Config.redacted("OPENAI_API_KEY"),
