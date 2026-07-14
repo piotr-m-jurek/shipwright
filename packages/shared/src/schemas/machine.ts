@@ -1,14 +1,5 @@
 import { Schema } from "effect";
 
-const DocumentTypeEffectSchema = Schema.Literals([
-  "transcript",
-  "prd_draft",
-  "rfp",
-  "notes",
-  "image",
-  "other",
-]);
-
 export class MachineContextEffectSchema extends Schema.Class<MachineContextEffectSchema>(
   "MachineContextEffectSchema",
 )({
@@ -17,7 +8,6 @@ export class MachineContextEffectSchema extends Schema.Class<MachineContextEffec
     Schema.Struct({
       id: Schema.String.check(Schema.isUUID()),
       filename: Schema.String,
-      documentType: DocumentTypeEffectSchema,
       tokenCount: Schema.Int.check(Schema.isGreaterThan(0)),
     }),
   ),
@@ -28,7 +18,6 @@ export class MachineContextEffectSchema extends Schema.Class<MachineContextEffec
       id: Schema.String.check(Schema.isUUID()), // document_summaries.id
       documentId: Schema.String.check(Schema.isUUID()),
       sourceDocument: Schema.String, // documents.filename
-      documentType: DocumentTypeEffectSchema,
       content: Schema.String, // final summary content
       tokenCount: Schema.Int.check(Schema.isGreaterThan(0)),
     }),

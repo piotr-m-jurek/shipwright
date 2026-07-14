@@ -66,7 +66,6 @@ export class CreateAgentSessionRequest extends Schema.Class<CreateAgentSessionRe
   files: Schema.Array(
     Schema.Struct({
       filename: Schema.String,
-      documentType: Schema.Literals(["transcript", "prd_draft", "rfp", "notes"]), // INFO: DocumentTypeEnum from db/schema
       mimeType: Schema.String,
       sizeBytes: Schema.Int.check(Schema.isLessThanOrEqualTo(100_000_000)),
     }),
