@@ -10,8 +10,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
-export const documentTypeLiteral = ["transcript", "prd_draft", "rfp", "notes"] as const;
-export const documentType = pgEnum("document_type", documentTypeLiteral);
 export const inputMode = pgEnum("input_mode", ["context", "retrieval"]);
 export const role = pgEnum("role", ["user", "assistant", "system"]);
 export const outputType = pgEnum("output_type", ["project_brief", "implementation_prd"]);
@@ -62,7 +60,6 @@ export const chunks = pgTable("chunks", {
   content: text().notNull(),
   chunkIndex: integer("chunk_index").notNull(),
   embedding: vector({ dimensions: 1536 }).notNull(),
-  documentType: documentType("document_type").notNull(),
 });
 
 export const documents = pgTable("documents", {
@@ -77,7 +74,6 @@ export const documents = pgTable("documents", {
     .notNull()
     .references(() => sessions.id, { onDelete: "cascade" }),
   filename: text().notNull(),
-  documentType: documentType("document_type").notNull(),
   storagePath: text("storage_path"),
   rawText: text("raw_text"),
   tokenCount: integer("token_count"),

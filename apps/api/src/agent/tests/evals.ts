@@ -64,15 +64,12 @@ const runtime = ManagedRuntime.make(
 
 const CORPUS_DIR = resolve(REPO_ROOT, "docs/test_corpus");
 
-const CORPUS_FILES: {
-  filename: string;
-  documentType: "transcript" | "prd_draft" | "rfp" | "notes";
-}[] = [
-  { filename: "project_brief.txt", documentType: "notes" },
-  { filename: "prd_draft.md", documentType: "prd_draft" },
-  { filename: "rfp.md", documentType: "rfp" },
-  { filename: "discovery_call_transcript.txt", documentType: "transcript" },
-  { filename: "hr_requirements.pdf", documentType: "notes" },
+const CORPUS_FILES: { filename: string }[] = [
+  { filename: "project_brief.txt" },
+  { filename: "prd_draft.md" },
+  { filename: "rfp.md" },
+  { filename: "discovery_call_transcript.txt" },
+  { filename: "hr_requirements.pdf" },
 ];
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -136,7 +133,7 @@ function checkPlantedIssues(
       [...rfpSummary.constraints, ...rfpSummary.requirements, ...rfpSummary.assumptions].some(
         (item) => euTerms(item.text),
       )) ||
-    rfpSummary?.summary !== undefined && euTerms(rfpSummary.summary) ||
+    (rfpSummary?.summary !== undefined && euTerms(rfpSummary.summary)) ||
     conflicts.some((c) => euTerms(c.description)) ||
     gaps.some((g) => euTerms(g.description)) ||
     ambiguities.some((a) => euTerms(a.description));
@@ -186,7 +183,7 @@ async function runPartA(): Promise<boolean> {
 
   try {
     // Insert corpus with zero embeddings (Part A doesn't need retrieval)
-    for (const { filename, documentType } of CORPUS_FILES) {
+    for (const { filename } of CORPUS_FILES) {
       const buffer = await readFile(resolve(CORPUS_DIR, filename));
       const parsed = await runtime.runPromise(parseDocument(buffer, filename));
 
@@ -195,7 +192,6 @@ async function runPartA(): Promise<boolean> {
           db.createDocument({
             sessionId,
             filename,
-            documentType,
             mimeType: "text/plain",
             sizeBytes: buffer.length,
             status: "ready",
@@ -210,7 +206,6 @@ async function runPartA(): Promise<boolean> {
             {
               sessionId,
               documentId: doc.id,
-              documentType,
               content: parsed.text,
               chunkIndex: 0,
               charOffset: 0,

@@ -19,11 +19,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../../");
 
 const runtime = ManagedRuntime.make(
-  Layer.mergeAll(
-    StorageAdapter.layer,
-    ConfigService.layer,
-    DatabaseService.layer,
-  ) as Layer.Layer<StorageAdapter | ConfigService | DatabaseService, never, never>,
+  Layer.mergeAll(StorageAdapter.layer, ConfigService.layer, DatabaseService.layer) as Layer.Layer<
+    StorageAdapter | ConfigService | DatabaseService,
+    never,
+    never
+  >,
 );
 
 const db = (effect: Effect.Effect<any, any, DatabaseService>) => runtime.runPromise(effect);
@@ -32,10 +32,10 @@ const CORPUS = resolve(REPO_ROOT, "docs/test_corpus");
 const BASE = "http://localhost:3000/api";
 
 const files = [
-  { filename: "project_brief.txt", documentType: "notes" as const },
-  { filename: "prd_draft.md", documentType: "prd_draft" as const },
-  { filename: "rfp.md", documentType: "rfp" as const },
-  { filename: "discovery_call_transcript.txt", documentType: "transcript" as const },
+  { filename: "project_brief.txt" },
+  { filename: "prd_draft.md" },
+  { filename: "rfp.md" },
+  { filename: "discovery_call_transcript.txt" },
 ];
 
 async function req(method: string, path: string, body?: unknown) {
@@ -53,7 +53,7 @@ const session = await db(
 );
 const sessionId = session.id;
 
-for (const { filename, documentType } of files) {
+for (const { filename } of files) {
   const buf = await readFile(resolve(CORPUS, filename));
   const parsed = await runtime.runPromise(parseDocument(buf, filename));
   const doc = await db(
@@ -61,7 +61,6 @@ for (const { filename, documentType } of files) {
       svc.createDocument({
         sessionId,
         filename,
-        documentType,
         mimeType: "text/plain",
         sizeBytes: buf.length,
         status: "ready",
@@ -75,7 +74,6 @@ for (const { filename, documentType } of files) {
         {
           sessionId,
           documentId: doc.id,
-          documentType,
           content: parsed.text,
           chunkIndex: 0,
           charOffset: 0,

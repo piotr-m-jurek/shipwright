@@ -1,5 +1,5 @@
 import { Effect, Layer, pipe } from "effect";
-import { HttpRouter, HttpStaticServer } from "effect/unstable/http";
+import { FetchHttpClient, HttpRouter, HttpStaticServer } from "effect/unstable/http";
 import { createServer } from "node:http";
 import { HttpApiBuilder, HttpApiScalar } from "effect/unstable/httpapi";
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
@@ -10,6 +10,7 @@ import { SystemApiHandlers } from "./handlers.js";
 import { ConfigService } from "../config/config.js";
 import { OtlpLayer } from "../observability/observability.js";
 import { DatabaseService } from "../db/queries.js";
+import { AppDBLayer } from "../db/index.js";
 
 export const ApiRoute = pipe(
   HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }),
@@ -24,10 +25,30 @@ const StaticFiles = HttpStaticServer.layer({
   index: "index.html",
 });
 
-const AllRoutes = Layer.mergeAll(ApiRoute, DocsRoute, StaticFiles);
+const AllRoutes = pipe(
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const config = yield* ConfigService;
+      return Layer.mergeAll(
+        ApiRoute,
+        DocsRoute,
+        StaticFiles,
+        HttpRouter.cors({ allowedOrigins: config.server.allowedOrigins }),
+      );
+    }),
+  ),
+  Layer.provide(ConfigService.layer),
+);
+
+const OtlpLayerProvided = pipe(
+  OtlpLayer,
+  Layer.provide(ConfigService.layer),
+  Layer.provide(FetchHttpClient.layer),
+);
 
 const ServiceLayer = pipe(
-  Layer.mergeAll(DatabaseService.layer, OtlpLayer),
+  Layer.mergeAll(DatabaseService.layer, OtlpLayerProvided /* , MessageQueue.layer */),
+  Layer.provideMerge(AppDBLayer),
   Layer.provideMerge(StorageAdapter.layer),
   Layer.provideMerge(NodeHttpServer.layer(createServer, { port: 3000 })),
   Layer.provideMerge(ConfigService.layer),

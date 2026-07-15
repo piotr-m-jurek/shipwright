@@ -153,14 +153,12 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
       Effect.gen(function* () {
         const db = yield* DatabaseService;
 
-        const session = yield* db
-          .getAgentSesionById(params.id)
-          .pipe(
-            Effect.mapError(() => new AgentSessionNotFound()),
-            Effect.flatMap((s) =>
-              s === undefined ? Effect.fail(new AgentSessionNotFound()) : Effect.succeed(s),
-            ),
-          );
+        const session = yield* db.getAgentSesionById(params.id).pipe(
+          Effect.mapError(() => new AgentSessionNotFound()),
+          Effect.flatMap((s) =>
+            s === undefined ? Effect.fail(new AgentSessionNotFound()) : Effect.succeed(s),
+          ),
+        );
 
         // Include current questions when session is awaiting answers
         const questions =

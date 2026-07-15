@@ -85,10 +85,10 @@ console.log("\n=== Phase 5 Gate Test ===\n");
 console.log("1. Setting up test session");
 
 const files = [
-  { filename: "project_brief.txt", documentType: "notes" as const },
-  { filename: "prd_draft.md", documentType: "prd_draft" as const },
-  { filename: "rfp.md", documentType: "rfp" as const },
-  { filename: "discovery_call_transcript.txt", documentType: "transcript" as const },
+  { filename: "project_brief.txt" },
+  { filename: "prd_draft.md" },
+  { filename: "rfp.md" },
+  { filename: "discovery_call_transcript.txt" },
 ];
 
 const session = await runDb(
@@ -96,7 +96,7 @@ const session = await runDb(
 );
 const sessionId = session.id;
 
-for (const { filename, documentType } of files) {
+for (const { filename } of files) {
   const buf = await readFile(resolve(CORPUS, filename));
   const parsed = await runtime.runPromise(parseDocument(buf, filename));
   const doc = await runDb(
@@ -104,7 +104,6 @@ for (const { filename, documentType } of files) {
       svc.createDocument({
         sessionId,
         filename,
-        documentType,
         mimeType: "text/plain",
         sizeBytes: buf.length,
         status: "ready",
@@ -118,7 +117,6 @@ for (const { filename, documentType } of files) {
         {
           sessionId,
           documentId: doc.id,
-          documentType,
           content: parsed.text,
           chunkIndex: 0,
           charOffset: 0,

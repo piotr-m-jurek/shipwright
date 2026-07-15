@@ -3,9 +3,9 @@ import { ConfigService } from "../config/config.js";
 import { Otlp } from "effect/unstable/observability";
 import { FetchHttpClient } from "effect/unstable/http";
 
-export const OtlpLayer = pipe(
-  ConfigService,
-  Effect.map((config) => {
+export const OtlpLayer = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* ConfigService;
     if (!config.observability) return Layer.empty;
 
     const { otlpEndpoint, publicKey, secretKey } = config.observability;
@@ -24,7 +24,4 @@ export const OtlpLayer = pipe(
       },
     });
   }),
-  Layer.unwrap,
-  Layer.provide(ConfigService.layer),
-  Layer.provide(FetchHttpClient.layer),
 );

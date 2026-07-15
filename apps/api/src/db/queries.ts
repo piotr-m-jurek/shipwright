@@ -7,8 +7,7 @@ import type {
   SelectChunk,
   SelectDocument,
 } from "./schema.js";
-type ItemWithSource = { text: string; sourceDocument: string; confidence: "high" | "medium" | "low" };
-type DocumentSummary = { sourceDocument: string; summary: string; requirements: readonly ItemWithSource[]; constraints: readonly ItemWithSource[]; assumptions: readonly ItemWithSource[] };
+
 import { AppDBLayer, DB } from "./index.js";
 import {
   agentSessions,
@@ -34,6 +33,19 @@ export type QuestionInsert = typeof questions.$inferInsert;
 export type QuestionSelect = typeof questions.$inferSelect;
 export type AnswerInsert = typeof answers.$inferInsert;
 export type AnswerSelect = typeof answers.$inferSelect;
+
+type ItemWithSource = {
+  text: string;
+  sourceDocument: string;
+  confidence: "high" | "medium" | "low";
+};
+type DocumentSummary = {
+  sourceDocument: string;
+  summary: string;
+  requirements: readonly ItemWithSource[];
+  constraints: readonly ItemWithSource[];
+  assumptions: readonly ItemWithSource[];
+};
 
 // Reconstructed summary — summary row joined with its items, shaped as DocumentSummary
 export type ReconstructedSummary = DocumentSummary & {
@@ -191,10 +203,7 @@ const makeDatabaseService = Effect.gen(function* () {
       })
       .from(documentSummaries)
       .where(
-        and(
-          eq(documentSummaries.sessionId, sessionId),
-          eq(documentSummaries.summaryType, "final"),
-        ),
+        and(eq(documentSummaries.sessionId, sessionId), eq(documentSummaries.summaryType, "final")),
       )
       .orderBy(asc(documentSummaries.documentId), desc(documentSummaries.version));
 
@@ -412,9 +421,7 @@ export class DatabaseService extends Context.Service<
       sessionId: string,
     ) => Effect.Effect<QuestionSelect[], EffectDrizzleQueryError>;
 
-    createAnswers: (
-      data: AnswerInsert[],
-    ) => Effect.Effect<AnswerSelect[], EffectDrizzleQueryError>;
+    createAnswers: (data: AnswerInsert[]) => Effect.Effect<AnswerSelect[], EffectDrizzleQueryError>;
     getAnswersBySessionId: (
       sessionId: string,
     ) => Effect.Effect<AnswerSelect[], EffectDrizzleQueryError>;

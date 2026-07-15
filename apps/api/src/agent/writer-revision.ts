@@ -72,71 +72,84 @@ function formatRevisionInput(
 
 const sonnetModel = AnthropicLanguageModel.model("claude-sonnet-4-6");
 
-export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(function* (
-  summaries: ReconstructedSummary[],
-  existingBrief: string,
-  existingPrd: string,
-  feedback: string,
-) {
-  yield* Effect.annotateCurrentSpan({
-    ...Spans.pass("writer-revision-brief"),
-    ...Spans.counts({ documents: summaries.length, feedbackLength: feedback.length }),
-  });
-  const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
+export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
+  function* (
+    summaries: ReconstructedSummary[],
+    existingBrief: string,
+    existingPrd: string,
+    feedback: string,
+  ) {
+    yield* Effect.annotateCurrentSpan({
+      ...Spans.pass("writer-revision-brief"),
+      ...Spans.counts({ documents: summaries.length, feedbackLength: feedback.length }),
+    });
+    const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
 
-  return yield* LanguageModel.streamText({
-    prompt: [
-      { role: "system", content: RevisionBriefSystemPrompt },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: userContent,
-            options: { anthropic: { cacheControl: { type: "ephemeral" } } },
-          },
-        ],
-      },
-    ],
-  }  ).pipe(
-    Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
-    Stream.map((part) => part.delta),
-    Stream.runFold(() => "", (acc, delta) => acc + delta),
-    Effect.mapError((cause) => new RevisionWriterError({ cause })),
-  );
-}, Effect.provide(sonnetModel), Effect.provide(AnthropicClientLayer));
+    return yield* LanguageModel.streamText({
+      prompt: [
+        { role: "system", content: RevisionBriefSystemPrompt },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: userContent,
+              options: { anthropic: { cacheControl: { type: "ephemeral" } } },
+            },
+          ],
+        },
+      ],
+    }).pipe(
+      Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
+      Stream.map((part) => part.delta),
+      Stream.runFold(
+        () => "",
+        (acc, delta) => acc + delta,
+      ),
+      Effect.mapError((cause) => new RevisionWriterError({ cause })),
+    );
+  },
+  Effect.provide(sonnetModel),
+  Effect.provide(AnthropicClientLayer),
+);
 
-export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(function* (
-  summaries: ReconstructedSummary[],
-  existingBrief: string,
-  existingPrd: string,
-  feedback: string,
-) {
-  yield* Effect.annotateCurrentSpan({
-    ...Spans.pass("writer-revision-prd"),
-    ...Spans.counts({ documents: summaries.length, feedbackLength: feedback.length }),
-  });
-  const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
+export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
+  function* (
+    summaries: ReconstructedSummary[],
+    existingBrief: string,
+    existingPrd: string,
+    feedback: string,
+  ) {
+    yield* Effect.annotateCurrentSpan({
+      ...Spans.pass("writer-revision-prd"),
+      ...Spans.counts({ documents: summaries.length, feedbackLength: feedback.length }),
+    });
+    const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
 
-  return yield* LanguageModel.streamText({
-    prompt: [
-      { role: "system", content: RevisionPrdSystemPrompt },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: userContent,
-            options: { anthropic: { cacheControl: { type: "ephemeral" } } },
-          },
-        ],
-      },
-    ],
-  }  ).pipe(
-    Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
-    Stream.map((part) => part.delta),
-    Stream.runFold(() => "", (acc, delta) => acc + delta),
-    Effect.mapError((cause) => new RevisionWriterError({ cause })),
-  );
-}, Effect.provide(sonnetModel), Effect.provide(AnthropicClientLayer));
-
+    return yield* LanguageModel.streamText({
+      prompt: [
+        { role: "system", content: RevisionPrdSystemPrompt },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: userContent,
+              options: { anthropic: { cacheControl: { type: "ephemeral" } } },
+            },
+          ],
+        },
+      ],
+    }).pipe(
+      Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
+      Stream.map((part) => part.delta),
+      Stream.runFold(
+        () => "",
+        (acc, delta) => acc + delta,
+      ),
+      Effect.mapError((cause) => new RevisionWriterError({ cause })),
+    );
+  },
+  Effect.provide(sonnetModel),
+  Effect.provide(AnthropicClientLayer),
+);

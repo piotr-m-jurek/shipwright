@@ -1,6 +1,10 @@
 import { Effect, pipe } from "effect";
 import { Spans } from "../observability/spans.js";
-import { ClarifyingQuestionsEffectSchema, GapReportEffect, ClarifyingQuestionsEffect } from "./schemas.js";
+import {
+  ClarifyingQuestionsEffectSchema,
+  GapReportEffect,
+  ClarifyingQuestionsEffect,
+} from "./schemas.js";
 import { TextGenerationError } from "./errors.js";
 import type { ReconstructedSummary } from "../db/queries.js";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
@@ -26,32 +30,33 @@ RULES:
 
 const haikuModel = AnthropicLanguageModel.model("claude-haiku-4-5");
 
-export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(function* (
-  gapReport: GapReportEffect,
-  summaries: ReconstructedSummary[],
-) {
-  yield* Effect.annotateCurrentSpan({
-    ...Spans.pass("question-generator"),
-    ...Spans.counts({
-      documents: summaries.length,
-      conflicts: gapReport.conflicts.length,
-      gaps: gapReport.gaps.length,
-      ambiguities: gapReport.ambiguities.length,
-    }),
-  });
-  const { value } = yield* pipe(
-    LanguageModel.generateObject({
-      schema: ClarifyingQuestionsEffectSchema,
-      prompt: Prompt.make([
-        { role: "system", content: QuestionGeneratorSystemPrompt },
-        { role: "user", content: formatInput(gapReport, summaries) },
-      ]),
-    }),
-    Effect.mapError((cause) => new TextGenerationError({ cause })),
-  );
+export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(
+  function* (gapReport: GapReportEffect, summaries: ReconstructedSummary[]) {
+    yield* Effect.annotateCurrentSpan({
+      ...Spans.pass("question-generator"),
+      ...Spans.counts({
+        documents: summaries.length,
+        conflicts: gapReport.conflicts.length,
+        gaps: gapReport.gaps.length,
+        ambiguities: gapReport.ambiguities.length,
+      }),
+    });
+    const { value } = yield* pipe(
+      LanguageModel.generateObject({
+        schema: ClarifyingQuestionsEffectSchema,
+        prompt: Prompt.make([
+          { role: "system", content: QuestionGeneratorSystemPrompt },
+          { role: "user", content: formatInput(gapReport, summaries) },
+        ]),
+      }),
+      Effect.mapError((cause) => new TextGenerationError({ cause })),
+    );
 
-  return value;
-}, Effect.provide(haikuModel), Effect.provide(AnthropicClientLayer));
+    return value;
+  },
+  Effect.provide(haikuModel),
+  Effect.provide(AnthropicClientLayer),
+);
 
 function formatInput(gapReport: GapReportEffect, summaries: ReconstructedSummary[]): string {
   const summarySection = summaries

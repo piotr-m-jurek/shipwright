@@ -12,7 +12,7 @@ import { DatabaseService } from "../db/queries.js";
 // Embedder mock
 // ---------------------------------------------------------------------------
 
-vi.mock("../agent/embedder.js", async () => {
+vi.mock("../agent/embed-chunks.js", async () => {
   const { Effect } = await import("effect");
   return {
     embedChunks: (chunks: string[]) => Effect.succeed(chunks.map(() => Array(1536).fill(0.1))),
@@ -33,9 +33,12 @@ const TestRoutes = pipe(
   Layer.provide(ConfigService.layer),
 );
 
-const { handler, dispose } = HttpRouter.toWebHandler(TestRoutes as Layer.Layer<never, never, never>, {
-  disableLogger: true,
-});
+const { handler, dispose } = HttpRouter.toWebHandler(
+  TestRoutes as Layer.Layer<never, never, never>,
+  {
+    disableLogger: true,
+  },
+);
 
 afterAll(() => dispose());
 
@@ -119,7 +122,6 @@ describe("POST /api/sessions/upload-url", () => {
       files: [
         {
           filename: "large.txt",
-          documentType: "notes",
           mimeType: "text/plain",
           sizeBytes: 100_000_001,
         },
@@ -133,7 +135,6 @@ describe("POST /api/sessions/upload-url", () => {
       files: [
         {
           filename: "brief.txt",
-          documentType: "notes",
           mimeType: "text/plain",
           sizeBytes: 1000,
         },
@@ -156,7 +157,6 @@ describe("POST /api/sessions/upload-url", () => {
       files: [
         {
           filename: "test.txt",
-          documentType: "transcript",
           mimeType: "text/plain",
           sizeBytes: 500,
         },
@@ -179,13 +179,11 @@ describe("POST /api/sessions/upload-url", () => {
       files: [
         {
           filename: "doc1.txt",
-          documentType: "prd_draft",
           mimeType: "text/plain",
           sizeBytes: 500,
         },
         {
           filename: "doc2.txt",
-          documentType: "rfp",
           mimeType: "text/plain",
           sizeBytes: 500,
         },
@@ -211,7 +209,6 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
       files: [
         {
           filename: "missing.txt",
-          documentType: "notes",
           mimeType: "text/plain",
           sizeBytes: 100,
         },
@@ -236,7 +233,6 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
       files: [
         {
           filename: "present.txt",
-          documentType: "notes",
           mimeType: "text/plain",
           sizeBytes: 100,
         },
@@ -266,7 +262,6 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
       files: [
         {
           filename: "requirements.txt",
-          documentType: "prd_draft",
           mimeType: "text/plain",
           sizeBytes: Buffer.byteLength(content),
         },
@@ -302,7 +297,6 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
       files: [
         {
           filename: "tokens.txt",
-          documentType: "notes",
           mimeType: "text/plain",
           sizeBytes: Buffer.byteLength(content),
         },
@@ -339,7 +333,6 @@ describe("GET /api/sessions/:id", () => {
       files: [
         {
           filename: "session-test.txt",
-          documentType: "notes",
           mimeType: "text/plain",
           sizeBytes: 100,
         },

@@ -32,8 +32,6 @@ export const Spans = {
       : {}),
     ...(opts.conflicts !== undefined ? { "shipwright.gap.conflicts": opts.conflicts } : {}),
     ...(opts.gaps !== undefined ? { "shipwright.gap.gaps": opts.gaps } : {}),
-    ...(opts.ambiguities !== undefined
-      ? { "shipwright.gap.ambiguities": opts.ambiguities }
-      : {}),
+    ...(opts.ambiguities !== undefined ? { "shipwright.gap.ambiguities": opts.ambiguities } : {}),
   }),
 } as const;

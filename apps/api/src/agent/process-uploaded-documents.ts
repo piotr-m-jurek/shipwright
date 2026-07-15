@@ -2,7 +2,7 @@ import { StorageAdapter } from "../storage/index.js";
 import { parseDocument } from "./parsers.js";
 import { estimateTokenCount } from "./estimate-token-count.js";
 import { chunkDocument } from "./chunker.js";
-import { embedChunks } from "./embedder.js";
+import { embedChunks } from "./embed-chunks.js";
 import { Effect, Schema, Array, pipe } from "effect";
 import { SelectDocument } from "../db/schema.js";
 import { DatabaseService } from "../db/queries.js";
@@ -55,7 +55,7 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
   yield* db.updateAgentSession(sessionId, status);
 });
 
-const processDoc = ({
+const processDoc = Effect.fn("agent/process-doc")(function* ({
   doc,
   upload,
   sessionId,
@@ -63,33 +63,31 @@ const processDoc = ({
   doc: SelectDocument;
   upload: ConfirmUploadRequest["uploads"][number];
   sessionId: string;
-}) =>
-  Effect.gen(function* () {
-    const storage = yield* StorageAdapter;
-    const db = yield* DatabaseService;
-    yield* db.updateDocumentStatus(doc.id, "processing");
+}) {
+  const storage = yield* StorageAdapter;
+  const db = yield* DatabaseService;
+  yield* db.updateDocumentStatus(doc.id, "processing");
 
-    const rawDocument = yield* storage.download(upload.s3Key);
-    const parsed = yield* parseDocument(Buffer.from(rawDocument), doc.filename);
-    const chunks = chunkDocument(parsed);
-    const tokenCount = estimateTokenCount(parsed.text);
+  const rawDocument = yield* storage.download(upload.s3Key);
+  const parsed = yield* parseDocument(Buffer.from(rawDocument), doc.filename);
+  const chunks = chunkDocument(parsed);
+  const tokenCount = estimateTokenCount(parsed.text);
 
-    const embeddings = yield* embedChunks(chunks.map((ch) => ch.content));
-    const zipped = Array.zip(chunks, embeddings);
+  const embeddings = yield* embedChunks(chunks.map((ch) => ch.content));
+  const zipped = Array.zip(chunks, embeddings);
 
-    yield* db.createChunks(
-      zipped.map(([chunk, embedding], index) => ({
-        sessionId,
-        documentId: doc.id,
-        documentType: doc.documentType,
-        embedding: [...embedding],
-        chunkIndex: index,
-        content: chunk?.content ?? "",
-        charOffset: chunk?.charOffset,
-        pageNumber: chunk?.pageNumber,
-        headingPath: chunk?.headingPath,
-      })),
-    );
+  yield* db.createChunks(
+    zipped.map(([chunk, embedding], index) => ({
+      sessionId,
+      documentId: doc.id,
+      embedding: [...embedding],
+      chunkIndex: index,
+      content: chunk?.content ?? "",
+      charOffset: chunk?.charOffset,
+      pageNumber: chunk?.pageNumber,
+      headingPath: chunk?.headingPath,
+    })),
+  );
 
-    yield* db.updateDocument(doc.id, { tokenCount, status: "ready" });
-  });
+  yield* db.updateDocument(doc.id, { tokenCount, status: "ready" });
+});

@@ -1,7 +1,9 @@
 import {
+  CreateBucketCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  PutBucketCorsCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -66,6 +68,43 @@ export class StorageAdapter extends Context.Service<
           secretAccessKey: Redacted.value(config.storage.secretKey),
         },
         forcePathStyle: true,
+        // Only add checksum headers when the operation explicitly requires them.
+        // Without this, SDK v3 appends x-amz-sdk-checksum-algorithm=CRC32 to
+        // every presigned PUT URL, which RustFS doesn't understand.
+        requestChecksumCalculation: "WHEN_REQUIRED",
+      });
+
+      // Ensure bucket exists (idempotent — ignore already-exists errors)
+      yield* Effect.tryPromise({
+        try: () => client.send(new CreateBucketCommand({ Bucket: config.storage.bucket })),
+        catch: () => void 0,
+      });
+
+      // Set CORS policy so browsers can PUT presigned URLs directly
+      yield* Effect.tryPromise({
+        try: () =>
+          client.send(
+            new PutBucketCorsCommand({
+              Bucket: config.storage.bucket,
+              CORSConfiguration: {
+                CORSRules: [
+                  {
+                    AllowedOrigins: config.storage.allowedOrigins as string[],
+                    AllowedMethods: ["PUT", "GET", "HEAD"],
+                    AllowedHeaders: ["*"],
+                    ExposeHeaders: ["ETag"],
+                    MaxAgeSeconds: 3600,
+                  },
+                ],
+              },
+            }),
+          ),
+        catch: (cause) => new PresignedUrlError({ cause }),
+      });
+
+      yield* Effect.log("[storage] bucket CORS configured", {
+        bucket: config.storage.bucket,
+        allowedOrigins: config.storage.allowedOrigins,
       });
 
       const upload = Effect.fn("storage/upload")(function* (key: string, body: Buffer) {

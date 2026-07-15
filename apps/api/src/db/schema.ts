@@ -48,13 +48,6 @@ export type SessionSelect = typeof agentSessions.$inferSelect;
 export type InsertAgentSession = typeof agentSessions.$inferInsert;
 export type SelectAgentSession = typeof agentSessions.$inferSelect;
 
-export const documentTypeEnum = pgEnum("document_type", [
-  "transcript",
-  "prd_draft",
-  "rfp",
-  "notes",
-]);
-
 export const documentStatusEnum = pgEnum("document_status", [
   "pending",
   "uploaded",
@@ -73,7 +66,6 @@ export const documents = pgTable("documents", {
   sessionId: uuid("session_id")
     .references(() => agentSessions.id, { onDelete: "cascade" })
     .notNull(),
-  documentType: documentTypeEnum("document_type").notNull(),
   filename: text("filename").notNull(),
   mimeType: text("mime_type").notNull(),
   sizeBytes: integer("size_bytes").notNull(),
@@ -99,7 +91,6 @@ export const chunks = pgTable("chunks", {
   charOffset: integer("char_offset"),
   chunkIndex: integer("chunk_index").notNull(),
   content: text("content").notNull(),
-  documentType: documentTypeEnum("document_type").notNull(),
   embedding: vector("embedding", { dimensions: 1536 }).notNull(),
   headingPath: text("heading_path").array(),
   pageNumber: integer("page_number"),

@@ -36,8 +36,10 @@
     "xstate": "5.32.0"
   },
   "devDependencies": {
-    "concurrently": "^10.0.3",
-    "drizzle-kit": "^0.31.4",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "1.0.0-rc.3",
+    "oxfmt": "^0.58.0",
+    "oxlint": "^1.73.0",
     "tsx": "4.22.3",
     "typescript": "~5.8.3",
     "vitest": "4.1.8"

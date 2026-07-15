@@ -171,30 +171,34 @@ When a running summary is present: the new chunk is additional evidence, not a r
 
 const haikuModel = AnthropicLanguageModel.model("claude-haiku-4-5");
 
-export const runReducePass = Effect.fn("agent/runReducePass")(function* (
-  current: Option.Option<DocumentSummaryEffect>,
-  chunk: SelectChunk,
-  sourceDocument: string,
-) {
-  yield* Effect.annotateCurrentSpan({
-    ...Spans.document({ filename: sourceDocument }),
-    ...Spans.chunk(chunk.chunkIndex),
-  });
-  const userContent = formatChunk(current, chunk, sourceDocument);
+export const runReducePass = Effect.fn("agent/runReducePass")(
+  function* (
+    current: Option.Option<DocumentSummaryEffect>,
+    chunk: SelectChunk,
+    sourceDocument: string,
+  ) {
+    yield* Effect.annotateCurrentSpan({
+      ...Spans.document({ filename: sourceDocument }),
+      ...Spans.chunk(chunk.chunkIndex),
+    });
+    const userContent = formatChunk(current, chunk, sourceDocument);
 
-  const { value } = yield* pipe(
-    LanguageModel.generateObject({
-      schema: DocumentSummaryEffectSchema,
-      prompt: Prompt.make([
-        { role: "system", content: MapReduceSystemPrompt },
-        { role: "user", content: userContent },
-      ]),
-    }),
-    Effect.mapError((cause) => new TextGenerationError({ cause })),
-  );
+    const { value } = yield* pipe(
+      LanguageModel.generateObject({
+        schema: DocumentSummaryEffectSchema,
+        prompt: Prompt.make([
+          { role: "system", content: MapReduceSystemPrompt },
+          { role: "user", content: userContent },
+        ]),
+      }),
+      Effect.mapError((cause) => new TextGenerationError({ cause })),
+    );
 
-  return value;
-}, Effect.provide(haikuModel), Effect.provide(AnthropicClientLayer));
+    return value;
+  },
+  Effect.provide(haikuModel),
+  Effect.provide(AnthropicClientLayer),
+);
 
 const formatChunk = (
   summary: Option.Option<DocumentSummaryEffect>,

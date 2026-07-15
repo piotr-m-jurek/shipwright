@@ -16,7 +16,6 @@ export const createUploadSession = Effect.fn("agent/createUploadSession")(functi
       Effect.gen(function* () {
         const doc = yield* dbService.createDocument({
           filename: file.filename,
-          documentType: file.documentType,
           sessionId: session.id,
           mimeType: file.mimeType,
           sizeBytes: file.sizeBytes,

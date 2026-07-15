@@ -48,15 +48,12 @@ function runDb<A>(effect: Effect.Effect<A, any, DatabaseService>): Promise<A> {
 
 const CORPUS_DIR = resolve(REPO_ROOT, "docs/test_corpus");
 
-const CORPUS_FILES: {
-  filename: string;
-  documentType: "transcript" | "prd_draft" | "rfp" | "notes";
-}[] = [
-  { filename: "project_brief.txt", documentType: "notes" },
-  { filename: "prd_draft.md", documentType: "prd_draft" },
-  { filename: "rfp.md", documentType: "rfp" },
-  { filename: "discovery_call_transcript.txt", documentType: "transcript" },
-  { filename: "hr_requirements.pdf", documentType: "notes" },
+const CORPUS_FILES: { filename: string }[] = [
+  { filename: "project_brief.txt" },
+  { filename: "prd_draft.md" },
+  { filename: "rfp.md" },
+  { filename: "discovery_call_transcript.txt" },
+  { filename: "hr_requirements.pdf" },
 ];
 
 async function main() {
@@ -70,7 +67,7 @@ async function main() {
 
   try {
     console.log("\nParsing corpus and inserting records...");
-    for (const { filename, documentType } of CORPUS_FILES) {
+    for (const { filename } of CORPUS_FILES) {
       const buffer = await readFile(resolve(CORPUS_DIR, filename));
       const parsed = await runtime.runPromise(parseDocument(buffer, filename));
 
@@ -79,7 +76,6 @@ async function main() {
           svc.createDocument({
             sessionId,
             filename,
-            documentType,
             mimeType: "text/plain",
             sizeBytes: buffer.length,
             status: "ready",
@@ -94,7 +90,6 @@ async function main() {
             {
               sessionId,
               documentId: doc.id,
-              documentType,
               content: parsed.text,
               chunkIndex: 0,
               charOffset: 0,

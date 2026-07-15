@@ -69,36 +69,43 @@ function formatSummariesForBrief(
 
 const sonnetModel = AnthropicLanguageModel.model("claude-sonnet-4-6");
 
-export const runBriefWriter = Effect.fn("agent/runBriefWriter")(function* (
-  summaries: ReconstructedSummary[],
-  answers: MachineContext["answers"],
-  questions: MachineContext["questions"],
-) {
-  yield* Effect.annotateCurrentSpan({
-    ...Spans.pass("writer-brief"),
-    ...Spans.counts({ documents: summaries.length, answers: answers.length }),
-  });
-  const userContent = formatSummariesForBrief(summaries, answers, questions);
+export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
+  function* (
+    summaries: ReconstructedSummary[],
+    answers: MachineContext["answers"],
+    questions: MachineContext["questions"],
+  ) {
+    yield* Effect.annotateCurrentSpan({
+      ...Spans.pass("writer-brief"),
+      ...Spans.counts({ documents: summaries.length, answers: answers.length }),
+    });
+    const userContent = formatSummariesForBrief(summaries, answers, questions);
 
-  return yield* LanguageModel.streamText({
-    prompt: [
-      { role: "system", content: BriefSystemPrompt },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: userContent,
-            // Prompt caching: document summaries are identical across Brief and PRD passes
-            options: { anthropic: { cacheControl: { type: "ephemeral" } } },
-          },
-        ],
-      },
-    ],
-  }  ).pipe(
-    Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
-    Stream.map((part) => part.delta),
-    Stream.runFold(() => "", (acc, delta) => acc + delta),
-    Effect.mapError((cause) => new BriefWriterError({ cause })),
-  );
-}, Effect.provide(sonnetModel), Effect.provide(AnthropicClientLayer));
+    return yield* LanguageModel.streamText({
+      prompt: [
+        { role: "system", content: BriefSystemPrompt },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: userContent,
+              // Prompt caching: document summaries are identical across Brief and PRD passes
+              options: { anthropic: { cacheControl: { type: "ephemeral" } } },
+            },
+          ],
+        },
+      ],
+    }).pipe(
+      Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
+      Stream.map((part) => part.delta),
+      Stream.runFold(
+        () => "",
+        (acc, delta) => acc + delta,
+      ),
+      Effect.mapError((cause) => new BriefWriterError({ cause })),
+    );
+  },
+  Effect.provide(sonnetModel),
+  Effect.provide(AnthropicClientLayer),
+);

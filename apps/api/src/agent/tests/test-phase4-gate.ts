@@ -97,10 +97,10 @@ console.log("\n=== Phase 4 Gate Test ===\n");
 console.log("1. Setting up test session with corpus documents");
 
 const corpusFiles = [
-  { filename: "project_brief.txt", documentType: "notes" as const },
-  { filename: "prd_draft.md", documentType: "prd_draft" as const },
-  { filename: "rfp.md", documentType: "rfp" as const },
-  { filename: "discovery_call_transcript.txt", documentType: "transcript" as const },
+  { filename: "project_brief.txt" },
+  { filename: "prd_draft.md" },
+  { filename: "rfp.md" },
+  { filename: "discovery_call_transcript.txt" },
 ];
 
 const session = await runDb(
@@ -108,7 +108,7 @@ const session = await runDb(
 );
 const sessionId = session.id;
 
-for (const { filename, documentType } of corpusFiles) {
+for (const { filename } of corpusFiles) {
   const buffer = await readFile(resolve(CORPUS, filename));
   const parsed = await runtime.runPromise(parseDocument(buffer, filename));
 
@@ -117,7 +117,6 @@ for (const { filename, documentType } of corpusFiles) {
       svc.createDocument({
         sessionId,
         filename,
-        documentType,
         mimeType: "text/plain",
         sizeBytes: buffer.length,
         status: "ready",
@@ -132,7 +131,6 @@ for (const { filename, documentType } of corpusFiles) {
         {
           sessionId,
           documentId: doc.id,
-          documentType,
           content: parsed.text,
           chunkIndex: 0,
           charOffset: 0,
