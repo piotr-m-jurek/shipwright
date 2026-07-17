@@ -33,14 +33,13 @@ export class OutputDownloadUrlResponse extends Schema.Class<OutputDownloadUrlRes
   "OutputDownloadUrlResponse",
 )({ url: Schema.String }) {}
 
-export class ReviseRequest extends Schema.Class<ReviseRequest>(
-  "ReviseRequest",
-)({ feedback: Schema.String }) {}
+export class ReviseRequest extends Schema.Class<ReviseRequest>("ReviseRequest")({
+  feedback: Schema.String,
+}) {}
 
-export class ReviseResponse extends Schema.Class<ReviseResponse>(
-  "ReviseResponse",
-)({ started: Schema.Boolean }) {}
-
+export class ReviseResponse extends Schema.Class<ReviseResponse>("ReviseResponse")({
+  started: Schema.Boolean,
+}) {}
 
 export class GetAgentSessionProgressResponse extends Schema.Class<GetAgentSessionProgressResponse>(
   "GetAgentSessionProgressResponse",

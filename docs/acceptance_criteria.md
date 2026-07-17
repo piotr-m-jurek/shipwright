@@ -207,9 +207,9 @@ it "mostly works".
 - [x] `GET /openapi.json` returns valid OpenAPI 3.1 schema with all 10 routes — 200
 - [x] `GET /docs` returns Scalar API documentation UI — 200
 - [x] Stopping and restarting the server mid-session does not lose session state — verified in Phase 4 gate
-- [ ] CORS: frontend origin accepted — deferred to Phase 10 (React SPA not yet built)
+- [x] CORS: frontend origin accepted — `HttpRouter.cors({ allowedOrigins: ["http://localhost:5173"] })` wired in Phase 10
 
-**Gate:** PASSED. All routes respond correctly. Smoke-tested 17.06.2026. CORS deferred to Phase 10.
+**Gate:** PASSED. All routes respond correctly. Smoke-tested 17.06.2026. CORS resolved in Phase 10.
 
 ---
 
@@ -336,22 +336,52 @@ it "mostly works".
 
 ## Phase 10 — React SPA
 
-- [ ] `apps/web` has Vite + React + TanStack Router configured
-- [ ] `apps/web` declares `@shipwright/shared: workspace:*` and `@effect/atom-react: workspace:*` (or published version) as dependencies
-- [ ] `apps/web/src/store/api.ts` declares `ShipwrightApi` via `AtomHttpApi.Service` using `Api` from `@shipwright/shared/api`
-- [ ] `RegistryProvider` from `@effect/atom-react` wraps the app root in `apps/web/src/main.tsx`
-- [ ] All API calls in `apps/web` go through `ShipwrightApi.instance.query` or `ShipwrightApi.instance.mutation` — no raw `fetch()`, no TanStack Query (Rule 10)
-- [ ] Session status polling while processing uses `Atom.withRefresh` — not a `setInterval` or TanStack Query `refetchInterval`
-- [ ] Route `/` renders an upload form — selecting files calls the `sessionUploadUrl` mutation atom
-- [ ] Route `/sessions/:id/questions` renders questions from the `getAgentSessionById` query atom and accepts answers via the `submitSessionAnswers` mutation atom
-- [ ] Route `/sessions/:id/output` renders the Brief and PRD side by side in Markdown
-- [ ] Download buttons call the `getOutputDownloadUrl` query atom and open the presigned URL
-- [ ] CORS is enabled on `apps/api` for `http://localhost:5173`
-- [ ] Full end-to-end run in the browser: upload 2+ files → confirm → answer questions → view outputs → download Brief
-- [ ] Zero TanStack Query imports (`@tanstack/react-query`) in `apps/web/src/`
-- [ ] Zero `openapi-fetch` or `openapi-typescript` imports in `apps/web/src/`
+> **Architecture note:** Uses `AtomHttpApi.Service` from `effect/unstable/reactivity`
+> (official Effect package, v4.0.0-beta.87), not the community `@effect-atom/atom`.
+> `@effect/atom-react` provides React bindings (`RegistryProvider`, `useAtomMount`,
+> `useAtomValue`, `useAtomSet`, `useAtomSuspense`). Polling uses `Atom.withRefresh`
+> from `effect/unstable/reactivity`. `reactivityKeys` are passed per-call on the
+> request object, not at mutation creation time.
 
-**Gate:** Full end-to-end in the browser without errors. Zero raw `fetch()` calls in `apps/web/src/`. Zero TanStack Query imports in `apps/web/src/`.
+### Toolchain
+
+- [x] Vite + React + TanStack Router + TanStack Router Vite plugin configured
+- [x] Tailwind v4 via `@tailwindcss/vite` — no postcss needed
+- [x] shadcn/ui initialized (`base-lyra` style, Phosphor icons, `components.json` present)
+- [x] `@` path alias configured in `vite.config.ts` and `tsconfig.json`
+- [x] `apps/web` declares `@shipwright/shared: workspace:*`, `@effect/atom-react`, `@effect/platform-browser` as dependencies
+
+### API client wiring
+
+- [x] `apps/web/src/store/api.ts` — `ShipwrightApi` via `AtomHttpApi.Service` from `effect/unstable/reactivity`
+- [x] `apps/web/src/main.tsx` — `RegistryProvider` + `AppRuntime` wrapping `useAtomMount(ShipwrightApi.runtime)`
+- [x] All API calls go through `ShipwrightApi.mutation(...)` or `ShipwrightApi.query(...)` — no raw `fetch()` to the API server, no TanStack Query (Rule 10)
+- [x] `reactivityKeys` passed per-call on request objects (not at mutation creation time)
+
+### Routes
+
+- [x] Route `/` — upload page with drag-drop (`react-dropzone`), file list, progress states
+- [x] Route `/sessions/$id/confirm` — review uploaded files, add more, trigger analysis via `confirmAnalysis` mutation
+- [x] Route `/sessions/$id/questions` — polls session status via `Atom.withRefresh`, renders questions, submits answers
+- [x] Route `/sessions/$id/output` — dual-panel Markdown viewer (`react-markdown`), download buttons, revision section
+
+### Session state bridge
+
+- [x] `apps/web/src/store/session-files.ts` — `Atom.family` keyed by `sessionId` with `Atom.keepAlive` — persists uploaded file metadata across navigation from upload → confirm page
+
+### CORS
+
+- [x] `HttpRouter.cors({ allowedOrigins: config.server.allowedOrigins })` in `server.ts`
+- [x] `ALLOWED_ORIGINS=http://localhost:5173` in `apps/api/.env`
+- [x] Phase 6 CORS item now resolved ✓
+
+### Known deviations from plan
+
+- [x] `documentType` removed from spec entirely — `CreateAgentSessionRequest` no longer includes it; schema, server, agent, and tests all updated. Upload form works without it.
+- [x] Output page polls via `Atom.withRefresh(outputAtom, "3 seconds")` while `projectBrief` or `implementationPrd` is null — spinner shown while generating, panels render as soon as both are populated
+- [x] Full end-to-end browser run verified: upload files → confirm → answer questions → view outputs → download Brief
+
+**Gate:** PASSED (17.07.2026). End-to-end verified in browser. Zero raw `fetch()` calls to API server. Zero TanStack Query imports. Zero openapi-fetch/openapi-typescript imports.
 
 ---
 

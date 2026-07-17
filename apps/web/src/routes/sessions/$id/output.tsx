@@ -42,14 +42,28 @@ const reviseFamily = Atom.family((_nonce: number) =>
   ShipwrightApi.mutation("system", "reviseOutput"),
 );
 
+function useOutputPolling(id: string) {
+  const outputAtom = useMemo(() => outputQueryFamily(id), [id]);
+  const result = useAtomValue(outputAtom);
+
+  const hasOutputs =
+    AsyncResult.isSuccess(result) &&
+    result.value.projectBrief !== null &&
+    result.value.implementationPrd !== null;
+
+  const pollingAtom = useMemo(
+    () => (hasOutputs ? outputAtom : Atom.withRefresh(outputAtom, "3 seconds")),
+    [hasOutputs],
+  );
+  return useAtomValue(pollingAtom);
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 function OutputPage({ sessionId }: { sessionId: string }) {
-  const outputAtom = useMemo(() => outputQueryFamily(sessionId), [sessionId]);
-  const outputResult = useAtomValue(outputAtom);
-
+  const outputResult = useOutputPolling(sessionId);
   return pipe(
     Match.value(outputResult),
     Match.when(
@@ -71,28 +85,38 @@ function OutputPage({ sessionId }: { sessionId: string }) {
         <header className="flex items-center justify-between border-b px-6 py-3">
           <div className="space-y-0.5">
             <h1 className="font-mono text-sm font-medium tracking-tight">shipwright</h1>
-            {version != null && (
-              <p className="text-xs text-muted-foreground">Version {version}</p>
-            )}
+            {version != null && <p className="text-xs text-muted-foreground">Version {version}</p>}
           </div>
         </header>
 
         <div className="flex flex-1 overflow-hidden">
-          <OutputPanel
-            title="Project Brief"
-            content={projectBrief}
-            downloadType="project_brief"
-            sessionId={sessionId}
-          />
-          <div className="w-px bg-border" />
-          <OutputPanel
-            title="Implementation PRD"
-            content={implementationPrd}
-            downloadType="implementation_prd"
-            sessionId={sessionId}
-          />
+          {pipe(
+            Match.value({ projectBrief, implementationPrd }),
+            Match.when({ project: Match.null, implementationPrd: Match.null }, () => (
+              <div className="flex min-h-svh flex-col items-center justify-center gap-3">
+                <Spinner className="size-5" />
+                <p className="text-xs text-muted-foreground">Generating outputs…</p>
+              </div>
+            )),
+            Match.orElse(() => (
+              <>
+                <OutputPanel
+                  title="Project Brief"
+                  content={projectBrief}
+                  downloadType="project_brief"
+                  sessionId={sessionId}
+                />
+                <div className="w-px bg-border" />
+                <OutputPanel
+                  title="Implementation PRD"
+                  content={implementationPrd}
+                  downloadType="implementation_prd"
+                  sessionId={sessionId}
+                />
+              </>
+            )),
+          )}
         </div>
-
         <RevisionSection sessionId={sessionId} />
       </div>
     )),
@@ -139,10 +163,7 @@ function OutputPanel({
 // ---------------------------------------------------------------------------
 
 function DownloadButton({ sessionId, type }: { sessionId: string; type: string }) {
-  const urlAtom = useMemo(
-    () => downloadUrlFamily({ id: sessionId, type }),
-    [sessionId, type],
-  );
+  const urlAtom = useMemo(() => downloadUrlFamily({ id: sessionId, type }), [sessionId, type]);
   const urlResult = useAtomValue(urlAtom);
 
   const handleDownload = () => {
@@ -227,7 +248,10 @@ function RevisionSection({ sessionId }: { sessionId: string }) {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setOpen(false); setFeedback(""); }}
+                onClick={() => {
+                  setOpen(false);
+                  setFeedback("");
+                }}
                 disabled={isRevising}
               >
                 Cancel

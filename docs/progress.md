@@ -60,7 +60,7 @@ pnpm --filter @shipwright/api db:push             apply DB schema changes
 
 **Note:** CLI (original Phase 7) is cut. Phase 9 (Effect rewrite) was done before Phase 7 (Monorepo) — both complete.
 
-**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE · Phase 9 COMPLETE · Phase 7 COMPLETE · Phase 8 PARTIALLY COMPLETE (Part A 5/5 ✓, Parts B+C deferred — OpenAI quota) · **Phase 10 (React SPA) next**
+**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE · Phase 9 COMPLETE · Phase 7 COMPLETE · Phase 8 PARTIALLY COMPLETE (Part A 5/5 ✓) · Phase 10 COMPLETE (gate passed 17.07.2026) · **Phase 11 (RAG) next**
 
 ---
 
@@ -322,6 +322,8 @@ Full audit of `src/` vs docs completed.
 - **25.06.2026 — Phase 9 COMPLETE (Effect rewrite, done out of sequence before Phase 7):** See Phase 9 section below.
 - **26.06.2026 — Phase 7 COMPLETE (Monorepo restructure):** See Phase 7 section below.
 - **09.07.2026 — Phase 8 PARTIAL (Langfuse + Evals):** Part A 5/5 planted issues ✓. Infrastructure and tracing complete. Parts B+C deferred (OpenAI quota). Bug fixed: `Effect.map` → `Effect.flatMap` in `summarizeAllDocuments`. See Phase 8 section below.
+- **16.07.2026 — Phase 10 IN PROGRESS (React SPA):** All routes built.
+- **17.07.2026 — Phase 10 COMPLETE:** Gate passed. End-to-end verified in browser. `documentType` removed from spec. Output polling implemented. See Phase 10 section below.
 
 ---
 
@@ -498,4 +500,66 @@ GapReport: 4 conflicts, 19 gaps, 24 ambiguities
 ✓ Issue 5: SSO/auth conflict (prd_draft vs hr_requirements)
 Planted issues surfaced: 5/5
 Eval suite PASSED.
+```
+
+---
+
+## Phase 10 — React SPA (IN PROGRESS — 16.07.2026)
+
+**Routes built. Two items blocking gate.**
+
+### What was built
+
+**Toolchain:**
+- Vite + React + TanStack Router (file-based routing, `routeTree.gen.ts` auto-generated)
+- Tailwind v4 via `@tailwindcss/vite` (no postcss)
+- shadcn/ui `base-lyra` style, Phosphor icons
+- `@` alias (`src/` root) in `vite.config.ts` and `tsconfig.json`
+
+**API client (`apps/web/src/store/api.ts`):**
+- `ShipwrightApi` via `AtomHttpApi.Service` from `effect/unstable/reactivity`
+- `@effect/platform-browser` `BrowserHttpClient.layerFetch` as HTTP client
+- No baseUrl — Vite dev proxy handles `/api` → `localhost:3000`
+
+**App providers (`apps/web/src/main.tsx`):**
+- `RegistryProvider` from `@effect/atom-react` wraps entire app
+- `AppRuntime` inner component calls `useAtomMount(ShipwrightApi.runtime)` to keep runtime alive
+
+**Routes:**
+- `/` — drag-drop upload (`react-dropzone`), file list with progress states, `handleUploadAtom` using `ShipwrightApi.runtime.fn` for the upload sequence (presigned URL → S3 PUT → confirm)
+- `/sessions/$id/confirm` — review uploaded files, add more, trigger `confirmAnalysis`; uses `sessionFilesAtomFamily` to read files from upload page
+- `/sessions/$id/questions` — `Atom.withRefresh(sessionAtom, "2 seconds")` polling while not `awaiting_answers`; `Match.value` on `AsyncResult` for state-based rendering; `reactivityKeys: ["session", id]` on answer submission for automatic re-query
+- `/sessions/$id/output` — dual-panel `react-markdown` viewer, download via `downloadUrlFamily` query atom, revision section with feedback textarea
+
+**Session state bridge (`apps/web/src/store/session-files.ts`):**
+- `Atom.family` keyed by `sessionId` with `Atom.keepAlive` — passes file metadata across navigation
+
+**CORS (`apps/api`):**
+- `HttpRouter.cors({ allowedOrigins: config.server.allowedOrigins })` in `server.ts`
+- `ALLOWED_ORIGINS=http://localhost:5173` and `S3_ALLOWED_ORIGINS=http://localhost:5173` in `apps/api/.env`
+- `ConfigService` extended with `server: { allowedOrigins }` block
+
+### Key decisions
+
+- **`ShipwrightApi.runtime.fn`** for upload sequence — the upload flow is sequential (presigned URL → S3 PUT → confirm) and needs to read atom results mid-execution. `runtime.fn` gives access to `ctx.set(atom, value)` and `ctx.result(atom)` inside an Effect generator, enabling the full sequence as one Effect without Promise bridges.
+- **`Atom.family` for mutation atoms** — prevents stale state when the same mutation is triggered multiple times (e.g., re-upload). Each nonce-keyed family member is a fresh atom.
+- **`reactivityKeys` per-call** — passed on the request object to `ShipwrightApi.mutation(...)`, not at mutation creation time (the creation signature only accepts `{ withResponse? }`).
+- **`Match.value` + `AsyncResult.*` guards** — used instead of `useAtomSuspense` for the questions page to handle all states (initial, waiting, success, failure) explicitly without Suspense boundary overhead.
+
+### Blocking gate items
+
+1. ~~`documentType` not selectable~~ — **removed from spec**. `CreateAgentSessionRequest` no longer requires it. Schema, server, agent code, and tests all updated. Not a blocker.
+
+2. ~~Output page doesn't poll~~ — implemented. `useOutputPolling` uses `Atom.withRefresh(outputAtom, "3 seconds")` while outputs are null.
+
+### Gate verification — 17.07.2026
+
+```
+grep -rn "fetch\b" apps/web/src/ | grep -v "presignedUrl|BrowserHttpClient|layerFetch"
+→ (no output — zero raw fetch to API server)
+
+grep -rn "@tanstack/react-query|openapi-fetch|openapi-typescript" apps/web/src/
+→ (no output)
+
+Browser run: upload → confirm → questions → outputs → download ✓
 ```
