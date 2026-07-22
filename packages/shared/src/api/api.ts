@@ -32,10 +32,15 @@ import {
   OutputNotFoundError,
   RevisionError,
 } from "../domain/errors.js";
+import { Authorization } from "./middleware.js";
+
+class PublicApiGroup extends HttpApiGroup.make("public")
+  .add(HttpApiEndpoint.get("health", "/health", { success: Schema.String }))
+  .prefix("/api") {}
 
 class SystemApiGroup extends HttpApiGroup.make("system")
+  .middleware(Authorization)
   .add(
-    HttpApiEndpoint.get("health", "/health", { success: Schema.String }),
     HttpApiEndpoint.post("sessionUploadUrl", "/sessions/upload-url", {
       payload: CreateAgentSessionRequest,
       success: CreateAgentSessionResponse,
@@ -91,5 +96,6 @@ class SystemApiGroup extends HttpApiGroup.make("system")
   .prefix("/api") {}
 
 export class Api extends HttpApi.make("api")
+  .add(PublicApiGroup)
   .add(SystemApiGroup)
   .annotateMerge(OpenApi.annotations({ title: "Shipwright API" })) {}

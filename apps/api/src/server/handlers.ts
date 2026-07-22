@@ -36,6 +36,10 @@ import {
 import { Api } from "@shipwright/shared/api.js";
 import { DatabaseService } from "../db/queries.js";
 
+export const PublicApiHandlers = HttpApiBuilder.group(Api, "public", (handlers) =>
+  handlers.handle("health", () => Effect.succeed("Healthy")),
+);
+
 export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) =>
   handlers
     .handle(

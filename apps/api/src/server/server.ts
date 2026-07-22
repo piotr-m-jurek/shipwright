@@ -1,20 +1,28 @@
 import { Effect, Layer, pipe } from "effect";
-import { FetchHttpClient, HttpRouter, HttpStaticServer } from "effect/unstable/http";
+import {
+  FetchHttpClient,
+  HttpRouter,
+  HttpServerResponse,
+  HttpStaticServer,
+} from "effect/unstable/http";
 import { createServer } from "node:http";
 import { HttpApiBuilder, HttpApiScalar } from "effect/unstable/httpapi";
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
 import path from "node:path";
 import { StorageAdapter } from "../storage/index.js";
 import { Api } from "@shipwright/shared/api.js";
-import { SystemApiHandlers } from "./handlers.js";
+import { PublicApiHandlers, SystemApiHandlers } from "./handlers.js";
 import { ConfigService } from "../config/config.js";
 import { OtlpLayer } from "../observability/observability.js";
 import { DatabaseService } from "../db/queries.js";
 import { AppDBLayer } from "../db/index.js";
+import { auth } from "../auth/auth.js";
+import { AuthorizationLayer } from "./authorization.js";
 
 export const ApiRoute = pipe(
   HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }),
-  Layer.provide([SystemApiHandlers]),
+  Layer.provide([SystemApiHandlers, PublicApiHandlers]),
+  Layer.provide(AuthorizationLayer),
 );
 
 const DocsRoute = HttpApiScalar.layer(Api, { path: "/docs" });
@@ -25,11 +33,17 @@ const StaticFiles = HttpStaticServer.layer({
   index: "index.html",
 });
 
+const AuthLayer = HttpRouter.add("*", "/api/auth/*", (req) =>
+  Effect.promise(() => auth.handler(req.source as Request)).pipe(
+    Effect.map(HttpServerResponse.fromWeb),
+  ),
+);
 const AllRoutes = pipe(
   Layer.unwrap(
     Effect.gen(function* () {
       const config = yield* ConfigService;
       return Layer.mergeAll(
+        AuthLayer,
         ApiRoute,
         DocsRoute,
         StaticFiles,

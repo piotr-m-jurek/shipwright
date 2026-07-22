@@ -25,6 +25,7 @@ import {
 } from "./schema.js";
 import { Context, Effect, Layer, pipe, Schema } from "effect";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
+import { CurrentUser } from "@shipwright/shared/middleware";
 
 export type OutputInsert = typeof outputs.$inferInsert;
 export type OutputSelect = typeof outputs.$inferSelect;
@@ -78,6 +79,7 @@ const makeDatabaseService = Effect.gen(function* () {
     sessionId: string,
     status: SelectAgentSession["status"],
   ) {
+    const user = yield* CurrentUser;
     const [result] = yield* db
       .update(agentSessions)
       .set({ status })

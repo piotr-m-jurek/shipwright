@@ -1,4 +1,6 @@
 import {
+  boolean,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -12,6 +14,80 @@ import { defineRelations } from "drizzle-orm";
 
 import { MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { Brand, Schema } from "effect";
+
+// ── Better Auth tables ────────────────────────────────────────────────────
+
+export const users = pgTable("users", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").default(false).notNull(),
+  image: text("image"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const authSessions = pgTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    expiresAt: timestamp("expires_at").notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => new Date())
+      .notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("sessions_userId_idx").on(table.userId)],
+);
+
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at"),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("accounts_userId_idx").on(table.userId)],
+);
+
+export const verifications = pgTable(
+  "verifications",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("verifications_identifier_idx").on(table.identifier)],
+);
 
 export const sessionStatusEnum = pgEnum("session_status", [
   "idle",
@@ -41,6 +117,9 @@ export const agentSessions = pgTable("agent_sessions", {
     .defaultNow()
     .$onUpdate(() => new Date()),
 
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
   status: sessionStatusEnum("status").notNull().default("idle"),
   inputMode: inputModeEnum("input_mode").notNull().default("context"),
   xstateSnapshot: jsonb("xstate_snapshot").$type<MachineContext>(),
@@ -227,6 +306,10 @@ export const outputs = pgTable("outputs", {
 
 export const relations = defineRelations(
   {
+    users,
+    authSessions,
+    accounts,
+    verifications,
     agentSessions,
     documents,
     chunks,
@@ -238,7 +321,19 @@ export const relations = defineRelations(
     outputs,
   },
   (r) => ({
+    users: {
+      agentSessions: r.many.agentSessions(),
+      authSessions: r.many.authSessions(),
+      accounts: r.many.accounts(),
+    },
+    authSessions: {
+      user: r.one.users({ from: r.authSessions.userId, to: r.users.id }),
+    },
+    accounts: {
+      user: r.one.users({ from: r.accounts.userId, to: r.users.id }),
+    },
     agentSessions: {
+      user: r.one.users({ from: r.agentSessions.userId, to: r.users.id }),
       documents: r.many.documents(),
       chunks: r.many.chunks(),
       documentSummaries: r.many.documentSummaries(),
