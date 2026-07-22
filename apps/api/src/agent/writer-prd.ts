@@ -6,6 +6,7 @@ import { LanguageModel, Response } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
 import "@effect/ai-anthropic/AnthropicLanguageModel";
 import { AnthropicClientLayer } from "./providers.js";
+import { makeQueryChunksLayer, QueryChunksToolkit } from "./tools/query-chunks.js";
 
 export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()(
   "shipwright/agent/PrdWriterError",
@@ -51,7 +52,9 @@ Technology choices already decided. The coding agent should use these unless the
 ## Open Questions
 Any ambiguities that remain after the clarifying session. The coding agent must surface these before implementing the affected feature, not make silent assumptions.
 
-ANTI-HALLUCINATION RULE: Every requirement in the Acceptance Criteria must be traceable to the provided document summaries or clarification answers. Do not invent scope. If a section cannot be filled from the available information, say so explicitly.`;
+ANTI-HALLUCINATION RULE: Every requirement in the Acceptance Criteria must be traceable to the provided document summaries or clarification answers. Do not invent scope. If a section cannot be filled from the available information, say so explicitly.
+
+TOOL USE: You have access to a query_chunks tool. Use it when you need more detail on a specific area not covered in the summaries, or to verify that a requirement is grounded in the source material before adding it to the Acceptance Criteria.`;
 
 function formatSummariesForPrd(
   summaries: ReconstructedSummary[],
@@ -95,6 +98,7 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
     summaries: ReconstructedSummary[],
     answers: MachineContext["answers"],
     questions: MachineContext["questions"],
+    sessionId: string,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-prd"),
@@ -103,6 +107,7 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
     const userContent = formatSummariesForPrd(summaries, answers, questions);
 
     return yield* LanguageModel.streamText({
+      toolkit: QueryChunksToolkit,
       prompt: [
         { role: "system", content: PrdSystemPrompt },
         {
@@ -118,7 +123,8 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
         },
       ],
     }).pipe(
-      Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
+      Stream.provide(makeQueryChunksLayer(sessionId)),
+      Stream.filter((part) => part.type === "text-delta"),
       Stream.map((part) => part.delta),
       Stream.runFold(
         () => "",

@@ -16,11 +16,11 @@ import { confirmUploadResults } from "../agent/confirm-upload-results.js";
 import { processUploadedDocuments } from "../agent/process-uploaded-documents.js";
 import { createUploadSession } from "../agent/create-upload-session.js";
 import {
-  runAnalysisPipeline,
   submitAnswers,
   getOrRestoreActor,
   startRevision,
   SessionStateError as ActorSessionStateError,
+  runSessionWorkflow,
 } from "../agent/session-actor.js";
 import {
   CreateAgentSessionResponse,
@@ -75,36 +75,31 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
     )
     .handle("confirmAnalysis", ({ params: { id } }) =>
       Effect.gen(function* () {
-        // Get or create the actor for this session
         const actor = yield* pipe(
           getOrRestoreActor(id),
           Effect.mapError(() => new ConfirmAnalysisError()),
         );
 
-        // Advance the machine: idle → uploading → processing → analyzing
-        // (V1 deviation: summarization runs inside the pipeline, not in a separate
-        // summarizing state, so documentSummaries[] is empty when the guard fires
-        // and always defaults to context mode — acceptable for V1 corpus sizes)
-        actor.send({ type: "UPLOAD_COMPLETE" });
-        actor.send({ type: "USER_CONFIRM" }); // uploading → processing
-        actor.send({ type: "USER_CONFIRM" }); // processing → analyzing
+        const state = actor.getSnapshot();
 
-        // Fork the analysis pipeline — fire and forget
-        // Client polls GET /sessions/:id for status + questions
-        yield* pipe(
-          runAnalysisPipeline(id),
-          Effect.tapError((e) =>
-            Effect.sync(() =>
-              console.error(
-                "[confirmAnalysis] pipeline error:",
-                JSON.stringify(e, null, 2),
-                (e as any)?.cause,
+        if (state.value === "idle") {
+          actor.send({ type: "UPLOAD_COMPLETE" });
+          actor.send({ type: "USER_CONFIRM" }); // uploading → summarizing
+          yield* pipe(
+            runSessionWorkflow(id),
+            Effect.tapError((e) =>
+              Effect.sync(() =>
+                console.error(
+                  "[confirmAnalysis] workflow error:",
+                  JSON.stringify(e, null, 2),
+                  (e as any)?.cause,
+                ),
               ),
             ),
-          ),
-          Effect.mapError(() => new ConfirmAnalysisError()),
-          Effect.forkDetach,
-        );
+            Effect.mapError(() => new ConfirmAnalysisError()),
+            Effect.forkDetach,
+          );
+        }
 
         return ConfirmAnalysisResponse.make({ started: true });
       }),

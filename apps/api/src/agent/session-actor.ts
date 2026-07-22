@@ -1,4 +1,4 @@
-import { Effect, pipe, Schema } from "effect";
+import { Array, Effect, pipe, Schema } from "effect";
 import { StorageAdapter } from "../storage/index.js";
 import { createAgentActor, restoreAgentActor, type AgentActor } from "./machine.js";
 import {
@@ -11,7 +11,7 @@ import { runQuestionGenerator } from "./question-generator.js";
 import { runBriefWriter } from "./writer-brief.js";
 import { runPrdWriter } from "./writer-prd.js";
 import { runRevisionBriefWriter, runRevisionPrdWriter } from "./writer-revision.js";
-import { DatabaseService } from "../db/queries.js";
+import { DatabaseService, ReconstructedSummary } from "../db/queries.js";
 import { Spans } from "../observability/spans.js";
 
 export class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()(
@@ -59,16 +59,8 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
 
   const actor: AgentActor = yield* pipe(
     Effect.fromNullishOr(session.xstateSnapshot),
-    Effect.flatMap((snapshot) =>
-      Schema.decodeUnknownEffect(MachineContextEffectSchema)((snapshot as any)?.context),
-    ),
     Effect.as(restoreAgentActor(session.xstateSnapshot)),
     Effect.catchTag("NoSuchElementError", () => Effect.succeed(createAgentActor({ sessionId }))),
-    Effect.catchTag("SchemaError", () =>
-      Effect.fail(
-        new SessionStateError({ message: `Corrupt xstateSnapshot for session ${sessionId}` }),
-      ),
-    ),
   );
 
   yield* wireSnapshotPersistence(actor, sessionId);
@@ -111,42 +103,51 @@ const wireSnapshotPersistence = Effect.fnUntraced(function* wireSnapshotPersiste
   });
 });
 
-export const runAnalysisPipeline = Effect.fn("agent/runAnalysisPipeline")(
+export const runSessionWorkflow = Effect.fn("agent/runSessionWorkflow")(
   function* (sessionId: string) {
-    yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
-
     const db = yield* DatabaseService;
     const actor = yield* getOrRestoreActor(sessionId);
 
     yield* summarizeAllDocuments(sessionId);
 
-    const summaries = yield* db.getFinalSummariesBySession(sessionId);
-    const gapReport = yield* runChallenger(summaries);
+    const documentSummaries = yield* db.getFinalSummariesBySession(sessionId);
+    actor.send({
+      type: "SUMMARIZATION_DONE",
+      documentSummaries: documentSummaries.map((summary) => ({
+        id: summary.id,
+        content: summary.summary,
+        documentId: summary.documentId,
+        sourceDocument: summary.sourceDocument,
+        tokenCount: summary.tokenCount,
+      })),
+    });
+    actor.send({
+      type: "USER_CONFIRM",
+    });
 
-    const persistedQuestions = yield* pipe(
-      runQuestionGenerator(gapReport, summaries),
-      Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-      Effect.flatMap(({ questions: generatedQuestions }) =>
-        db.createQuestions(
-          [...generatedQuestions].map((q, i) => ({
-            sessionId,
-            text: q.text,
-            rationale: q.rationale,
-            sourceDocuments: [...q.sourceDocuments],
-            orderIndex: i,
-          })),
-        ),
-      ),
+    const gapReport = yield* runChallenger(documentSummaries);
+    const { questions: generatedQuestions } = yield* runQuestionGenerator(
+      gapReport,
+      documentSummaries,
+    );
+    const dbQuestions = yield* db.createQuestions(
+      generatedQuestions.map((q, idx) => ({
+        text: q.text,
+        rationale: q.rationale,
+        sourceDocuments: [...q.sourceDocuments], // TODO: Readonly string is not assignalbe to blah blah...
+        sessionId: sessionId,
+        orderIndex: idx + 1,
+      })),
     );
 
     actor.send({
       type: "ANALYSIS_DONE",
       gapReport,
-      questions: persistedQuestions.map((q) => ({
+      questions: dbQuestions.map((q) => ({
         id: q.id,
-        text: q.text,
         rationale: q.rationale,
         sourceDocuments: q.sourceDocuments,
+        text: q.text,
       })),
     });
   },
@@ -201,7 +202,8 @@ export const submitAnswers = Effect.fn("agent/submitAnswers")(
 
     const stateAfter = actor.getSnapshot().value as string;
     if (stateAfter === "generating") {
-      yield* runGeneratingPipeline(sessionId).pipe(
+      yield* pipe(
+        runGeneratingPipeline(sessionId),
         Effect.tapError((e) =>
           Effect.sync(() => console.error("[session-actor] generating pipeline error:", e)),
         ),
@@ -218,9 +220,65 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
   function* (sessionId: string) {
     yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
 
-    const actor = yield* getOrRestoreActor(sessionId);
     const db = yield* DatabaseService;
 
+    const processBrief = Effect.fnUntraced(function* (
+      summaries: ReconstructedSummary[],
+      answers: MachineContext["answers"],
+      questions: MachineContext["questions"],
+    ) {
+      const storage = yield* StorageAdapter;
+      const briefText = yield* pipe(
+        runBriefWriter(summaries, answers, questions, sessionId),
+        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      );
+
+      const briefKey = `outputs/${sessionId}/project_brief_v${outputVersion}.md`;
+      yield* pipe(
+        storage.upload(briefKey, Buffer.from(briefText, "utf-8")),
+        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      );
+
+      yield* db.createOutput({
+        sessionId,
+        type: "project_brief",
+        content: briefText,
+        version: outputVersion,
+        s3Key: briefKey,
+      });
+      return briefText;
+    });
+
+    const processPrd = Effect.fnUntraced(function* (
+      summaries: ReconstructedSummary[],
+      answers: MachineContext["answers"],
+      questions: MachineContext["questions"],
+    ) {
+      const storage = yield* StorageAdapter;
+      const prdText = yield* pipe(
+        runPrdWriter(summaries, answers, questions, sessionId),
+        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      );
+
+      const prdKey = `outputs/${sessionId}/implementation_prd_v${outputVersion}.md`;
+
+      yield* pipe(
+        storage.upload(prdKey, Buffer.from(prdText, "utf-8")),
+        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      );
+
+      yield* db.createOutput({
+        sessionId,
+        type: "implementation_prd",
+        content: prdText,
+        version: outputVersion,
+        s3Key: prdKey,
+      });
+
+      return prdText;
+    });
+
+    const actor = yield* getOrRestoreActor(sessionId);
     const summaries = yield* db.getFinalSummariesBySession(sessionId);
     const allAnswers = yield* db.getAnswersBySessionId(sessionId);
     const allQuestions = yield* db.getQuestionsBySessionId(sessionId);
@@ -240,58 +298,12 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
 
     const outputVersion = actor.getSnapshot().context.outputVersion;
 
-    const [briefText, prdText] = yield* Effect.all(
-      [
-        runBriefWriter(summaries, answers, questions).pipe(
-          Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-        ),
-        runPrdWriter(summaries, answers, questions).pipe(
-          Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-        ),
-      ],
-      { concurrency: 2 },
-    );
-
-    const storage = yield* StorageAdapter;
-    const briefKey = `outputs/${sessionId}/project_brief_v${outputVersion}.md`;
-    const prdKey = `outputs/${sessionId}/implementation_prd_v${outputVersion}.md`;
-
-    yield* Effect.all(
-      [
-        storage
-          .upload(briefKey, Buffer.from(briefText, "utf-8"))
-          .pipe(Effect.mapError((cause) => new AnalysisPipelineError({ cause }))),
-        storage
-          .upload(prdKey, Buffer.from(prdText, "utf-8"))
-          .pipe(Effect.mapError((cause) => new AnalysisPipelineError({ cause }))),
-      ],
-      { concurrency: 2 },
-    );
-
-    yield* Effect.all([
-      db.createOutput({
-        sessionId,
-        type: "project_brief",
-        content: briefText,
-        version: outputVersion,
-        s3Key: briefKey,
-      }),
-      db.createOutput({
-        sessionId,
-        type: "implementation_prd",
-        content: prdText,
-        version: outputVersion,
-        s3Key: prdKey,
-      }),
+    const [projectBrief, implementationPrd] = yield* Effect.all([
+      processBrief(summaries, answers, questions),
+      processPrd(summaries, answers, questions),
     ]);
 
-    actor.send({
-      type: "OUTPUT_READY",
-      outputs: {
-        projectBrief: briefText,
-        implementationPrd: prdText,
-      },
-    });
+    actor.send({ type: "OUTPUT_READY", outputs: { projectBrief, implementationPrd } });
   },
   Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
 );
@@ -332,72 +344,88 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
     const db = yield* DatabaseService;
 
     const summaries = yield* db.getFinalSummariesBySession(sessionId);
+    const existingPrdRow = yield* db.getLatestOutputByType(sessionId, "implementation_prd");
+    const existingBriefRow = yield* db.getLatestOutputByType(sessionId, "project_brief");
 
-    const [existingBriefRow, existingPrdRow] = yield* Effect.all(
-      [
-        db.getLatestOutputByType(sessionId, "project_brief"),
-        db.getLatestOutputByType(sessionId, "implementation_prd"),
-      ],
-      { concurrency: "unbounded" },
-    );
+    const processBrief = Effect.fnUntraced(function* ({
+      existingBrief,
+      existingPrd,
+    }: {
+      existingBrief: string;
+      existingPrd: string;
+    }) {
+      const feedback = actor.getSnapshot().context.revisionFeedback ?? "";
+      const outputVersion = actor.getSnapshot().context.outputVersion;
 
-    const existingBrief = existingBriefRow?.content ?? "";
-    const existingPrd = existingPrdRow?.content ?? "";
+      const newBriefText = yield* pipe(
+        runRevisionBriefWriter(summaries, existingBrief, existingPrd, feedback, sessionId),
+        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      );
 
-    const feedback = actor.getSnapshot().context.revisionFeedback ?? "";
-    const outputVersion = actor.getSnapshot().context.outputVersion;
+      const briefKey = `outputs/${sessionId}/project_brief_v${outputVersion}.md`;
 
-    const [newBriefText, newPrdText] = yield* Effect.all(
-      [
-        runRevisionBriefWriter(summaries, existingBrief, existingPrd, feedback).pipe(
-          Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-        ),
-        runRevisionPrdWriter(summaries, existingBrief, existingPrd, feedback).pipe(
-          Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-        ),
-      ],
-      { concurrency: 2 },
-    );
+      yield* pipe(
+        storage.upload(briefKey, Buffer.from(newBriefText, "utf-8")),
+        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      );
 
-    const briefKey = `outputs/${sessionId}/project_brief_v${outputVersion}.md`;
-    const prdKey = `outputs/${sessionId}/implementation_prd_v${outputVersion}.md`;
+      yield* db.createOutput({
+        sessionId,
+        type: "project_brief",
+        content: newBriefText,
+        version: outputVersion,
+        s3Key: briefKey,
+      });
 
-    yield* Effect.all(
-      [
-        storage
-          .upload(briefKey, Buffer.from(newBriefText, "utf-8"))
-          .pipe(Effect.mapError((cause) => new AnalysisPipelineError({ cause }))),
-        storage
-          .upload(prdKey, Buffer.from(newPrdText, "utf-8"))
-          .pipe(Effect.mapError((cause) => new AnalysisPipelineError({ cause }))),
-      ],
-      { concurrency: 2 },
-    );
-
-    yield* Effect.all(
-      [
-        db.createOutput({
-          sessionId,
-          type: "project_brief",
-          content: newBriefText,
-          version: outputVersion,
-          s3Key: briefKey,
-        }),
-        db.createOutput({
-          sessionId,
-          type: "implementation_prd",
-          content: newPrdText,
-          version: outputVersion,
-          s3Key: prdKey,
-        }),
-      ],
-      { concurrency: "unbounded" },
-    );
-
-    actor.send({
-      type: "OUTPUT_READY",
-      outputs: { projectBrief: newBriefText, implementationPrd: newPrdText },
+      return newBriefText;
     });
+
+    const processPrd = Effect.fnUntraced(function* ({
+      existingBrief,
+      existingPrd,
+    }: {
+      existingBrief: string;
+      existingPrd: string;
+    }) {
+      const feedback = actor.getSnapshot().context.revisionFeedback ?? "";
+      const outputVersion = actor.getSnapshot().context.outputVersion;
+
+      const newPrdText = yield* pipe(
+        runRevisionPrdWriter(summaries, existingBrief, existingPrd, feedback, sessionId),
+        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      );
+
+      const prdKey = `outputs/${sessionId}/implementation_prd_v${outputVersion}.md`;
+
+      yield* pipe(
+        storage.upload(prdKey, Buffer.from(newPrdText, "utf-8")),
+        Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
+      );
+
+      yield* db.createOutput({
+        sessionId,
+        type: "implementation_prd",
+        content: newPrdText,
+        version: outputVersion,
+        s3Key: prdKey,
+      });
+
+      return newPrdText;
+    });
+
+    const [projectBrief, implementationPrd] = yield* Effect.all([
+      processBrief({
+        existingBrief: existingBriefRow?.content ?? "",
+        existingPrd: existingPrdRow?.content ?? "",
+      }),
+
+      processPrd({
+        existingBrief: existingBriefRow?.content ?? "",
+        existingPrd: existingPrdRow?.content ?? "",
+      }),
+    ]);
+
+    actor.send({ type: "OUTPUT_READY", outputs: { projectBrief, implementationPrd } });
   },
   Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
 );

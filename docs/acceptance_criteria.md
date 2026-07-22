@@ -387,26 +387,30 @@ it "mostly works".
 
 ## Phase 11 — RAG: Retrieval Mode + Agentic Chunks
 
-### 11a — Retrieval mode activated
+### Pipeline fix — `tokensBelowThreshold` guard
 
-- [ ] `summarizing` XState state is implemented — machine transitions `uploading → summarizing → processing` before `USER_CONFIRM`
-- [ ] `documentSummaries[]` in XState context is populated with real `tokenCount` values before the `USER_CONFIRM` event fires
-- [ ] `tokensBelowThreshold` guard correctly evaluates the sum of `documentSummaries[].tokenCount` — it does NOT always return `true`
-- [ ] When total summary tokens exceed the configured threshold, the machine enters `retrieval` mode (`inputMode = "retrieval"`)
-- [ ] In retrieval mode, Challenger and Writers query pgvector for top-k summaries by cosine similarity rather than using all summaries from context
-- [ ] pgvector retrieval query includes `WHERE session_id = ?` filter (Rule 15)
+- [ ] `confirmAnalysis` handler is idempotent — any state other than `idle` returns `{ started: true }` without doing anything
+- [ ] One `POST /confirm` drives the machine all the way from `idle` to `awaiting_answers` — no second client call required
+- [ ] `runSessionWorkflow` fires `SUMMARIZATION_DONE` with all final summaries before firing `USER_CONFIRM` — `documentSummaries[]` is populated with real `tokenCount` values when the guard evaluates
+- [ ] `tokensBelowThreshold` guard correctly evaluates the sum of `documentSummaries[].tokenCount` — does NOT always return `true`
+- [ ] When total summary tokens exceed the threshold (100k), `inputMode = "retrieval"` is assigned by the machine
 - [ ] `GET /api/sessions/:id` reflects the correct `inputMode` (`"context"` or `"retrieval"`)
+- [ ] Challenger always receives all summaries regardless of `inputMode`
 
-### 11b — Agentic `query_chunks` tool
+### Agentic `query_chunks` tool
 
-- [ ] `queryChunksTool` is defined in `apps/api/src/agent/tools/query-chunks.ts` using Vercel AI SDK `tool()`
-- [ ] Tool parameters schema includes `query: z.string()` and `limit: z.number().optional()`
-- [ ] Tool `execute` function filters by `sessionId` (Rule 15) — no cross-session leakage
-- [ ] Tool is passed to Challenger, Question Generator, Brief writer, PRD writer, and Revision writer via `tools` param
-- [ ] At least one agent pass calls the tool in a Langfuse trace for a session with detailed source material
+- [ ] `QueryChunksTool` defined in `apps/api/src/agent/tools/query-chunks.ts` using `Tool.make` from `effect/unstable/ai`
+- [ ] Tool parameters schema includes `query: Schema.String` and `limit: Schema.Number` (default 5, range 1–20)
+- [ ] `sessionId` is closed over in `makeQueryChunksLayer(sessionId)` — not exposed as an LLM-visible parameter
+- [ ] Tool handler embeds query via `EmbeddingModel.embedMany` from `effect/unstable/ai` (Rule 1 — no direct OpenAI SDK)
+- [ ] Tool handler filters by `sessionId` (Rule 15) — no cross-session chunk leakage
+- [ ] `makeQueryChunksLayer` provided via `Stream.provide(...)` to Brief Writer, PRD Writer, Revision Brief Writer, Revision PRD Writer
+- [ ] Challenger and Question Generator do not receive the tool — they use `generateObject` which does not accept a toolkit
+- [ ] System prompt in each Writer explains the tool is available and when to use it
+- [ ] At least one Writer pass calls the tool in a Langfuse trace for a session with detailed source material
 - [ ] Tool call results appear as child spans in Langfuse traces
 
-**Gate:** `tokensBelowThreshold` fires correctly (not always `true`). Retrieval mode activates on a large test bundle. At least one tool call appears in Langfuse traces. Rule 15 verified (no cross-session retrieval).
+**Gate:** `tokensBelowThreshold` fires correctly (not always `true`) — verify with a bundle exceeding 100k summary tokens. `inputMode = "retrieval"` reflected in DB. At least one `query_chunks` tool call appears in Langfuse Writer spans. Rule 15 verified: `WHERE session_id = ?` present in tool handler query. No cross-session leakage.
 
 ---
 
@@ -419,4 +423,4 @@ it "mostly works".
 - [ ] No structured output pass uses manual `JSON.parse` — all structured passes use `LanguageModel.generateObject({ schema })` (Rule 6)
 - [ ] No cross-workspace relative imports — all `packages/shared` imports use `@shipwright/shared/...` (Rule 14)
 - [ ] No raw `fetch()` calls and no `openapi-fetch`/`openapi-typescript` imports in `apps/web/src/` — all API calls go through `AtomHttpApi` (Rule 10)
-- [ ] All `query_chunks` tool implementations filter by `sessionId` (Rule 15)
+- [ ] All `query_chunks` tool handlers filter by `sessionId` via `makeQueryChunksLayer(sessionId)` (Rule 15)

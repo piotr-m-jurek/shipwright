@@ -53,6 +53,7 @@ export const agentMachine = setup({
       | { type: "USER_ANSWERED"; answers: MachineContext["answers"] }
       | { type: "ANSWERS_SUFFICIENT"; questions: MachineContext["questions"] }
       | { type: "ANSWERS_INSUFFICIENT"; questions: MachineContext["questions"] }
+      | { type: "SUMMARIZATION_DONE"; documentSummaries: MachineContext["documentSummaries"] }
       | { type: "OUTPUT_READY"; outputs: MachineContext["outputs"] }
       | { type: "ERROR"; cause: unknown }
       | { type: "REVISION_REQUESTED"; feedback: string },
@@ -88,6 +89,12 @@ export const agentMachine = setup({
       },
       round: ({ context }) => context.round + 1,
     }),
+    assignDocumentSummaries: assign({
+      documentSummaries: ({ context, event }) => {
+        if (event.type !== "SUMMARIZATION_DONE") return context.documentSummaries;
+        return event.documentSummaries;
+      },
+    }),
     assignOutputs: assign({
       outputs: ({ event }) => {
         if (event.type !== "OUTPUT_READY") return {};
@@ -107,13 +114,12 @@ export const agentMachine = setup({
   id: "agent",
   initial: "idle",
   context: ({ input }) => ({ ...initialContext, ...input }),
-
   states: {
     idle: { on: { UPLOAD_COMPLETE: "uploading" } },
 
     uploading: {
       on: {
-        USER_CONFIRM: "processing",
+        USER_CONFIRM: "summarizing",
         ERROR: "uploading_error",
       },
     },
@@ -139,6 +145,15 @@ export const agentMachine = setup({
     },
 
     processing_error: { type: "final" },
+
+    summarizing: {
+      on: {
+        SUMMARIZATION_DONE: {
+          target: "processing",
+          actions: "assignDocumentSummaries",
+        },
+      },
+    },
 
     analyzing: {
       // Suspend point — waits for external ANALYSIS_DONE event.

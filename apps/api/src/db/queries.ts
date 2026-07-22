@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, inArray } from "drizzle-orm";
+import { eq, and, desc, asc, inArray, gt, sql, cosineDistance } from "drizzle-orm";
 import type {
   InsertAgentSession,
   InsertChunk,
@@ -157,6 +157,33 @@ const makeDatabaseService = Effect.gen(function* () {
       .orderBy(asc(chunks.chunkIndex));
   });
 
+  const getChunksBySessionId = Effect.fnUntraced(function* (sessionId: string) {
+    return yield* db.select().from(chunks).where(eq(chunks.sessionId, sessionId));
+  });
+
+  const getChunksBySimilarity = Effect.fnUntraced(function* ({
+    embedding,
+    sessionId,
+    limit,
+  }: {
+    embedding: readonly number[];
+    sessionId: string;
+    limit: number;
+  }) {
+    const similarity = sql<number>`1 - (${cosineDistance(chunks.embedding, [...embedding])})`;
+    return yield* db
+      .select({
+        similarity,
+        content: chunks.content,
+        headingPath: chunks.headingPath,
+        pageNumber: chunks.pageNumber,
+      })
+      .from(chunks)
+      .where(and(gt(similarity, 0.5), eq(chunks.sessionId, sessionId)))
+      .orderBy((t) => desc(t.similarity))
+      .limit(limit);
+  });
+
   const createDocumentSummary = Effect.fnUntraced(function* (data: DocumentSummaryInsert) {
     const [result] = yield* db.insert(documentSummaries).values(data).returning();
     return result;
@@ -250,10 +277,6 @@ const makeDatabaseService = Effect.gen(function* () {
     yield* db.delete(agentSessions).where(eq(agentSessions.id, sessionId));
   });
 
-  const getChunksBySessionId = Effect.fnUntraced(function* (sessionId: string) {
-    return yield* db.select().from(chunks).where(eq(chunks.sessionId, sessionId));
-  });
-
   const createOutput = Effect.fnUntraced(function* (data: OutputInsert) {
     const [result] = yield* db.insert(outputs).values(data).returning();
     return result;
@@ -293,6 +316,7 @@ const makeDatabaseService = Effect.gen(function* () {
     updateDocumentTokenCount,
     createChunks,
     getChunksByDocumentId,
+    getChunksBySimilarity,
     createDocumentSummary,
     createSummaryItems,
     getCurrentDocumenSummaryVersion,
@@ -399,6 +423,19 @@ export class DatabaseService extends Context.Service<
     getChunksByDocumentId: (
       documentId: string,
     ) => Effect.Effect<SelectChunk[], EffectDrizzleQueryError>;
+    getChunksBySimilarity: (payload: {
+      sessionId: string;
+      embedding: readonly number[];
+      limit: number;
+    }) => Effect.Effect<
+      {
+        similarity: number;
+        content: string;
+        headingPath: string[] | null;
+        pageNumber: number | null;
+      }[],
+      EffectDrizzleQueryError
+    >;
 
     createDocumentSummary: (
       data: DocumentSummaryInsert,

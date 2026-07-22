@@ -6,6 +6,7 @@ import { LanguageModel, Response } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
 import "@effect/ai-anthropic/AnthropicLanguageModel";
 import { AnthropicClientLayer } from "./providers.js";
+import { makeQueryChunksLayer, QueryChunksToolkit } from "./tools/query-chunks.js";
 
 export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(
   "shipwright/agent/BriefWriterError",
@@ -31,7 +32,9 @@ Structure (use these Markdown headings):
 ## Resolved Decisions
 ## Next Steps
 
-ANTI-HALLUCINATION RULE: Do not include any requirement, constraint, or decision not present in the provided summaries or answers. If something is unclear, say it is unclear — do not invent clarity.`;
+ANTI-HALLUCINATION RULE: Do not include any requirement, constraint, or decision not present in the provided summaries or answers. If something is unclear, say it is unclear — do not invent clarity.
+
+TOOL USE: You have access to a query_chunks tool. Use it when you need more detail on a specific area not covered in the summaries, or to verify a claim against source material before including it.`;
 
 function formatSummariesForBrief(
   summaries: ReconstructedSummary[],
@@ -74,14 +77,17 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
     summaries: ReconstructedSummary[],
     answers: MachineContext["answers"],
     questions: MachineContext["questions"],
+    sessionId: string,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-brief"),
       ...Spans.counts({ documents: summaries.length, answers: answers.length }),
     });
+
     const userContent = formatSummariesForBrief(summaries, answers, questions);
 
     return yield* LanguageModel.streamText({
+      toolkit: QueryChunksToolkit,
       prompt: [
         { role: "system", content: BriefSystemPrompt },
         {
@@ -97,7 +103,8 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
         },
       ],
     }).pipe(
-      Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
+      Stream.provide(makeQueryChunksLayer(sessionId)),
+      Stream.filter((part) => part.type === "text-delta"),
       Stream.map((part) => part.delta),
       Stream.runFold(
         () => "",

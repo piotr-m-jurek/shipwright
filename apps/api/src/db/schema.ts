@@ -11,6 +11,7 @@ import {
 import { defineRelations } from "drizzle-orm";
 
 import { MachineContext } from "@shipwright/shared/schemas/machine.js";
+import { Brand, Schema } from "effect";
 
 export const sessionStatusEnum = pgEnum("session_status", [
   "idle",
@@ -28,8 +29,12 @@ export const sessionStatusEnum = pgEnum("session_status", [
 
 export const inputModeEnum = pgEnum("input_mode", ["context", "retrieval"]);
 
+export const AgentSessionIdSchema = Schema.String.pipe(Schema.brand("AgentSessionId"));
+export type AgentSessionId = typeof AgentSessionIdSchema.Type;
+export const AgentSessionId = Brand.nominal<AgentSessionId>();
+
 export const agentSessions = pgTable("agent_sessions", {
-  id: uuid("id").primaryKey().defaultRandom().notNull(),
+  id: uuid("id").primaryKey().defaultRandom().notNull(), // TODO:  .$type<AgentSessionId>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at")
     .notNull()

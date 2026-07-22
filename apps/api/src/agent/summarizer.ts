@@ -32,6 +32,7 @@ export const summarizeAllDocuments = Effect.fn("agent/summarizeAllDocuments")(fu
 ) {
   yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
   const db = yield* DatabaseService;
+
   return yield* pipe(
     db.getDocumentsBySessionId(sessionId),
     Effect.flatMap(

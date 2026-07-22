@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prepare": "effect-tsgo patch",
+    "typecheck": "pnpm -r build",
     "dev": "pnpm --filter \"@shipwright/*\" --parallel dev",
     "dev:api": "pnpm --filter @shipwright/api dev",
     "dev:web": "pnpm --filter @shipwright/web dev",
@@ -12,7 +14,10 @@
     "docs:effect-update": "git subtree pull --prefix docs/effect-smol effect-smol main --squash",
     "docs:effect-atom-update": "git subtree pull --prefix docs/effect-atom effect-atom main --squash"
   },
+  "dependencies": {
+    "typescript": "^7.0.2"
+  },
   "devDependencies": {
-    "@effect/language-service": "^0.86.4"
+    "@effect/tsgo": "^0.24.2"
   }
 }

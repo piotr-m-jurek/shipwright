@@ -5,6 +5,7 @@ import { LanguageModel, Response } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
 import "@effect/ai-anthropic/AnthropicLanguageModel";
 import { AnthropicClientLayer } from "./providers.js";
+import { makeQueryChunksLayer, QueryChunksToolkit } from "./tools/query-chunks.js";
 
 export class RevisionWriterError extends Schema.TaggedErrorClass<RevisionWriterError>()(
   "shipwright/agent/RevisionWriterError",
@@ -26,7 +27,9 @@ RULES:
 2. Make only the changes requested in the feedback
 3. Do not introduce new requirements not present in the summaries or feedback
 4. Cite sources for any new claims you add
-5. Maintain the same Markdown section structure as the original`;
+5. Maintain the same Markdown section structure as the original
+
+TOOL USE: You have access to a query_chunks tool. If the feedback references a specific area (e.g. "the auth section needs more detail"), call query_chunks with a targeted query before revising that section. Use it to verify claims against source material before adding them.`;
 
 const RevisionPrdSystemPrompt = `You are revising an existing Implementation PRD based on user feedback.
 
@@ -43,7 +46,9 @@ RULES:
 2. Make only the changes requested in the feedback
 3. Do not invent scope — only add requirements traceable to summaries or feedback
 4. Maintain the same Markdown section structure as the original
-5. Update acceptance criteria to reflect any changed scope`;
+5. Update acceptance criteria to reflect any changed scope
+
+TOOL USE: You have access to a query_chunks tool. If the feedback references a specific area (e.g. "the auth section needs more detail"), call query_chunks with a targeted query before revising that section. Use it to verify claims against source material before adding them.`;
 
 function formatRevisionInput(
   summaries: ReconstructedSummary[],
@@ -78,6 +83,7 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
     existingBrief: string,
     existingPrd: string,
     feedback: string,
+    sessionId: string,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-revision-brief"),
@@ -86,6 +92,7 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
     const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
 
     return yield* LanguageModel.streamText({
+      toolkit: QueryChunksToolkit,
       prompt: [
         { role: "system", content: RevisionBriefSystemPrompt },
         {
@@ -100,7 +107,8 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
         },
       ],
     }).pipe(
-      Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
+      Stream.provide(makeQueryChunksLayer(sessionId)),
+      Stream.filter((part) => part.type === "text-delta"),
       Stream.map((part) => part.delta),
       Stream.runFold(
         () => "",
@@ -119,6 +127,7 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
     existingBrief: string,
     existingPrd: string,
     feedback: string,
+    sessionId: string,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-revision-prd"),
@@ -127,6 +136,7 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
     const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
 
     return yield* LanguageModel.streamText({
+      toolkit: QueryChunksToolkit,
       prompt: [
         { role: "system", content: RevisionPrdSystemPrompt },
         {
@@ -141,7 +151,8 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
         },
       ],
     }).pipe(
-      Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
+      Stream.provide(makeQueryChunksLayer(sessionId)),
+      Stream.filter((part) => part.type === "text-delta"),
       Stream.map((part) => part.delta),
       Stream.runFold(
         () => "",

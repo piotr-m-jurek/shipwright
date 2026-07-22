@@ -3,17 +3,17 @@
  * then waits until awaiting_answers and prints the session ID and question IDs.
  * Used for the server restart recovery gate test.
  *
- * Usage: node --env-file=.env --import tsx/esm src/agent/restart-test-setup.ts
+ * Usage: node --env-file=.env --import tsx/esm src/agent/tests/restart-test-setup.ts
  */
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect, Layer, ManagedRuntime } from "effect";
-import { StorageAdapter } from "../storage/index.js";
-import { DatabaseService } from "../db/queries.js";
-import { parseDocument } from "./parsers.js";
-import { estimateTokenCount } from "./estimate-token-count.js";
-import { ConfigService } from "../config/config.js";
+import { StorageAdapter } from "../../storage/index.js";
+import { DatabaseService } from "../../db/queries.js";
+import { parseDocument } from "../parsers.js";
+import { estimateTokenCount } from "../estimate-token-count.js";
+import { ConfigService } from "../../config/config.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../../");

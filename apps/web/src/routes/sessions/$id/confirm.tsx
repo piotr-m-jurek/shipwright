@@ -12,21 +12,13 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { Effect, Match, pipe } from "effect";
+import { Effect } from "effect";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
-import {
-  FileIcon,
-  FileTextIcon,
-  UploadSimpleIcon,
-  XIcon,
-} from "@phosphor-icons/react";
+import { FileIcon, FileTextIcon, UploadSimpleIcon, XIcon } from "@phosphor-icons/react";
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useDropzone } from "react-dropzone";
 import { cn } from "@/lib/utils";
-import {
-  ConfirmUploadRequest,
-  CreateAgentSessionRequest,
-} from "@shipwright/shared/schemas/api";
+import { ConfirmUploadRequest, CreateAgentSessionRequest } from "@shipwright/shared/schemas/api";
 
 export const Route = createFileRoute("/sessions/$id/confirm")({
   component: RouteComponent,
@@ -342,11 +334,7 @@ function formatBytes(bytes: number) {
 }
 
 function fileIcon(file: File) {
-  if (
-    file.type.startsWith("text/") ||
-    file.name.endsWith(".md") ||
-    file.name.endsWith(".txt")
-  ) {
+  if (file.type.startsWith("text/") || file.name.endsWith(".md") || file.name.endsWith(".txt")) {
     return <FileTextIcon />;
   }
   return <FileIcon />;

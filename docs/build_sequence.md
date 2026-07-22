@@ -1076,79 +1076,104 @@ Zero TanStack Query imports in `apps/web/src/`.
 > **New phase** — not in the original build sequence. Addresses the two known V1
 > deviations: the `tokensBelowThreshold` guard always fires `true`, and the
 > retrieval path is never actually executed.
+>
+> **Status: COMPLETE** (22.07.2026). See `docs/progress.md` for gate verification.
 
-### 11a — Activate retrieval mode (fix the V1 deviation)
+### What was built
 
-The `tokensBelowThreshold` XState guard exists but always defaults to `context`
-mode because `documentSummaries[]` is empty when it runs. The fix requires
-implementing the `summarizing` state described in Phase 2/4:
+**Two things:**
 
-1. Add the `summarizing` XState state (currently deferred — see Phase 4 V1 deviation note)
-2. `POST /api/sessions/:id/confirm` transitions to `summarizing` and starts
-   `summarizeAllDocuments` before waiting for `USER_CONFIRM`
-3. `SUMMARIZATION_DONE` populates `documentSummaries[]` in context, transitions
-   to `processing`, and waits
-4. `POST /api/sessions/:id/confirm` (second call, or a new `POST /api/sessions/:id/ready`)
-   fires `USER_CONFIRM` — guard now has real token counts to evaluate
-5. Implement the retrieval path: when `tokensBelowThreshold` returns `false`,
-   retrieve the top-k most relevant summaries from pgvector by cosine similarity
-   rather than stuffing all summaries into context
+1. **Pipeline fix** — `tokensBelowThreshold` now evaluates real data. `runSessionWorkflow`
+   drives the machine from `idle` to `awaiting_answers` in a single forked call.
+   No second client call needed. `confirmAnalysis` handler is idempotent.
 
-**Retrieval query pattern:**
+2. **Agentic RAG** — `query_chunks` tool available to all Writer passes. The LLM
+   decides when to call it. This is the actual retrieval-augmented generation.
 
-```ts
-// In context mode: pass all documentSummaries[] from XState context
-// In retrieval mode: query pgvector for top-k summaries by relevance
-const relevantSummaries = await db
-  .select()
-  .from(documentSummaries)
-  .where(eq(documentSummaries.sessionId, sessionId))
-  .orderBy(sql`embedding <=> ${queryEmbedding}`)
-  .limit(TOP_K);
+### Pipeline flow (after this phase)
+
+```
+POST /api/sessions/:id/confirm
+  → confirmAnalysis handler (idempotent — any state past idle returns { started: true })
+  → if idle: fire UPLOAD_COMPLETE + USER_CONFIRM → machine: idle → uploading → summarizing
+  → fork runSessionWorkflow(sessionId)
+
+runSessionWorkflow
+  1. summarizeAllDocuments(sessionId)
+  2. load finals from DB, fire SUMMARIZATION_DONE
+     → machine: summarizing → processing
+     → documentSummaries[] populated with real tokenCounts
+  3. fire USER_CONFIRM → tokensBelowThreshold guard evaluates real data
+     → machine: processing → analyzing, inputMode assigned
+  4. runChallenger(allSummaries)           ← always all summaries
+     runQuestionGenerator(gapReport, allSummaries)
+     persist questions, fire ANALYSIS_DONE → machine: analyzing → awaiting_answers
 ```
 
-### 11b — Agentic RAG via `query_chunks` tool
+**Key design decisions:**
 
-Add a `query_chunks(query: string, limit?: number)` Vercel AI SDK `tool()` that
-the LLM can call during analysis and writing passes to retrieve relevant chunks
-from pgvector on demand.
+- `inputMode` is assigned by the machine at the `USER_CONFIRM` transition via
+  `tokensBelowThreshold` guard. Pipelines read `actor.getSnapshot().context.inputMode`
+  — they never recompute it.
+- Challenger always receives all summaries regardless of `inputMode`. It is a
+  single bounded structured call; seeing all documents is strictly better and
+  token cost is capped by summary count not output length.
+- `inputMode = "retrieval"` only affects Writers — the `query_chunks` tool
+  supplements summaries with targeted chunk retrieval as needed.
+
+### `query_chunks` tool
+
+**File:** `apps/api/src/agent/tools/query-chunks.ts`
+
+`@effect/ai` tool using `Tool.make` + `Toolkit.make` from `effect/unstable/ai`.
+Session-scoped via `makeQueryChunksLayer(sessionId: string)` factory.
 
 ```ts
-import { tool } from "ai";
+// Tool definition — LLM-visible schema only
+const QueryChunksTool = Tool.make("query-chunks", {
+  parameters: Schema.Struct({
+    query: Schema.String,   // search query
+    limit: Schema.Number,   // 1–20, default 5
+  }),
+  success: Schema.Struct({ results: Schema.Array(...) }),
+  failureMode: "return",    // errors returned to model, generation continues
+})
 
-export const queryChunksTool = (sessionId: string) =>
-  tool({
-    description:
-      "Retrieve relevant document chunks by semantic similarity. Use when you need more detail on a specific area not covered in the summaries.",
-    parameters: z.object({
-      query: z.string().describe("The search query — a specific question or topic"),
-      limit: z.number().int().min(1).max(20).default(5).optional(),
-    }),
-    execute: async ({ query, limit = 5 }) => {
-      const embedding = await embed(query);
-      return retrieveChunks(sessionId, embedding, limit);
-    },
-  });
+// Session-scoped layer factory — sessionId closed over, not LLM-visible
+export const makeQueryChunksLayer = (sessionId: string) =>
+  QueryChunksToolkit.toLayer(Effect.gen(function*() {
+    const db = yield* DatabaseService
+    const embeddingModel = yield* EmbeddingModel.EmbeddingModel
+    return QueryChunksToolkit.of({
+      "query-chunks": function*({ query, limit }) {
+        const embedding = (yield* embeddingModel.embed(query)).vector
+        return yield* db.getChunksBySimilarity({ sessionId, embedding, limit })
+      }
+    })
+  })).pipe(Layer.provide(OpenAiEmbeddingModel.model(...)))
 ```
 
 **Which passes get the tool:**
 
 | Pass | Tool available | Notes |
 |---|---|---|
-| Challenger | Yes | Useful for resolving ambiguities between summaries |
-| Question Generator | Yes | Can pull supporting detail for question rationale |
-| Writer (Brief) | Yes | Can verify a claim against source chunks |
-| Writer (PRD) | Yes | Useful for detailed constraint verification |
-| Revision Writer | **Primary use case** | "The auth section needs more detail" → targeted chunk retrieval |
+| Challenger | No | Uses `generateObject` — toolkit not accepted |
+| Question Generator | No | Uses `generateObject` — toolkit not accepted |
+| Writer (Brief) | Yes | Verify claims against source material |
+| Writer (PRD) | Yes | Verify acceptance criteria are grounded |
+| Revision Brief Writer | Yes — primary use case | Targeted feedback → targeted retrieval |
+| Revision PRD Writer | Yes — primary use case | Targeted feedback → targeted retrieval |
 
-The tool is wired and available to all passes. Individual passes are not
-required to call it — the model decides when a targeted lookup is needed.
-Monitor tool call frequency in Langfuse traces; if a pass never calls it,
-review the system prompt to ensure the model knows it's available.
+Tool wired via `Stream.provide(makeQueryChunksLayer(sessionId))` on the `streamText`
+stream in each Writer. `DatabaseService` is in scope from the runtime — no leakage.
 
-**Gate:** Retrieval mode activates on a test bundle where total summary tokens
-exceed the threshold. Agentic tool calls appear in at least one Langfuse trace.
-`tokensBelowThreshold` guard correctly evaluates real token counts (not always `true`).
+**Rule 15:** `getChunksBySimilarity` always filters by `sessionId`. No cross-session leakage.
+**Rule 1:** Handler uses `EmbeddingModel` from `effect/unstable/ai`. `OpenAiClientLayer`
+(with `ConfigService` baked in) provided on the toolkit layer — no `ConfigError` leak.
+
+**Gate:** `tokensBelowThreshold` fires correctly (not always `true`). `inputMode`
+reflects real data in DB snapshot. At least one `query_chunks` tool call appears
+in a Langfuse Writer span. Rule 15 verified.
 
 ---
 
