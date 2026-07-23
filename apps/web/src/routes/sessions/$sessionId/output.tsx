@@ -6,44 +6,49 @@ import { useAtomValue, useAtomSet } from "@effect/atom-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useState, useMemo, useEffect } from "react";
-import { Match, pipe } from "effect";
+import { Match, pipe, Schema } from "effect";
 import ReactMarkdown from "react-markdown";
 import { ReviseRequest } from "@shipwright/shared/schemas/api";
 import { DownloadSimpleIcon, ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
-export const Route = createFileRoute("/sessions/$id/output")({
+// DB:
+// - agentSessionID: ag_sesh_1234asdf
+
+export const Route = createFileRoute("/sessions/$sessionId/output")({
   component: RouteComponent,
 });
 
 function RouteComponent() {
-  const { id } = Route.useParams();
-  return <OutputPage sessionId={id} />;
+  const { sessionId } = Route.useParams();
+  return <OutputPage sessionId={sessionId} />;
 }
 
 // ---------------------------------------------------------------------------
 // Atoms
 // ---------------------------------------------------------------------------
 
-const outputQueryFamily = Atom.family((id: string) =>
+const outputQueryFamily = Atom.family((sessionId: AgentSessionId) =>
   ShipwrightApi.query("system", "getSessionFinalOutput", {
-    params: { id },
-    reactivityKeys: ["session", id, "output"],
+    params: { sessionId },
+    reactivityKeys: ["session", sessionId, "output"],
     timeToLive: "30 seconds",
   }),
 );
 
-const downloadUrlFamily = Atom.family(({ id, type }: { id: string; type: string }) =>
-  ShipwrightApi.query("system", "getOutputDownloadUrl", {
-    params: { id, type },
-  }),
+const downloadUrlFamily = Atom.family(
+  ({ sessionId, type }: { sessionId: AgentSessionId; type: string }) =>
+    ShipwrightApi.query("system", "getOutputDownloadUrl", {
+      params: { sessionId, type },
+    }),
 );
 
 const reviseFamily = Atom.family((_nonce: number) =>
   ShipwrightApi.mutation("system", "reviseOutput"),
 );
 
-function useOutputPolling(id: string) {
-  const outputAtom = useMemo(() => outputQueryFamily(id), [id]);
+function useOutputPolling(sessionId: AgentSessionId) {
+  const outputAtom = useMemo(() => outputQueryFamily(sessionId), [sessionId]);
   const result = useAtomValue(outputAtom);
 
   const hasOutputs =
@@ -62,7 +67,7 @@ function useOutputPolling(id: string) {
 // Page
 // ---------------------------------------------------------------------------
 
-function OutputPage({ sessionId }: { sessionId: string }) {
+function OutputPage({ sessionId }: { sessionId: AgentSessionId }) {
   const outputResult = useOutputPolling(sessionId);
   return pipe(
     Match.value(outputResult),
@@ -162,8 +167,8 @@ function OutputPanel({
 // Download button — fetches presigned URL on click
 // ---------------------------------------------------------------------------
 
-function DownloadButton({ sessionId, type }: { sessionId: string; type: string }) {
-  const urlAtom = useMemo(() => downloadUrlFamily({ id: sessionId, type }), [sessionId, type]);
+function DownloadButton({ sessionId, type }: { sessionId: AgentSessionId; type: string }) {
+  const urlAtom = useMemo(() => downloadUrlFamily({ sessionId, type }), [sessionId, type]);
   const urlResult = useAtomValue(urlAtom);
 
   const handleDownload = () => {
@@ -193,7 +198,7 @@ function DownloadButton({ sessionId, type }: { sessionId: string; type: string }
 // Revision section
 // ---------------------------------------------------------------------------
 
-function RevisionSection({ sessionId }: { sessionId: string }) {
+function RevisionSection({ sessionId }: { sessionId: AgentSessionId }) {
   const [feedback, setFeedback] = useState("");
   const [open, setOpen] = useState(false);
   const nonce = useMemo(() => Date.now(), []);
@@ -213,7 +218,7 @@ function RevisionSection({ sessionId }: { sessionId: string }) {
   const handleRevise = () => {
     if (!feedback.trim() || isRevising) return;
     revise({
-      params: { id: sessionId },
+      params: { sessionId },
       payload: ReviseRequest.make({ feedback }),
       reactivityKeys: { session: [sessionId, "output"] },
     });

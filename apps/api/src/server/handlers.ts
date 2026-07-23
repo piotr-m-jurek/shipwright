@@ -45,7 +45,7 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
   handlers
     .handle(
       "sessionUploadUrl",
-      Effect.fnUntraced(function* ({ payload: { files } }) {
+      Effect.fnUntraced(function*({ payload: { files } }) {
         const user = yield* CurrentUser;
 
         const result = yield* pipe(
@@ -60,7 +60,7 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
     )
     .handle(
       "confirmUpload",
-      Effect.fnUntraced(function* ({ payload: { uploads }, params: { sessionId } }) {
+      Effect.fnUntraced(function*({ payload: { uploads }, params: { sessionId } }) {
         const results = yield* pipe(
           confirmUploadResults(uploads),
           Effect.mapError(() => new ConfirmUploadError()),
@@ -80,10 +80,10 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
         return ConfirmUploadResponse.make({ valid: true });
       }),
     )
-    .handle("confirmAnalysis", ({ params: { id } }) =>
-      Effect.gen(function* () {
+    .handle("confirmAnalysis", ({ params: { sessionId } }) =>
+      Effect.gen(function*() {
         const actor = yield* pipe(
-          getOrRestoreActor(id),
+          getOrRestoreActor(sessionId),
           Effect.mapError(() => new ConfirmAnalysisError()),
         );
 
@@ -93,7 +93,7 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
           actor.send({ type: "UPLOAD_COMPLETE" });
           actor.send({ type: "USER_CONFIRM" }); // uploading → summarizing
           yield* pipe(
-            runSessionWorkflow(id),
+            runSessionWorkflow(sessionId),
             Effect.tapError((e) =>
               Effect.sync(() =>
                 console.error(
@@ -111,15 +111,16 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
         return ConfirmAnalysisResponse.make({ started: true });
       }),
     )
-    .handle("getSessionProgress", ({ params: { id: _id } }) =>
+    .handle("getSessionProgress", ({ params: { sessionId: _sessionId } }) =>
       // Legacy endpoint — use POST /sessions/:id/confirm instead.
       // Returns current session status for polling.
+      // TODO: Remove at some point
       Effect.sync(() => GetAgentSessionProgressResponse.make({ started: true })),
     )
-    .handle("submitSessionAnswers", ({ payload: { answers }, params: { id } }) =>
-      Effect.gen(function* () {
+    .handle("submitSessionAnswers", ({ payload: { answers }, params: { sessionId } }) =>
+      Effect.gen(function*() {
         const result = yield* pipe(
-          submitAnswers(id, answers as { questionId: string; text: string }[]),
+          submitAnswers(sessionId, answers as { questionId: string; text: string }[]),
           Effect.mapError(() => new AnalysisPipelineError()),
         );
         return PostAgentSessionAnswersResponse.make({
@@ -128,18 +129,18 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
         });
       }),
     )
-    .handle("getSessionFinalOutput", ({ params: { id } }) =>
-      Effect.gen(function* () {
+    .handle("getSessionFinalOutput", ({ params: { sessionId } }) =>
+      Effect.gen(function*() {
         const db = yield* DatabaseService;
         const user = yield* CurrentUser;
 
         const session = yield* db
-          .getAgentSesionByIdForUser({ sessionId: id, userId: user.id })
+          .getAgentSesionByIdForUser({ sessionId, userId: user.id })
           .pipe(Effect.mapError(() => new AgentSessionNotFound()));
         if (!session) return yield* new AgentSessionNotFound();
 
         const allOutputs = yield* db
-          .getOutputsBySessionId(id)
+          .getOutputsBySessionId(sessionId)
           .pipe(Effect.mapError(() => new AgentSessionNotFound()));
 
         const brief = allOutputs.find((o) => o.type === "project_brief");
@@ -152,26 +153,24 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
         });
       }),
     )
-    .handle("getAgentSessionById", ({ params }) =>
-      Effect.gen(function* () {
+    .handle("getAgentSessionById", ({ params: { sessionId } }) =>
+      Effect.gen(function*() {
         const db = yield* DatabaseService;
         const user = yield* CurrentUser;
 
-        const session = yield* db
-          .getAgentSesionByIdForUser({ sessionId: params.id, userId: user.id })
-          .pipe(
-            Effect.mapError(() => new AgentSessionNotFound()),
-            Effect.flatMap((s) =>
-              s === undefined ? Effect.fail(new AgentSessionNotFound()) : Effect.succeed(s),
-            ),
-          );
+        const session = yield* db.getAgentSesionByIdForUser({ sessionId, userId: user.id }).pipe(
+          Effect.mapError(() => new AgentSessionNotFound()),
+          Effect.flatMap((s) =>
+            s === undefined ? Effect.fail(new AgentSessionNotFound()) : Effect.succeed(s),
+          ),
+        );
 
         // Include current questions when session is awaiting answers
         const questions =
           session.status === "awaiting_answers"
             ? yield* db
-                .getQuestionsBySessionId(params.id)
-                .pipe(Effect.mapError(() => new AgentSessionNotFound()))
+              .getQuestionsBySessionId(sessionId)
+              .pipe(Effect.mapError(() => new AgentSessionNotFound()))
             : [];
 
         return GetAgentSessionResponse.make({
@@ -188,13 +187,13 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
         });
       }),
     )
-    .handle("getOutputDownloadUrl", ({ params: { id, type } }) =>
-      Effect.gen(function* () {
+    .handle("getOutputDownloadUrl", ({ params: { sessionId, type } }) =>
+      Effect.gen(function*() {
         const db = yield* DatabaseService;
         const user = yield* CurrentUser;
 
         yield* pipe(
-          db.getAgentSesionByIdForUser({ sessionId: id, userId: user.id }),
+          db.getAgentSesionByIdForUser({ sessionId, userId: user.id }),
           Effect.fromNullishOr,
           Effect.mapError(() => new OutputNotFoundError()),
         );
@@ -205,7 +204,7 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
         }
 
         const output = yield* db
-          .getLatestOutputByType({ sessionId: id, type })
+          .getLatestOutputByType({ sessionId, type })
           .pipe(Effect.mapError(() => new OutputNotFoundError()));
 
         if (!output?.s3Key) {
@@ -221,10 +220,10 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
         return OutputDownloadUrlResponse.make({ url });
       }),
     )
-    .handle("reviseOutput", ({ payload: { feedback }, params: { id } }) =>
-      Effect.gen(function* () {
+    .handle("reviseOutput", ({ payload: { feedback }, params: { sessionId } }) =>
+      Effect.gen(function*() {
         const result = yield* pipe(
-          startRevision(id, feedback),
+          startRevision(sessionId, feedback),
           Effect.mapError((e) => {
             if (e instanceof ActorSessionStateError) {
               return new SessionStateError({ message: e.message });

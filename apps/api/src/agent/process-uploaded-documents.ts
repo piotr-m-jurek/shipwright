@@ -3,7 +3,6 @@ import { parseDocument } from "./parsers.js";
 import { estimateTokenCount } from "./estimate-token-count.js";
 import { chunkDocument } from "./chunker.js";
 import { Effect, Schema, Array, pipe } from "effect";
-import { type SelectDocument } from "../db/schema.js";
 import { DatabaseService } from "../db/queries.js";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
@@ -30,7 +29,7 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
   sessionId,
 }: {
   uploads: ConfirmUploadRequest["uploads"];
-  sessionId: string;
+  sessionId: AgentSessionId;
 }) {
   const storage = yield* StorageAdapter;
   const chunkerton = yield* ChunkingService;

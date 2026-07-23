@@ -12,8 +12,8 @@ import {
 } from "drizzle-orm/pg-core";
 import { defineRelations } from "drizzle-orm";
 
-import { MachineContext } from "@shipwright/shared/schemas/machine.js";
-import { Brand, Schema } from "effect";
+import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 // ── Better Auth tables ────────────────────────────────────────────────────
 
@@ -106,7 +106,7 @@ export const sessionStatusEnum = pgEnum("session_status", [
 export const inputModeEnum = pgEnum("input_mode", ["context", "retrieval"]);
 
 export const agentSessions = pgTable("agent_sessions", {
-  id: uuid("id").primaryKey().defaultRandom().notNull(), //.$type<AgentSessionId>(),
+  id: uuid("id").primaryKey().defaultRandom().notNull().$type<AgentSessionId>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at")
     .notNull()
@@ -120,13 +120,6 @@ export const agentSessions = pgTable("agent_sessions", {
   inputMode: inputModeEnum("input_mode").notNull().default("context"),
   xstateSnapshot: jsonb("xstate_snapshot").$type<MachineContext>(),
 });
-
-export type SessionInsert = typeof agentSessions.$inferInsert;
-export type SessionSelect = typeof agentSessions.$inferSelect;
-
-// Aliases used across apps/api — kept here so packages/shared has no dep on schema
-export type InsertAgentSession = typeof agentSessions.$inferInsert;
-export type SelectAgentSession = typeof agentSessions.$inferSelect;
 
 export const documentStatusEnum = pgEnum("document_status", [
   "pending",
@@ -176,12 +169,6 @@ export const chunks = pgTable("chunks", {
   pageNumber: integer("page_number"),
 });
 
-export type InsertDocument = typeof documents.$inferInsert;
-export type SelectDocument = typeof documents.$inferSelect;
-
-export type InsertChunk = typeof chunks.$inferInsert;
-export type SelectChunk = typeof chunks.$inferSelect;
-
 export const summaryTypeEnum = pgEnum("summary_type", ["map_intermediate", "final"]);
 
 export const confidenceLevelEnum = pgEnum("confidence_level", ["high", "medium", "low"]);
@@ -213,9 +200,6 @@ export const documentSummaries = pgTable("document_summaries", {
   tokenCount: integer("token_count").notNull(),
 });
 
-export type DocumentSummaryInsert = typeof documentSummaries.$inferInsert;
-export type DocumentSummarySelect = typeof documentSummaries.$inferSelect;
-
 export const summaryItems = pgTable("summary_items", {
   id: uuid("id").primaryKey().defaultRandom().notNull(),
   summaryId: uuid("summary_id")
@@ -227,9 +211,6 @@ export const summaryItems = pgTable("summary_items", {
   confidence: confidenceLevelEnum("confidence").notNull(),
   orderIndex: integer("order_index").notNull(),
 });
-
-export type SummaryItemInsert = typeof summaryItems.$inferInsert;
-export type SummaryItemSelect = typeof summaryItems.$inferSelect;
 
 export const messageRoleEnum = pgEnum("role", ["user", "assistant", "system"]);
 

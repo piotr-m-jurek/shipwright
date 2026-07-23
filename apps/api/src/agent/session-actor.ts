@@ -1,18 +1,16 @@
-import { Array, Effect, pipe, Schema } from "effect";
+import { Effect, pipe, Schema } from "effect";
 import { StorageAdapter } from "../storage/index.js";
 import { createAgentActor, restoreAgentActor, type AgentActor } from "./machine.js";
-import {
-  MachineContextEffectSchema,
-  type MachineContext,
-} from "@shipwright/shared/schemas/machine.js";
+import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { summarizeAllDocuments } from "./summarizer.js";
 import { runChallenger } from "./challenger.js";
 import { runQuestionGenerator } from "./question-generator.js";
 import { runBriefWriter } from "./writer-brief.js";
 import { runPrdWriter } from "./writer-prd.js";
 import { runRevisionBriefWriter, runRevisionPrdWriter } from "./writer-revision.js";
-import { DatabaseService, ReconstructedSummary } from "../db/queries.js";
+import { DatabaseService, type ReconstructedSummary } from "../db/queries.js";
 import { Spans } from "../observability/spans.js";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 export class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()(
   "shipwright/agent/SessionNotFoundError",
@@ -42,7 +40,7 @@ const ERROR_STATES = new Set([
 ]);
 
 export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* (
-  sessionId: string,
+  sessionId: AgentSessionId,
 ) {
   const db = yield* DatabaseService;
   const existing = registry.get(sessionId);
@@ -79,7 +77,7 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
 
 const wireSnapshotPersistence = Effect.fnUntraced(function* wireSnapshotPersistence(
   actor: AgentActor,
-  sessionId: string,
+  sessionId: AgentSessionId,
 ) {
   const db = yield* DatabaseService;
   const services = yield* Effect.context<never>();
@@ -104,7 +102,7 @@ const wireSnapshotPersistence = Effect.fnUntraced(function* wireSnapshotPersiste
 });
 
 export const runSessionWorkflow = Effect.fn("agent/runSessionWorkflow")(
-  function* (sessionId: string) {
+  function* (sessionId: AgentSessionId) {
     const db = yield* DatabaseService;
     const actor = yield* getOrRestoreActor(sessionId);
 
@@ -155,7 +153,7 @@ export const runSessionWorkflow = Effect.fn("agent/runSessionWorkflow")(
 );
 
 export const submitAnswers = Effect.fn("agent/submitAnswers")(
-  function* (sessionId: string, rawAnswers: { questionId: string; text: string }[]) {
+  function* (sessionId: AgentSessionId, rawAnswers: { questionId: string; text: string }[]) {
     yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
 
     const db = yield* DatabaseService;
@@ -217,7 +215,7 @@ export const submitAnswers = Effect.fn("agent/submitAnswers")(
 );
 
 export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
-  function* (sessionId: string) {
+  function* (sessionId: AgentSessionId) {
     yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
 
     const db = yield* DatabaseService;
@@ -309,7 +307,7 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
 );
 
 export const startRevision = Effect.fn("agent/startRevision")(function* (
-  sessionId: string,
+  sessionId: AgentSessionId,
   feedback: string,
 ) {
   yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
@@ -336,7 +334,7 @@ export const startRevision = Effect.fn("agent/startRevision")(function* (
 });
 
 export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
-  function* (sessionId: string) {
+  function* (sessionId: AgentSessionId) {
     yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
 
     const actor = yield* getOrRestoreActor(sessionId);

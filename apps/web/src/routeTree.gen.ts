@@ -10,76 +10,78 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SessionsIdQuestionsRouteImport } from './routes/sessions/$id/questions'
-import { Route as SessionsIdOutputRouteImport } from './routes/sessions/$id/output'
-import { Route as SessionsIdConfirmRouteImport } from './routes/sessions/$id/confirm'
+import { Route as SessionsSessionIdQuestionsRouteImport } from './routes/sessions/$sessionId/questions'
+import { Route as SessionsSessionIdOutputRouteImport } from './routes/sessions/$sessionId/output'
+import { Route as SessionsSessionIdConfirmRouteImport } from './routes/sessions/$sessionId/confirm'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SessionsIdQuestionsRoute = SessionsIdQuestionsRouteImport.update({
-  id: '/sessions/$id/questions',
-  path: '/sessions/$id/questions',
+const SessionsSessionIdQuestionsRoute =
+  SessionsSessionIdQuestionsRouteImport.update({
+    id: '/sessions/$sessionId/questions',
+    path: '/sessions/$sessionId/questions',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const SessionsSessionIdOutputRoute = SessionsSessionIdOutputRouteImport.update({
+  id: '/sessions/$sessionId/output',
+  path: '/sessions/$sessionId/output',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SessionsIdOutputRoute = SessionsIdOutputRouteImport.update({
-  id: '/sessions/$id/output',
-  path: '/sessions/$id/output',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SessionsIdConfirmRoute = SessionsIdConfirmRouteImport.update({
-  id: '/sessions/$id/confirm',
-  path: '/sessions/$id/confirm',
-  getParentRoute: () => rootRouteImport,
-} as any)
+const SessionsSessionIdConfirmRoute =
+  SessionsSessionIdConfirmRouteImport.update({
+    id: '/sessions/$sessionId/confirm',
+    path: '/sessions/$sessionId/confirm',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/sessions/$id/confirm': typeof SessionsIdConfirmRoute
-  '/sessions/$id/output': typeof SessionsIdOutputRoute
-  '/sessions/$id/questions': typeof SessionsIdQuestionsRoute
+  '/sessions/$sessionId/confirm': typeof SessionsSessionIdConfirmRoute
+  '/sessions/$sessionId/output': typeof SessionsSessionIdOutputRoute
+  '/sessions/$sessionId/questions': typeof SessionsSessionIdQuestionsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/sessions/$id/confirm': typeof SessionsIdConfirmRoute
-  '/sessions/$id/output': typeof SessionsIdOutputRoute
-  '/sessions/$id/questions': typeof SessionsIdQuestionsRoute
+  '/sessions/$sessionId/confirm': typeof SessionsSessionIdConfirmRoute
+  '/sessions/$sessionId/output': typeof SessionsSessionIdOutputRoute
+  '/sessions/$sessionId/questions': typeof SessionsSessionIdQuestionsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/sessions/$id/confirm': typeof SessionsIdConfirmRoute
-  '/sessions/$id/output': typeof SessionsIdOutputRoute
-  '/sessions/$id/questions': typeof SessionsIdQuestionsRoute
+  '/sessions/$sessionId/confirm': typeof SessionsSessionIdConfirmRoute
+  '/sessions/$sessionId/output': typeof SessionsSessionIdOutputRoute
+  '/sessions/$sessionId/questions': typeof SessionsSessionIdQuestionsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/sessions/$id/confirm'
-    | '/sessions/$id/output'
-    | '/sessions/$id/questions'
+    | '/sessions/$sessionId/confirm'
+    | '/sessions/$sessionId/output'
+    | '/sessions/$sessionId/questions'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/sessions/$id/confirm'
-    | '/sessions/$id/output'
-    | '/sessions/$id/questions'
+    | '/sessions/$sessionId/confirm'
+    | '/sessions/$sessionId/output'
+    | '/sessions/$sessionId/questions'
   id:
     | '__root__'
     | '/'
-    | '/sessions/$id/confirm'
-    | '/sessions/$id/output'
-    | '/sessions/$id/questions'
+    | '/sessions/$sessionId/confirm'
+    | '/sessions/$sessionId/output'
+    | '/sessions/$sessionId/questions'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  SessionsIdConfirmRoute: typeof SessionsIdConfirmRoute
-  SessionsIdOutputRoute: typeof SessionsIdOutputRoute
-  SessionsIdQuestionsRoute: typeof SessionsIdQuestionsRoute
+  SessionsSessionIdConfirmRoute: typeof SessionsSessionIdConfirmRoute
+  SessionsSessionIdOutputRoute: typeof SessionsSessionIdOutputRoute
+  SessionsSessionIdQuestionsRoute: typeof SessionsSessionIdQuestionsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -91,25 +93,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sessions/$id/questions': {
-      id: '/sessions/$id/questions'
-      path: '/sessions/$id/questions'
-      fullPath: '/sessions/$id/questions'
-      preLoaderRoute: typeof SessionsIdQuestionsRouteImport
+    '/sessions/$sessionId/questions': {
+      id: '/sessions/$sessionId/questions'
+      path: '/sessions/$sessionId/questions'
+      fullPath: '/sessions/$sessionId/questions'
+      preLoaderRoute: typeof SessionsSessionIdQuestionsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sessions/$id/output': {
-      id: '/sessions/$id/output'
-      path: '/sessions/$id/output'
-      fullPath: '/sessions/$id/output'
-      preLoaderRoute: typeof SessionsIdOutputRouteImport
+    '/sessions/$sessionId/output': {
+      id: '/sessions/$sessionId/output'
+      path: '/sessions/$sessionId/output'
+      fullPath: '/sessions/$sessionId/output'
+      preLoaderRoute: typeof SessionsSessionIdOutputRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sessions/$id/confirm': {
-      id: '/sessions/$id/confirm'
-      path: '/sessions/$id/confirm'
-      fullPath: '/sessions/$id/confirm'
-      preLoaderRoute: typeof SessionsIdConfirmRouteImport
+    '/sessions/$sessionId/confirm': {
+      id: '/sessions/$sessionId/confirm'
+      path: '/sessions/$sessionId/confirm'
+      fullPath: '/sessions/$sessionId/confirm'
+      preLoaderRoute: typeof SessionsSessionIdConfirmRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -117,9 +119,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  SessionsIdConfirmRoute: SessionsIdConfirmRoute,
-  SessionsIdOutputRoute: SessionsIdOutputRoute,
-  SessionsIdQuestionsRoute: SessionsIdQuestionsRoute,
+  SessionsSessionIdConfirmRoute: SessionsSessionIdConfirmRoute,
+  SessionsSessionIdOutputRoute: SessionsSessionIdOutputRoute,
+  SessionsSessionIdQuestionsRoute: SessionsSessionIdQuestionsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

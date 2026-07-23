@@ -1,10 +1,6 @@
 import { Effect, pipe } from "effect";
 import { Spans } from "../observability/spans.js";
-import {
-  ClarifyingQuestionsEffectSchema,
-  GapReportEffect,
-  ClarifyingQuestionsEffect,
-} from "./schemas.js";
+import { ClarifyingQuestionsEffectSchema, type GapReportEffect } from "./schemas.js";
 import { TextGenerationError } from "./errors.js";
 import type { ReconstructedSummary } from "../db/queries.js";
 import { LanguageModel, Prompt } from "effect/unstable/ai";

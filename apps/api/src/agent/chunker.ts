@@ -1,6 +1,6 @@
 import { Match, pipe } from "effect";
 import { PDF_PAGES_SEPARATOR } from "./index.js";
-import { ParseResult } from "./parsers.js";
+import type { ParseResult } from "./parsers.js";
 
 type ChunkConfig = {
   chunkSize: number;
@@ -115,8 +115,8 @@ function addOffsets(
         const results = acc.results.concat({
           content,
           charOffset,
-          pageNumber,
-          headingPath,
+          pageNumber: pageNumber ?? 0,
+          headingPath: headingPath ?? [],
         });
         const searchFrom = charOffset + content.length - overlap;
 

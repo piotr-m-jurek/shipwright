@@ -1,13 +1,12 @@
 import { Effect, Schema, Option, pipe } from "effect";
 import { Spans } from "../observability/spans.js";
-import { SelectChunk } from "../db/schema.js";
+import type { SelectChunk, SummaryItemInsert } from "../db/types.js";
 import { DatabaseService } from "../db/queries.js";
-import { SummaryItemInsert } from "../db/schema.js";
 import { TextGenerationError } from "./errors.js";
 import { estimateTokenCount } from "./estimate-token-count.js";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
-import { DocumentSummaryEffect, DocumentSummaryEffectSchema } from "./schemas.js";
+import { type DocumentSummaryEffect, DocumentSummaryEffectSchema } from "./schemas.js";
 import { AnthropicClientLayer } from "./providers.js";
 
 class ChunksRetrievalError extends Schema.TaggedErrorClass<ChunksRetrievalError>()(

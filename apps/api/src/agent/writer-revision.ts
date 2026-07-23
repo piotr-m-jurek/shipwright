@@ -1,7 +1,7 @@
 import { Effect, Schema, Stream } from "effect";
 import type { ReconstructedSummary } from "../db/queries.js";
 import { Spans } from "../observability/spans.js";
-import { LanguageModel, Response } from "effect/unstable/ai";
+import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
 import "@effect/ai-anthropic/AnthropicLanguageModel";
 import { AnthropicClientLayer } from "./providers.js";

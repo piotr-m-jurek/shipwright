@@ -6,7 +6,17 @@ import type {
   SelectAgentSession,
   SelectChunk,
   SelectDocument,
-} from "./schema.js";
+  DocumentSummaryInsert,
+  DocumentSummarySelect,
+  SummaryItemInsert,
+  SummaryItemSelect,
+  QuestionInsert,
+  QuestionSelect,
+  AnswerInsert,
+  AnswerSelect,
+  OutputInsert,
+  OutputSelect,
+} from "./types.js";
 
 import { AppDBLayer, DB } from "./index.js";
 import {
@@ -18,21 +28,10 @@ import {
   questions,
   answers,
   outputs,
-  type DocumentSummaryInsert,
-  type DocumentSummarySelect,
-  type SummaryItemInsert,
-  type SummaryItemSelect,
 } from "./schema.js";
 import { Context, Effect, Layer, pipe, Schema } from "effect";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-
-export type OutputInsert = typeof outputs.$inferInsert;
-export type OutputSelect = typeof outputs.$inferSelect;
-
-export type QuestionInsert = typeof questions.$inferInsert;
-export type QuestionSelect = typeof questions.$inferSelect;
-export type AnswerInsert = typeof answers.$inferInsert;
-export type AnswerSelect = typeof answers.$inferSelect;
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 type ItemWithSource = {
   text: string;
@@ -72,7 +71,7 @@ const makeDatabaseService = Effect.gen(function* () {
   });
 
   const updateAgentSession = Effect.fnUntraced(function* (
-    sessionId: string,
+    sessionId: AgentSessionId,
     status: SelectAgentSession["status"],
   ) {
     const [result] = yield* db
@@ -85,7 +84,7 @@ const makeDatabaseService = Effect.gen(function* () {
   });
 
   const updateAgentSessionSnapshot = Effect.fnUntraced(function* (
-    sessionId: string,
+    sessionId: AgentSessionId,
     status: SelectAgentSession["status"],
     xstateSnapshot: unknown,
   ) {
@@ -95,7 +94,7 @@ const makeDatabaseService = Effect.gen(function* () {
       .where(eq(agentSessions.id, sessionId));
   });
 
-  const getAgentSesionById = Effect.fnUntraced(function* (payload: { sessionId: string }) {
+  const getAgentSesionById = Effect.fnUntraced(function* (payload: { sessionId: AgentSessionId }) {
     const [result] = yield* db
       .select()
       .from(agentSessions)
@@ -110,7 +109,7 @@ const makeDatabaseService = Effect.gen(function* () {
   });
 
   const getAgentSesionByIdForUser = Effect.fnUntraced(function* (payload: {
-    sessionId: string;
+    sessionId: AgentSessionId;
     userId: string;
   }) {
     const [result] = yield* db
@@ -293,7 +292,7 @@ const makeDatabaseService = Effect.gen(function* () {
     return yield* db.select().from(answers).where(eq(answers.sessionId, sessionId));
   });
 
-  const deleteAgentSession = Effect.fnUntraced(function* (sessionId: string) {
+  const deleteAgentSession = Effect.fnUntraced(function* (sessionId: AgentSessionId) {
     yield* db.delete(agentSessions).where(eq(agentSessions.id, sessionId));
   });
 
@@ -406,19 +405,19 @@ export class DatabaseService extends Context.Service<
       data: InsertAgentSession,
     ) => Effect.Effect<SelectAgentSession, AgentSessionNotFoundError | EffectDrizzleQueryError>;
     updateAgentSession: (
-      sessionId: string,
+      sessionId: AgentSessionId,
       status: SelectAgentSession["status"],
     ) => Effect.Effect<SelectAgentSession, EffectDrizzleQueryError>;
     updateAgentSessionSnapshot: (
-      sessionId: string,
+      sessionId: AgentSessionId,
       status: SelectAgentSession["status"],
       xstateSnapshot: unknown,
     ) => Effect.Effect<void, EffectDrizzleQueryError>;
     getAgentSesionById: (payload: {
-      sessionId: string;
+      sessionId: AgentSessionId;
     }) => Effect.Effect<SelectAgentSession | undefined, EffectDrizzleQueryError>;
     getAgentSesionByIdForUser: (payload: {
-      sessionId: string;
+      sessionId: AgentSessionId;
       userId: string;
     }) => Effect.Effect<SelectAgentSession | undefined, EffectDrizzleQueryError>;
 
@@ -488,7 +487,7 @@ export class DatabaseService extends Context.Service<
       sessionId: string,
     ) => Effect.Effect<AnswerSelect[], EffectDrizzleQueryError>;
 
-    deleteAgentSession: (sessionId: string) => Effect.Effect<void, EffectDrizzleQueryError>;
+    deleteAgentSession: (sessionId: AgentSessionId) => Effect.Effect<void, EffectDrizzleQueryError>;
     getChunksBySessionId: (
       sessionId: string,
     ) => Effect.Effect<SelectChunk[], EffectDrizzleQueryError>;

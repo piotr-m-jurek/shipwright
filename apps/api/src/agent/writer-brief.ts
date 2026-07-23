@@ -1,8 +1,8 @@
 import { Effect, Schema, Stream } from "effect";
 import { Spans } from "../observability/spans.js";
 import type { ReconstructedSummary } from "../db/queries.js";
-import { MachineContext } from "@shipwright/shared/schemas/machine.js";
-import { LanguageModel, Response } from "effect/unstable/ai";
+import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
+import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
 import "@effect/ai-anthropic/AnthropicLanguageModel";
 import { AnthropicClientLayer } from "./providers.js";

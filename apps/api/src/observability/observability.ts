@@ -1,7 +1,6 @@
-import { Effect, Layer, pipe, Redacted } from "effect";
+import { Effect, Layer, Redacted } from "effect";
 import { ConfigService } from "../config/config.js";
 import { Otlp } from "effect/unstable/observability";
-import { FetchHttpClient } from "effect/unstable/http";
 
 export const OtlpLayer = Layer.unwrap(
   Effect.gen(function* () {

@@ -33,6 +33,7 @@ import {
   RevisionError,
 } from "../domain/errors.js";
 import { Authorization } from "./middleware.js";
+import { AgentSessionId } from "../domain/ids.ts";
 
 class PublicApiGroup extends HttpApiGroup.make("public")
   .add(HttpApiEndpoint.get("health", "/health", { success: Schema.String }))
@@ -47,47 +48,47 @@ class SystemApiGroup extends HttpApiGroup.make("system")
       error: CreateAgentSessionError,
     }),
     HttpApiEndpoint.post("confirmUpload", "/sessions/:sessionId/confirm-upload", {
-      params: { sessionId: Schema.String },
+      params: { sessionId: AgentSessionId },
       payload: ConfirmUploadRequest,
       success: ConfirmUploadResponse,
       error: [MissingUploads, ConfirmUploadError],
     }),
     HttpApiEndpoint.get("getAgentSessionById", "/sessions/:id", {
-      params: { id: Schema.String },
+      params: { sessionId: AgentSessionId },
       success: GetAgentSessionResponse,
       error: pipe(
         AgentSessionNotFound,
         HttpApiSchema.asNoContent({ decode: () => new AgentSessionNotFound() }),
       ),
     }),
-    HttpApiEndpoint.post("confirmAnalysis", "/sessions/:id/confirm", {
-      params: { id: Schema.String },
+    HttpApiEndpoint.post("confirmAnalysis", "/sessions/:sessionId/confirm", {
+      params: { sessionId: AgentSessionId },
       success: ConfirmAnalysisResponse,
       error: ConfirmAnalysisError,
     }),
-    HttpApiEndpoint.post("getSessionProgress", "/sessions/:id/stream", {
-      params: { id: Schema.String },
+    HttpApiEndpoint.post("getSessionProgress", "/sessions/:sessionId/stream", {
+      params: { sessionId: AgentSessionId },
       success: GetAgentSessionProgressResponse,
       error: AnalysisPipelineError,
     }),
-    HttpApiEndpoint.post("submitSessionAnswers", "/sessions/:id/answers", {
-      params: { id: Schema.String },
+    HttpApiEndpoint.post("submitSessionAnswers", "/sessions/:sessionId/answers", {
+      params: { sessionId: AgentSessionId },
       payload: PostAgentSessionAnswersRequest,
       success: PostAgentSessionAnswersResponse,
       error: [SessionStateError, AnalysisPipelineError],
     }),
-    HttpApiEndpoint.get("getSessionFinalOutput", "/sessions/:id/output", {
-      params: { id: Schema.String },
+    HttpApiEndpoint.get("getSessionFinalOutput", "/sessions/:sessionId/output", {
+      params: { sessionId: AgentSessionId },
       success: GetAgentSessionFinalOutputResponse,
       error: AgentSessionNotFound,
     }),
-    HttpApiEndpoint.get("getOutputDownloadUrl", "/sessions/:id/output/:type/download-url", {
-      params: { id: Schema.String, type: Schema.String },
+    HttpApiEndpoint.get("getOutputDownloadUrl", "/sessions/:sessionId/output/:type/download-url", {
+      params: { sessionId: AgentSessionId, type: Schema.String },
       success: OutputDownloadUrlResponse,
       error: OutputNotFoundError,
     }),
     HttpApiEndpoint.post("reviseOutput", "/sessions/:id/revise", {
-      params: { id: Schema.String },
+      params: { sessionId: AgentSessionId },
       payload: ReviseRequest,
       success: ReviseResponse,
       error: [SessionStateError, RevisionError],

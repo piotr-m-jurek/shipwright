@@ -20,7 +20,7 @@ import { useDropzone } from "react-dropzone";
 import { cn } from "@/lib/utils";
 import { ConfirmUploadRequest, CreateAgentSessionRequest } from "@shipwright/shared/schemas/api";
 
-export const Route = createFileRoute("/sessions/$id/confirm")({
+export const Route = createFileRoute("/sessions/$sessionId/confirm")({
   component: RouteComponent,
 });
 

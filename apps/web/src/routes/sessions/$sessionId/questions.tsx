@@ -9,7 +9,7 @@ import { useState, useMemo } from "react";
 import { Match, pipe } from "effect";
 import { PostAgentSessionAnswersRequest } from "@shipwright/shared/schemas/api";
 
-export const Route = createFileRoute("/sessions/$id/questions")({
+export const Route = createFileRoute("/sessions/$sessionId/questions")({
   component: RouteComponent,
 });
 
