@@ -105,12 +105,8 @@ export const sessionStatusEnum = pgEnum("session_status", [
 
 export const inputModeEnum = pgEnum("input_mode", ["context", "retrieval"]);
 
-export const AgentSessionIdSchema = Schema.String.pipe(Schema.brand("AgentSessionId"));
-export type AgentSessionId = typeof AgentSessionIdSchema.Type;
-export const AgentSessionId = Brand.nominal<AgentSessionId>();
-
 export const agentSessions = pgTable("agent_sessions", {
-  id: uuid("id").primaryKey().defaultRandom().notNull(), // TODO:  .$type<AgentSessionId>(),
+  id: uuid("id").primaryKey().defaultRandom().notNull(), //.$type<AgentSessionId>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at")
     .notNull()

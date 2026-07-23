@@ -3,6 +3,7 @@ import { EmbeddingModel, Tool, Toolkit } from "effect/unstable/ai";
 import { OpenAiEmbeddingModel } from "@effect/ai-openai";
 import { DatabaseService } from "../../db/queries.js";
 import { OpenAiClientLayer } from "../providers.js";
+import { ChunkingService } from "../chunking-service.ts";
 
 class QueryChunksToolParameters extends Schema.Class<QueryChunksToolParameters>(
   "QueryChunksToolParameters",
@@ -60,8 +61,9 @@ export const makeQueryChunksLayer = (sessionId: string) =>
 
       return QueryChunksToolkit.of({
         "query-chunks": Effect.fn("tools/query-chunks")(function* ({ query, limit }) {
-          const res = yield* embeddingModel.embed(query);
-          const embedding = res.vector;
+          const chunkster = yield* ChunkingService;
+          const embedding = yield* chunkster.embedText(query);
+
 
           const similarChunks = yield* db
             .getChunksBySimilarity({ sessionId, embedding, limit })

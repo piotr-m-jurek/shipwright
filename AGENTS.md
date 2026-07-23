@@ -160,6 +160,32 @@ and give factual, specific feedback:
 
 ---
 
+## Security challenges — always probe these
+
+When the student implements any endpoint that accesses user-owned resources
+(sessions, documents, outputs, chunks), challenge them on the following before
+approving:
+
+1. **Ownership verification** — does every read/write operation verify that the
+   resource belongs to the authenticated user? It is not sufficient to validate
+   the session cookie. The resource itself must be checked: e.g. `WHERE user_id = $userId`
+   on `agent_sessions` before returning outputs, download URLs, or any session data.
+
+2. **Information leakage** — does a 403 leak resource existence? Return 404 when
+   a resource is not found *or* belongs to another user. Never 403 on a resource
+   the requesting user has no business knowing exists.
+
+3. **Indirect access** — if endpoint A validates ownership but endpoint B (called
+   downstream) does not, a user who knows another user's resource ID can bypass
+   the check via B. Every DB query that touches user-owned data must carry the
+   `userId` filter — not just the entry-point query.
+
+Ask the student: "If user A knows user B's session ID, what can user A do with
+endpoint X?" For every protected endpoint, the answer must be "nothing — they get
+a 404."
+
+---
+
 ## When something changes
 
 If during a session the student and tutor agree to do something differently from

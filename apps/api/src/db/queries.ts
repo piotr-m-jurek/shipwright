@@ -18,14 +18,13 @@ import {
   questions,
   answers,
   outputs,
-  DocumentSummaryInsert,
-  DocumentSummarySelect,
-  SummaryItemInsert,
-  SummaryItemSelect,
+  type DocumentSummaryInsert,
+  type DocumentSummarySelect,
+  type SummaryItemInsert,
+  type SummaryItemSelect,
 } from "./schema.js";
 import { Context, Effect, Layer, pipe, Schema } from "effect";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { CurrentUser } from "@shipwright/shared/middleware";
 
 export type OutputInsert = typeof outputs.$inferInsert;
 export type OutputSelect = typeof outputs.$inferSelect;
@@ -67,10 +66,7 @@ export class AgentSessionNotFoundError extends Schema.TaggedErrorClass<AgentSess
 const makeDatabaseService = Effect.gen(function* () {
   const db = yield* DB;
   const createAgentSession = Effect.fnUntraced(function* (data: InsertAgentSession) {
-    const [result] = yield* db
-      .insert(agentSessions)
-      .values(data as any)
-      .returning();
+    const [result] = yield* db.insert(agentSessions).values(data).returning();
 
     return result;
   });
@@ -79,7 +75,6 @@ const makeDatabaseService = Effect.gen(function* () {
     sessionId: string,
     status: SelectAgentSession["status"],
   ) {
-    const user = yield* CurrentUser;
     const [result] = yield* db
       .update(agentSessions)
       .set({ status })
@@ -100,11 +95,34 @@ const makeDatabaseService = Effect.gen(function* () {
       .where(eq(agentSessions.id, sessionId));
   });
 
-  const getAgentSesionById = Effect.fnUntraced(function* (agentSessionId: string) {
+  const getAgentSesionById = Effect.fnUntraced(function* (payload: { sessionId: string }) {
     const [result] = yield* db
       .select()
       .from(agentSessions)
-      .where(eq(agentSessions.id, agentSessionId));
+      .where(
+        and(
+          eq(agentSessions.id, payload.sessionId),
+          //
+        ),
+      );
+
+    return result;
+  });
+
+  const getAgentSesionByIdForUser = Effect.fnUntraced(function* (payload: {
+    sessionId: string;
+    userId: string;
+  }) {
+    const [result] = yield* db
+      .select()
+      .from(agentSessions)
+      .where(
+        and(
+          eq(agentSessions.id, payload.sessionId),
+          eq(agentSessions.userId, payload.userId),
+          //
+        ),
+      );
 
     return result;
   });
@@ -292,14 +310,14 @@ const makeDatabaseService = Effect.gen(function* () {
       .orderBy(desc(outputs.version));
   });
 
-  const getLatestOutputByType = Effect.fnUntraced(function* (
-    sessionId: string,
-    type: OutputSelect["type"],
-  ) {
+  const getLatestOutputByType = Effect.fnUntraced(function* (payload: {
+    sessionId: string;
+    type: OutputSelect["type"];
+  }) {
     const [result] = yield* db
       .select()
       .from(outputs)
-      .where(and(eq(outputs.sessionId, sessionId), eq(outputs.type, type)))
+      .where(and(eq(outputs.sessionId, payload.sessionId), eq(outputs.type, payload.type)))
       .orderBy(desc(outputs.version))
       .limit(1);
     return result as OutputSelect | undefined;
@@ -310,6 +328,7 @@ const makeDatabaseService = Effect.gen(function* () {
     updateAgentSession,
     updateAgentSessionSnapshot,
     getAgentSesionById,
+    getAgentSesionByIdForUser,
     createDocument,
     getDocumentById,
     getDocumentsBySessionId,
@@ -395,9 +414,13 @@ export class DatabaseService extends Context.Service<
       status: SelectAgentSession["status"],
       xstateSnapshot: unknown,
     ) => Effect.Effect<void, EffectDrizzleQueryError>;
-    getAgentSesionById: (
-      agentSessionId: string,
-    ) => Effect.Effect<SelectAgentSession | undefined, EffectDrizzleQueryError>;
+    getAgentSesionById: (payload: {
+      sessionId: string;
+    }) => Effect.Effect<SelectAgentSession | undefined, EffectDrizzleQueryError>;
+    getAgentSesionByIdForUser: (payload: {
+      sessionId: string;
+      userId: string;
+    }) => Effect.Effect<SelectAgentSession | undefined, EffectDrizzleQueryError>;
 
     createDocument: (
       data: InsertDocument,
@@ -474,10 +497,10 @@ export class DatabaseService extends Context.Service<
     getOutputsBySessionId: (
       sessionId: string,
     ) => Effect.Effect<OutputSelect[], EffectDrizzleQueryError>;
-    getLatestOutputByType: (
-      sessionId: string,
-      type: OutputSelect["type"],
-    ) => Effect.Effect<OutputSelect | undefined, EffectDrizzleQueryError>;
+    getLatestOutputByType: (payload: {
+      sessionId: string;
+      type: OutputSelect["type"];
+    }) => Effect.Effect<OutputSelect | undefined, EffectDrizzleQueryError>;
   }
 >()("shipwright/db/queries/DatabaseService") {
   static readonly layer = pipe(

@@ -12,6 +12,7 @@ interface Interface {
   email: string;
   name: string;
 }
+
 export class CurrentUser extends Context.Service<CurrentUser, Interface>()("CurrentUser") {}
 
 export class Authorization extends HttpApiMiddleware.Service<

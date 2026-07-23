@@ -35,6 +35,7 @@ import {
 } from "@shipwright/shared/schemas/api.js";
 import { Api } from "@shipwright/shared/api.js";
 import { DatabaseService } from "../db/queries.js";
+import { CurrentUser } from "@shipwright/shared/middleware.js";
 
 export const PublicApiHandlers = HttpApiBuilder.group(Api, "public", (handlers) =>
   handlers.handle("health", () => Effect.succeed("Healthy")),
@@ -45,8 +46,10 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
     .handle(
       "sessionUploadUrl",
       Effect.fnUntraced(function* ({ payload: { files } }) {
+        const user = yield* CurrentUser;
+
         const result = yield* pipe(
-          createUploadSession(files),
+          createUploadSession({ files, userId: user.id }),
           Effect.mapError(() => new CreateAgentSessionError()),
         );
         return CreateAgentSessionResponse.make({
@@ -108,7 +111,7 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
         return ConfirmAnalysisResponse.make({ started: true });
       }),
     )
-    .handle("getSessionProgress", ({ params: { id } }) =>
+    .handle("getSessionProgress", ({ params: { id: _id } }) =>
       // Legacy endpoint — use POST /sessions/:id/confirm instead.
       // Returns current session status for polling.
       Effect.sync(() => GetAgentSessionProgressResponse.make({ started: true })),
@@ -128,9 +131,10 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
     .handle("getSessionFinalOutput", ({ params: { id } }) =>
       Effect.gen(function* () {
         const db = yield* DatabaseService;
+        const user = yield* CurrentUser;
 
         const session = yield* db
-          .getAgentSesionById(id)
+          .getAgentSesionByIdForUser({ sessionId: id, userId: user.id })
           .pipe(Effect.mapError(() => new AgentSessionNotFound()));
         if (!session) return yield* new AgentSessionNotFound();
 
@@ -151,13 +155,16 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
     .handle("getAgentSessionById", ({ params }) =>
       Effect.gen(function* () {
         const db = yield* DatabaseService;
+        const user = yield* CurrentUser;
 
-        const session = yield* db.getAgentSesionById(params.id).pipe(
-          Effect.mapError(() => new AgentSessionNotFound()),
-          Effect.flatMap((s) =>
-            s === undefined ? Effect.fail(new AgentSessionNotFound()) : Effect.succeed(s),
-          ),
-        );
+        const session = yield* db
+          .getAgentSesionByIdForUser({ sessionId: params.id, userId: user.id })
+          .pipe(
+            Effect.mapError(() => new AgentSessionNotFound()),
+            Effect.flatMap((s) =>
+              s === undefined ? Effect.fail(new AgentSessionNotFound()) : Effect.succeed(s),
+            ),
+          );
 
         // Include current questions when session is awaiting answers
         const questions =
@@ -184,6 +191,13 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
     .handle("getOutputDownloadUrl", ({ params: { id, type } }) =>
       Effect.gen(function* () {
         const db = yield* DatabaseService;
+        const user = yield* CurrentUser;
+
+        yield* pipe(
+          db.getAgentSesionByIdForUser({ sessionId: id, userId: user.id }),
+          Effect.fromNullishOr,
+          Effect.mapError(() => new OutputNotFoundError()),
+        );
 
         // Validate type param
         if (type !== "project_brief" && type !== "implementation_prd") {
@@ -191,7 +205,7 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
         }
 
         const output = yield* db
-          .getLatestOutputByType(id, type)
+          .getLatestOutputByType({ sessionId: id, type })
           .pipe(Effect.mapError(() => new OutputNotFoundError()));
 
         if (!output?.s3Key) {
@@ -220,6 +234,5 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
         );
         return ReviseResponse.make({ started: result.started });
       }),
-    )
-    .handle("health", () => Effect.succeed("Healthy")),
+    ),
 );

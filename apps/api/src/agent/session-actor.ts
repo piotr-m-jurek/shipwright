@@ -51,7 +51,7 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
     return existing;
   }
 
-  const session = yield* db.getAgentSesionById(sessionId);
+  const session = yield* db.getAgentSesionById({ sessionId });
 
   if (!session) {
     return yield* new SessionNotFoundError();
@@ -69,13 +69,13 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
   return actor;
 });
 
-const createAndRegisterActor = Effect.fnUntraced(function* (sessionId: string) {
-  const actor = createAgentActor({ sessionId });
-  yield* wireSnapshotPersistence(actor, sessionId);
-  actor.start();
-  registry.set(sessionId, actor);
-  return actor;
-});
+// const _createAndRegisterActor = Effect.fnUntraced(function* (sessionId: string) {
+//   const actor = createAgentActor({ sessionId });
+//   yield* wireSnapshotPersistence(actor, sessionId);
+//   actor.start();
+//   registry.set(sessionId, actor);
+//   return actor;
+// });
 
 const wireSnapshotPersistence = Effect.fnUntraced(function* wireSnapshotPersistence(
   actor: AgentActor,
@@ -344,8 +344,11 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
     const db = yield* DatabaseService;
 
     const summaries = yield* db.getFinalSummariesBySession(sessionId);
-    const existingPrdRow = yield* db.getLatestOutputByType(sessionId, "implementation_prd");
-    const existingBriefRow = yield* db.getLatestOutputByType(sessionId, "project_brief");
+    const existingPrdRow = yield* db.getLatestOutputByType({
+      sessionId,
+      type: "implementation_prd",
+    });
+    const existingBriefRow = yield* db.getLatestOutputByType({ sessionId, type: "project_brief" });
 
     const processBrief = Effect.fnUntraced(function* ({
       existingBrief,
