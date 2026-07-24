@@ -60,7 +60,7 @@ pnpm --filter @shipwright/api db:push             apply DB schema changes
 
 **Note:** CLI (original Phase 7) is cut. Phase 9 (Effect rewrite) was done before Phase 7 (Monorepo) — both complete.
 
-**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE · Phase 9 COMPLETE · Phase 7 COMPLETE · Phase 8 PARTIALLY COMPLETE (Part A 5/5 ✓) · Phase 10 COMPLETE (gate passed 17.07.2026) · **Phase 11 (RAG) next**
+**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE · Phase 9 COMPLETE · Phase 7 COMPLETE · Phase 8 PARTIALLY COMPLETE (Part A 5/5 ✓) · Phase 10 COMPLETE (gate passed 17.07.2026) · Phase 11 COMPLETE (implementation done, gate deferred pending OpenAI quota) · Phase 12 COMPLETE (gate passed 24.07.2026)
 
 ---
 
@@ -562,4 +562,58 @@ grep -rn "@tanstack/react-query|openapi-fetch|openapi-typescript" apps/web/src/
 → (no output)
 
 Browser run: upload → confirm → questions → outputs → download ✓
+```
+
+---
+
+## Phase 12 — Auth: Better Auth (COMPLETE — 24.07.2026)
+
+**Gate passed.**
+
+### What was built
+
+**Better Auth outside Effect boundary:**
+- `apps/api/src/auth/db.ts` — plain `drizzle-orm/node-postgres` instance. Better Auth is Promise-based and incompatible with Effect's `EffectPgDatabase` — separate connection required.
+- `apps/api/src/auth/auth.ts` — `betterAuth` with `drizzleAdapter`, GitHub + Google OAuth. Key config: `usePlural: true`, `schema: { ...schema, sessions: schema.authSessions }` (table name remapping), `trustedOrigins` from env.
+
+**Schema:**
+- `users`, `authSessions` (maps to DB table `sessions`), `accounts`, `verifications` added to `schema.ts`
+- `agentSessions.userId` — `text("user_id").notNull().references(() => users.id)`
+- `defineRelations` extended with Better Auth table relations
+
+**Server wiring:**
+- `auth.handler` mounted at `/api/auth/*` — body forwarded by reading Node `IncomingMessage` stream then constructing web `Request` with absolute URL
+- `HttpRouter.cors` with `credentials: true`
+- `CurrentUser`, `Authorization`, `Unauthorized` in `packages/shared/src/api/middleware.ts`
+- `AuthorizationLayer` validates `better-auth.session_token` cookie via `auth.api.getSession`
+- `SystemApiGroup` protected with `.middleware(Authorization)`; `PublicApiGroup` (`health`) public
+
+**Row-level isolation:**
+- `getAgentSesionById` (pipeline internal) — session ID only
+- `getAgentSesionByIdForUser` (HTTP handlers) — `AND user_id = $userId`; returns 404 on mismatch (not 403)
+- All handler entry points `yield* CurrentUser` and pass `user.id`
+
+**Frontend:**
+- `auth-client.ts` — `createAuthClient` from `better-auth/react`
+- `api.ts` — `Authorization` client middleware via `Atom.runtime.addGlobalLayer`; `credentials: "include"` on fetch
+- `/login` route — GitHub + Google buttons; `beforeLoad` redirect if already authenticated
+- `__root.tsx` — `beforeLoad` redirect to `/login` if unauthenticated; no `useEffect`
+- Logout button in upload page header
+
+### Key decisions
+
+- **Better Auth gets its own DB connection** — `EffectPgDatabase` returns `Effect` values from query methods; Better Auth calls `await db.select(...)` internally. The two are incompatible. Separate `node-postgres` pool is correct architecture.
+- **`authSessions` vs `sessions`** — table renamed in Drizzle schema to avoid XState session collision; drizzle adapter remapped via `schema: { ...schema, sessions: schema.authSessions }`.
+- **Body forwarding** — Effect's `HttpRouter` receives Node `IncomingMessage` as `req.source`; body must be read from the stream before constructing web `Request` for Better Auth.
+- **`Atom.runtime.addGlobalLayer`** — `AtomHttpApi.Service` `httpClient` option only accepts `Layer<HttpClient>`; `Authorization` client middleware layer goes to global runtime instead.
+- **404 not 403** — ownership mismatch returns 404 to avoid leaking resource existence.
+
+### Gate verification — 24.07.2026
+
+```
+GitHub OAuth sign-in: ✓ (redirects to GitHub, callback handled, session created)
+GET /api/auth/get-session → 200 ✓
+Unauthenticated GET /api/sessions/:id → 401 ✓
+GET /health (no auth) → 200 ✓
+Browser: upload → confirm → questions → outputs → download ✓
 ```

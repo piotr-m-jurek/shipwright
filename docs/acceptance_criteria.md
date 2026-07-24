@@ -414,6 +414,56 @@ it "mostly works".
 
 ---
 
+## Phase 12 — Auth: Better Auth
+
+### Schema + DB
+
+- [x] `users`, `sessions` (as `authSessions`), `accounts`, `verifications` tables added to `schema.ts`
+- [x] `agentSessions.userId` — `text("user_id").notNull().references(() => users.id)`
+- [x] Better Auth tables added to `defineRelations` — `users` has `many.agentSessions`, `many.authSessions`, `many.accounts`
+- [x] `drizzle-kit push` applied without errors
+
+### Better Auth config
+
+- [x] `apps/api/src/auth/db.ts` — plain `drizzle-orm/node-postgres` instance (outside Effect boundary)
+- [x] `apps/api/src/auth/auth.ts` — `betterAuth` with `drizzleAdapter`, `usePlural: true`, schema remapped (`sessions: schema.authSessions`), GitHub + Google social providers, `trustedOrigins` set
+- [x] `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` in `apps/api/.env`
+
+### Server wiring
+
+- [x] `auth.handler` mounted at `/api/auth/*` before `HttpApiBuilder` — body correctly forwarded via Node `IncomingMessage` stream
+- [x] `HttpRouter.cors` has `credentials: true` — `Access-Control-Allow-Credentials: true` set
+- [x] `CurrentUser` + `Authorization` + `Unauthorized` defined in `packages/shared/src/api/middleware.ts`
+- [x] `./middleware` export path added to `packages/shared/package.json`
+- [x] `SystemApiGroup` has `.middleware(Authorization)` — all session endpoints protected
+- [x] `PublicApiGroup` has `health` only — no middleware
+- [x] `AuthorizationLayer` in `apps/api/src/server/authorization.ts` — validates `better-auth.session_token` cookie via `auth.api.getSession`, provides `CurrentUser`, fails with `Unauthorized` (401) on invalid session
+- [x] `AuthorizationLayer` wired into `ApiRoute` in `server.ts`
+
+### Row-level isolation
+
+- [x] `getAgentSesionById` takes `{ sessionId, userId }` — `AND user_id = $userId` filter
+- [x] `getAgentSesionByIdForUser` used in all HTTP handlers — returns 404 (not 403) on mismatch
+- [x] `createAgentSession` requires `userId` — sessions always owned from creation
+- [x] `createUploadSession` accepts and propagates `userId` from `CurrentUser`
+- [x] `getOutputDownloadUrl` verifies session ownership before generating presigned URL
+
+### Frontend
+
+- [x] `apps/web/src/lib/auth-client.ts` — `createAuthClient` from `better-auth/react`
+- [x] `apps/web/src/store/api.ts` — `HttpApiMiddleware.layerClient(Authorization, ...)` via `Atom.runtime.addGlobalLayer`; `BrowserHttpClient.layerFetch` with `credentials: "include"` (cross-origin cookie)
+- [x] `apps/web/src/routes/login.tsx` — GitHub + Google sign-in buttons; `beforeLoad` redirects authenticated users to `/`
+- [x] `apps/web/src/routes/__root.tsx` — `beforeLoad` redirects unauthenticated users to `/login`; no `useEffect`
+- [x] Logout button in upload page header via `signOut()`
+
+### Test fixtures
+
+- [x] All gate test files (`test-phase4-gate.ts`, `test-corpus.ts`, `evals.ts`, `restart-test-setup.ts`, `test-phase5-gate.ts`, `test-phase5b-gate.ts`) insert a test user row before creating sessions
+
+**Gate:** GitHub OAuth sign-in completes. Authenticated user completes full E2E: upload → confirm → answer → output → download. Unauthenticated request to any `/api/sessions/*` → 401. User A creates session S; User B calls `GET /api/sessions/S` → 404 (not 403). `GET /health` → 200 with no auth required. Verified 24.07.2026.
+
+---
+
 ## Cross-cutting checks (tutor runs these at any phase)
 
 - [ ] No file outside `src/agent/providers.ts` imports `@anthropic-ai/sdk`, `@ai-sdk/anthropic`, or any provider package directly (Rule 1)
