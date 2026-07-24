@@ -3,29 +3,30 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { useAtomValue, useAtomSet } from "@effect/atom-react";
-import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useState, useMemo } from "react";
 import { Match, pipe } from "effect";
 import { PostAgentSessionAnswersRequest } from "@shipwright/shared/schemas/api";
+import { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 export const Route = createFileRoute("/sessions/$sessionId/questions")({
   component: RouteComponent,
 });
 
 function RouteComponent() {
-  const { id } = Route.useParams();
-  return <QuestionsPage sessionId={id} />;
+  const { sessionId } = Route.useParams();
+  return <QuestionsPage sessionId={AgentSessionId.make(sessionId)} />;
 }
 
 // ---------------------------------------------------------------------------
 // Atoms
 // ---------------------------------------------------------------------------
 
-const sessionQueryFamily = Atom.family((id: string) =>
+const sessionQueryFamily = Atom.family((sessionId: AgentSessionId) =>
   ShipwrightApi.query("system", "getAgentSessionById", {
-    params: { id },
-    reactivityKeys: ["session", id],
+    params: { sessionId },
+    reactivityKeys: ["session", sessionId],
     timeToLive: "30 seconds",
   }),
 );
@@ -38,8 +39,8 @@ const submitAnswersFamily = Atom.family((_nonce: number) =>
 // Polling wrapper — refreshes every 2s while not awaiting_answers / complete
 // ---------------------------------------------------------------------------
 
-function useSessionPolling(id: string) {
-  const baseAtom = useMemo(() => sessionQueryFamily(id), [id]);
+function useSessionPolling(sessionId: AgentSessionId) {
+  const baseAtom = useMemo(() => sessionQueryFamily(sessionId), [sessionId]);
   const sessionResult = useAtomValue(baseAtom);
 
   const status = AsyncResult.isSuccess(sessionResult) ? sessionResult.value.status : null;
@@ -59,8 +60,7 @@ function useSessionPolling(id: string) {
 // Page
 // ---------------------------------------------------------------------------
 
-function QuestionsPage({ sessionId }: { sessionId: string }) {
-  const navigate = useNavigate();
+function QuestionsPage({ sessionId }: { sessionId: AgentSessionId }) {
   const sessionResult = useSessionPolling(sessionId);
 
   return pipe(
@@ -81,7 +81,7 @@ function QuestionsPage({ sessionId }: { sessionId: string }) {
     )),
     Match.when(AsyncResult.isSuccess, ({ value: session }) => {
       if (session.status === "complete") {
-        return <Navigate to={"/sessions/$id/output"} params={{ id: sessionId }} />;
+        return <Navigate to={"/sessions/$sessionId/output"} params={{ sessionId }} />;
       }
       if (session.status === "awaiting_answers" && session.questions.length > 0) {
         return (
@@ -133,7 +133,13 @@ type Question = {
   orderIndex: number;
 };
 
-function AnswerForm({ sessionId, questions }: { sessionId: string; questions: Question[] }) {
+function AnswerForm({
+  sessionId,
+  questions,
+}: {
+  sessionId: AgentSessionId;
+  questions: Question[];
+}) {
   const [answers, setAnswers] = useState<Record<string, string>>(() =>
     Object.fromEntries(questions.map((q) => [q.id, ""])),
   );
@@ -152,7 +158,7 @@ function AnswerForm({ sessionId, questions }: { sessionId: string; questions: Qu
       })),
     });
     submit({
-      params: { id: sessionId },
+      params: { sessionId },
       payload,
       reactivityKeys: ["session", sessionId],
     });

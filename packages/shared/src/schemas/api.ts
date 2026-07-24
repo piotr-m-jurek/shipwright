@@ -1,4 +1,5 @@
 import { pipe, Schema } from "effect";
+import { AgentSessionId } from "../domain/ids.ts";
 
 export class GetAgentSessionResponse extends Schema.Class<GetAgentSessionResponse>(
   "GetAgentSessionResponse",
@@ -74,7 +75,7 @@ export class CreateAgentSessionRequest extends Schema.Class<CreateAgentSessionRe
 export class CreateAgentSessionResponse extends Schema.Class<CreateAgentSessionResponse>(
   "CreateAgentSessionResponse",
 )({
-  sessionId: Schema.String, // TODO: Make it SessionId branded type
+  sessionId: AgentSessionId,
   uploads: pipe(
     Schema.Array(
       Schema.Struct({

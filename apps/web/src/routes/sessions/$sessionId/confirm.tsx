@@ -19,14 +19,15 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { useDropzone } from "react-dropzone";
 import { cn } from "@/lib/utils";
 import { ConfirmUploadRequest, CreateAgentSessionRequest } from "@shipwright/shared/schemas/api";
+import { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 export const Route = createFileRoute("/sessions/$sessionId/confirm")({
   component: RouteComponent,
 });
 
 function RouteComponent() {
-  const { id } = Route.useParams();
-  return <ConfirmPage sessionId={id} />;
+  const { sessionId } = Route.useParams();
+  return <ConfirmPage sessionId={AgentSessionId.make(sessionId)} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +108,7 @@ const addFilesAtom = ShipwrightApi.runtime.fn<{
 // Page
 // ---------------------------------------------------------------------------
 
-function ConfirmPage({ sessionId }: { sessionId: string }) {
+function ConfirmPage({ sessionId }: { sessionId: AgentSessionId }) {
   const navigate = useNavigate();
   const [uploadedFiles, setUploadedFiles] = useAtom(sessionFilesAtomFamily(sessionId));
 
@@ -120,12 +121,12 @@ function ConfirmPage({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     if (AsyncResult.isSuccess(confirmResult)) {
-      navigate({ to: "/sessions/$id/questions", params: { id: sessionId } });
+      navigate({ to: "/sessions/$sessionId/questions", params: { sessionId } });
     }
   }, [confirmResult, sessionId, navigate]);
 
   const handleStartAnalysis = () => {
-    confirm({ params: { id: sessionId } });
+    confirm({ params: { sessionId } });
   };
 
   return (

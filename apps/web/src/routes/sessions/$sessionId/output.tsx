@@ -6,11 +6,11 @@ import { useAtomValue, useAtomSet } from "@effect/atom-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useState, useMemo, useEffect } from "react";
-import { Match, pipe, Schema } from "effect";
+import { Match, pipe } from "effect";
 import ReactMarkdown from "react-markdown";
 import { ReviseRequest } from "@shipwright/shared/schemas/api";
 import { DownloadSimpleIcon, ArrowCounterClockwiseIcon } from "@phosphor-icons/react";
-import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 // DB:
 // - agentSessionID: ag_sesh_1234asdf
@@ -21,7 +21,7 @@ export const Route = createFileRoute("/sessions/$sessionId/output")({
 
 function RouteComponent() {
   const { sessionId } = Route.useParams();
-  return <OutputPage sessionId={sessionId} />;
+  return <OutputPage sessionId={AgentSessionId.make(sessionId)} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +142,7 @@ function OutputPanel({
   title: string;
   content: string | null;
   downloadType: string;
-  sessionId: string;
+  sessionId: AgentSessionId;
 }) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">

@@ -21,6 +21,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import { cn } from "@/lib/utils";
 import { ConfirmUploadRequest, CreateAgentSessionRequest } from "@shipwright/shared/schemas/api";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 export const Route = createFileRoute("/")({
   component: RouteComponent,
@@ -49,7 +50,7 @@ const confirmUploadFamily = Atom.family((_nonce: number) =>
  */
 const handleUploadAtom = ShipwrightApi.runtime.fn<{
   files: File[];
-  onDone: (sessionId: string) => void;
+  onDone: (sessionId: AgentSessionId) => void;
 }>()(
   Effect.fnUntraced(function* ({ files, onDone }, ctx) {
     const nonce = Date.now();
@@ -126,7 +127,8 @@ function UploadPage() {
   const handleUpload = (files: File[]) => {
     triggerUpload({
       files,
-      onDone: (id) => navigate({ to: "/sessions/$id/confirm", params: { id } }),
+      onDone: (sessionId) =>
+        navigate({ to: "/sessions/$sessionId/confirm", params: { sessionId } }),
     });
   };
 
