@@ -1,0 +1,18 @@
+// Project-level Zed settings for shipwright
+// These override ~/.config/zed/settings.json for this workspace only.
+{
+	"lsp": {
+		// Pin the @effect/tsgo version to match what's in package.json.
+		// The effect-language-service-tsgo extension downloads and caches this
+		// binary automatically — no absolute path needed, works on any machine.
+		// Update this when you bump @effect/tsgo in package.json.
+		"effect-tsgo": {
+			"settings": {
+				"package_version": "0.24.2"
+			}
+		},
+		// oxlint discovers oxlint.config.js by walking up from each open file,
+		// so apps/api and apps/web each use their own config automatically.
+		"oxlint": {}
+	}
+}

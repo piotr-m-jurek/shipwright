@@ -1,5 +1,6 @@
 import { ShipwrightApi } from "@/store/api";
 import { sessionFilesAtomFamily } from "@/store/session-files";
+import { signOut, useSession } from "@/lib/auth-client";
 import {
   Attachment,
   AttachmentAction,
@@ -136,6 +137,24 @@ function UploadPage() {
 }
 
 // ---------------------------------------------------------------------------
+// Logout button
+// ---------------------------------------------------------------------------
+
+function LogoutButton() {
+  const { data: session } = useSession();
+  if (!session) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => signOut()}
+      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+    >
+      Sign out
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Upload form
 // ---------------------------------------------------------------------------
 
@@ -176,11 +195,14 @@ function UploadForm({ onUpload }: { onUpload: (files: File[]) => void }) {
     <div className="flex min-h-svh flex-col items-center justify-center bg-background p-8">
       <div className="w-full max-w-xl space-y-6">
         {/* Header */}
-        <div className="space-y-1">
-          <h1 className="font-mono text-sm font-medium tracking-tight">shipwright</h1>
-          <p className="text-xs text-muted-foreground">
-            Drop your project documents to begin analysis.
-          </p>
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <h1 className="font-mono text-sm font-medium tracking-tight">shipwright</h1>
+            <p className="text-xs text-muted-foreground">
+              Drop your project documents to begin analysis.
+            </p>
+          </div>
+          <LogoutButton />
         </div>
 
         {/* Drop zone */}

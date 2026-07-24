@@ -21,7 +21,7 @@ class QueryChunksToolParameters extends Schema.Class<QueryChunksToolParameters>(
       description: "Maximum number of chunks to return (1–20, default 5)",
     }),
   ),
-}) { }
+}) {}
 
 class QueryChunksToolSuccess extends Schema.Class<QueryChunksToolSuccess>("QueryChunksToolSuccess")(
   {
@@ -34,7 +34,7 @@ class QueryChunksToolSuccess extends Schema.Class<QueryChunksToolSuccess>("Query
       }),
     ),
   },
-) { }
+) {}
 
 export const QueryChunksTool = Tool.make("query-chunks", {
   description:
@@ -55,15 +55,19 @@ const requiredLayers = pipe(
 
 export const makeQueryChunksLayer = (sessionId: string) =>
   QueryChunksToolkit.toLayer(
-    Effect.gen(function*() {
+    Effect.gen(function* () {
       const db = yield* DatabaseService;
+      const chunkster = yield* ChunkingService;
 
       return QueryChunksToolkit.of({
-        "query-chunks": Effect.fn("tools/query-chunks")(function*({ query, limit }: typeof QueryChunksToolParameters.Type) {
-          const chunkster = yield* ChunkingService;
-
-          const embedding = yield* pipe(chunkster.embedText(query), Effect.catch(() => Effect.succeed([]));
-
+        "query-chunks": Effect.fn("tools/query-chunks")(function* ({
+          query,
+          limit,
+        }: typeof QueryChunksToolParameters.Type) {
+          const embedding = yield* pipe(
+            chunkster.embedText(query),
+            Effect.catch(() => Effect.succeed([])),
+          );
 
           const similarChunks = yield* db
             .getChunksBySimilarity({ sessionId, embedding, limit })

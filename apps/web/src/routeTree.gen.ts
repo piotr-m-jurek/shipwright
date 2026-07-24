@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SessionsSessionIdQuestionsRouteImport } from './routes/sessions/$sessionId/questions'
 import { Route as SessionsSessionIdOutputRouteImport } from './routes/sessions/$sessionId/output'
 import { Route as SessionsSessionIdConfirmRouteImport } from './routes/sessions/$sessionId/confirm'
 
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -39,12 +45,14 @@ const SessionsSessionIdConfirmRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/sessions/$sessionId/confirm': typeof SessionsSessionIdConfirmRoute
   '/sessions/$sessionId/output': typeof SessionsSessionIdOutputRoute
   '/sessions/$sessionId/questions': typeof SessionsSessionIdQuestionsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/sessions/$sessionId/confirm': typeof SessionsSessionIdConfirmRoute
   '/sessions/$sessionId/output': typeof SessionsSessionIdOutputRoute
   '/sessions/$sessionId/questions': typeof SessionsSessionIdQuestionsRoute
@@ -52,6 +60,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/sessions/$sessionId/confirm': typeof SessionsSessionIdConfirmRoute
   '/sessions/$sessionId/output': typeof SessionsSessionIdOutputRoute
   '/sessions/$sessionId/questions': typeof SessionsSessionIdQuestionsRoute
@@ -60,18 +69,21 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/login'
     | '/sessions/$sessionId/confirm'
     | '/sessions/$sessionId/output'
     | '/sessions/$sessionId/questions'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/login'
     | '/sessions/$sessionId/confirm'
     | '/sessions/$sessionId/output'
     | '/sessions/$sessionId/questions'
   id:
     | '__root__'
     | '/'
+    | '/login'
     | '/sessions/$sessionId/confirm'
     | '/sessions/$sessionId/output'
     | '/sessions/$sessionId/questions'
@@ -79,6 +91,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
   SessionsSessionIdConfirmRoute: typeof SessionsSessionIdConfirmRoute
   SessionsSessionIdOutputRoute: typeof SessionsSessionIdOutputRoute
   SessionsSessionIdQuestionsRoute: typeof SessionsSessionIdQuestionsRoute
@@ -86,6 +99,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -119,6 +139,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
   SessionsSessionIdConfirmRoute: SessionsSessionIdConfirmRoute,
   SessionsSessionIdOutputRoute: SessionsSessionIdOutputRoute,
   SessionsSessionIdQuestionsRoute: SessionsSessionIdQuestionsRoute,
