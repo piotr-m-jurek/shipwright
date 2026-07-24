@@ -7,7 +7,7 @@ import {
 } from "effect/unstable/http";
 import { createServer } from "node:http";
 import { HttpApiBuilder, HttpApiScalar } from "effect/unstable/httpapi";
-import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
+import { NodeHttpServer, NodeHttpServerRequest, NodeRuntime } from "@effect/platform-node";
 import path from "node:path";
 import { StorageAdapter } from "../storage/index.js";
 import { Api } from "@shipwright/shared/api.js";
@@ -34,9 +34,32 @@ const StaticFiles = HttpStaticServer.layer({
 });
 
 const AuthLayer = HttpRouter.add("*", "/api/auth/*", (req) =>
-  Effect.promise(() => auth.handler(req.source as Request)).pipe(
-    Effect.map(HttpServerResponse.fromWeb),
-  ),
+  Effect.gen(function* () {
+    const incomingMessage = NodeHttpServerRequest.toIncomingMessage(req);
+    const url = new URL(req.url, "http://localhost:3000");
+
+    const body = yield* Effect.tryPromise({
+      try: () =>
+        new Promise<Buffer | null>((resolve, reject) => {
+          const chunks: Buffer[] = [];
+          incomingMessage.on("data", (chunk: Buffer) => chunks.push(chunk));
+          incomingMessage.on("end", () =>
+            resolve(chunks.length > 0 ? Buffer.concat(chunks) : null),
+          );
+          incomingMessage.on("error", reject);
+        }),
+      catch: (e) => e as Error,
+    });
+
+    const webRequest = new Request(url, {
+      method: incomingMessage.method ?? "GET",
+      headers: incomingMessage.headers as HeadersInit,
+      body: body === null ? null : Uint8Array.from(body),
+    });
+
+    const response = yield* Effect.promise(() => auth.handler(webRequest));
+    return HttpServerResponse.fromWeb(response);
+  }),
 );
 const AllRoutes = pipe(
   Layer.unwrap(
@@ -47,7 +70,7 @@ const AllRoutes = pipe(
         ApiRoute,
         DocsRoute,
         StaticFiles,
-        HttpRouter.cors({ allowedOrigins: config.server.allowedOrigins }),
+        HttpRouter.cors({ allowedOrigins: config.server.allowedOrigins, credentials: true }),
       );
     }),
   ),

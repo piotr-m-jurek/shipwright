@@ -18,6 +18,7 @@ import {
   agentSessions,
   questions as questionsTable,
   answers as answersTable,
+  users,
 } from "../../db/schema.js";
 import { eq, count } from "drizzle-orm";
 import { DatabaseService } from "../../db/queries.js";
@@ -37,6 +38,26 @@ const runtime = ManagedRuntime.make(
 
 const runDb = (effect: Effect.Effect<any, any, DatabaseService>) => runtime.runPromise(effect);
 const runRaw = (effect: Effect.Effect<any, any, DB>) => runtime.runPromise(effect);
+
+const TEST_USER_ID = "test-user-phase4";
+
+async function insertTestUser() {
+  await runRaw(
+    Effect.flatMap(DB, (db) =>
+      db
+        .insert(users)
+        .values({
+          id: TEST_USER_ID,
+          name: "Test User",
+          email: "test-phase4@shipwright.local",
+          emailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .onConflictDoNothing(),
+    ),
+  );
+}
 
 const BASE = "http://localhost:3000/api";
 const CORPUS = resolve(REPO_ROOT, "docs/test_corpus");
@@ -93,6 +114,8 @@ async function pollForStatus(
 
 console.log("\n=== Phase 4 Gate Test ===\n");
 
+await insertTestUser();
+
 // ── 1. Insert session + docs + chunks directly (bypass S3/embedder) ────────
 console.log("1. Setting up test session with corpus documents");
 
@@ -104,7 +127,9 @@ const corpusFiles = [
 ];
 
 const session = await runDb(
-  Effect.flatMap(DatabaseService, (svc) => svc.createAgentSession({ status: "processing" })),
+  Effect.flatMap(DatabaseService, (svc) =>
+    svc.createAgentSession({ userId: TEST_USER_ID, status: "processing" }),
+  ),
 );
 const sessionId = session.id;
 

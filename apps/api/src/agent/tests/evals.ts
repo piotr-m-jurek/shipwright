@@ -32,6 +32,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../../../");
 
 import { Effect, Layer, ManagedRuntime, pipe, Schema, Stream } from "effect";
+import { DB, AppDBLiveLayer } from "../../db/index.js";
+import { users } from "../../db/schema.js";
 import { LanguageModel, Prompt, Response } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
 
@@ -55,10 +57,30 @@ import {
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, DatabaseService.layer),
+    Layer.mergeAll(StorageAdapter.layer, DatabaseService.layer, AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
 );
+
+const TEST_USER_ID = "test-user-evals";
+
+async function insertTestUser() {
+  await runtime.runPromise(
+    Effect.flatMap(DB, (db) =>
+      db
+        .insert(users)
+        .values({
+          id: TEST_USER_ID,
+          name: "Test User",
+          email: "test-evals@shipwright.local",
+          emailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .onConflictDoNothing(),
+    ),
+  );
+}
 
 // ── Corpus setup ───────────────────────────────────────────────────────────
 
@@ -175,10 +197,12 @@ function checkPlantedIssues(
 async function runPartA(): Promise<boolean> {
   console.log("\n── Part A: Conflict detection (deterministic) ──────────────");
 
+  await insertTestUser();
+
   const sessionId = await runEffect(
-    Effect.flatMap(DatabaseService, (db) => db.createAgentSession({ status: "processing" })).pipe(
-      Effect.map((s) => s.id),
-    ),
+    Effect.flatMap(DatabaseService, (db) =>
+      db.createAgentSession({ status: "processing", userId: TEST_USER_ID }),
+    ).pipe(Effect.map((s) => s.id)),
   );
 
   try {
@@ -465,12 +489,12 @@ async function main() {
       const [briefRow, prdRow, summaries] = await Promise.all([
         runEffect(
           Effect.flatMap(DatabaseService, (db) =>
-            db.getLatestOutputByType(existingSessionId, "project_brief"),
+            db.getLatestOutputByType({ sessionId: existingSessionId, type: "project_brief" }),
           ),
         ),
         runEffect(
           Effect.flatMap(DatabaseService, (db) =>
-            db.getLatestOutputByType(existingSessionId, "implementation_prd"),
+            db.getLatestOutputByType({ sessionId: existingSessionId, type: "implementation_prd" }),
           ),
         ),
         runEffect(

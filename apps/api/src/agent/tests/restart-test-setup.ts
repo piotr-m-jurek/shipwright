@@ -11,6 +11,8 @@ import { fileURLToPath } from "node:url";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { StorageAdapter } from "../../storage/index.js";
 import { DatabaseService } from "../../db/queries.js";
+import { DB, AppDBLiveLayer } from "../../db/index.js";
+import { users } from "../../db/schema.js";
 import { parseDocument } from "../parsers.js";
 import { estimateTokenCount } from "../estimate-token-count.js";
 import { ConfigService } from "../../config/config.js";
@@ -19,14 +21,36 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../../");
 
 const runtime = ManagedRuntime.make(
-  Layer.mergeAll(StorageAdapter.layer, ConfigService.layer, DatabaseService.layer) as Layer.Layer<
-    StorageAdapter | ConfigService | DatabaseService,
-    never,
-    never
-  >,
+  Layer.mergeAll(
+    StorageAdapter.layer,
+    ConfigService.layer,
+    DatabaseService.layer,
+    AppDBLiveLayer,
+  ) as Layer.Layer<StorageAdapter | ConfigService | DatabaseService | DB, never, never>,
 );
 
 const db = (effect: Effect.Effect<any, any, DatabaseService>) => runtime.runPromise(effect);
+const dbRaw = (effect: Effect.Effect<any, any, DB>) => runtime.runPromise(effect);
+
+const TEST_USER_ID = "test-user-restart";
+
+async function insertTestUser() {
+  await dbRaw(
+    Effect.flatMap(DB, (d) =>
+      d
+        .insert(users)
+        .values({
+          id: TEST_USER_ID,
+          name: "Test User",
+          email: "test-restart@shipwright.local",
+          emailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .onConflictDoNothing(),
+    ),
+  );
+}
 
 const CORPUS = resolve(REPO_ROOT, "docs/test_corpus");
 const BASE = "http://localhost:3000/api";
@@ -48,8 +72,11 @@ async function req(method: string, path: string, body?: unknown) {
 }
 
 console.log("Creating session + inserting corpus chunks...");
+await insertTestUser();
 const session = await db(
-  Effect.flatMap(DatabaseService, (svc) => svc.createAgentSession({ status: "processing" })),
+  Effect.flatMap(DatabaseService, (svc) =>
+    svc.createAgentSession({ status: "processing", userId: TEST_USER_ID }),
+  ),
 );
 const sessionId = session.id;
 

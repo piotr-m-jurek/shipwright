@@ -26,6 +26,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../../../");
 
 import { Effect, Layer, ManagedRuntime, pipe } from "effect";
+import { DB, AppDBLiveLayer } from "../../db/index.js";
+import { users } from "../../db/schema.js";
 import { runChallenger } from "../challenger.js";
 import { parseDocument } from "../parsers.js";
 import { summarizeAllDocuments } from "../summarizer.js";
@@ -37,13 +39,37 @@ import { AnthropicClientLayer } from "../providers.js";
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, DatabaseService.layer),
+    Layer.mergeAll(StorageAdapter.layer, DatabaseService.layer, AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
 );
 
 function runDb<A>(effect: Effect.Effect<A, any, DatabaseService>): Promise<A> {
   return runtime.runPromise(effect);
+}
+
+function runRaw<A>(effect: Effect.Effect<A, any, DB>): Promise<A> {
+  return runtime.runPromise(effect);
+}
+
+const TEST_USER_ID = "test-user-corpus";
+
+async function insertTestUser() {
+  await runRaw(
+    Effect.flatMap(DB, (db) =>
+      db
+        .insert(users)
+        .values({
+          id: TEST_USER_ID,
+          name: "Test User",
+          email: "test-corpus@shipwright.local",
+          emailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .onConflictDoNothing(),
+    ),
+  );
 }
 
 const CORPUS_DIR = resolve(REPO_ROOT, "docs/test_corpus");
@@ -59,8 +85,12 @@ const CORPUS_FILES: { filename: string }[] = [
 async function main() {
   console.log("Setting up test session...");
 
+  await insertTestUser();
+
   const session = await runDb(
-    Effect.flatMap(DatabaseService, (svc) => svc.createAgentSession({ status: "processing" })),
+    Effect.flatMap(DatabaseService, (svc) =>
+      svc.createAgentSession({ status: "processing", userId: TEST_USER_ID }),
+    ),
   );
   const sessionId = session.id;
   console.log(`Session: ${sessionId}`);

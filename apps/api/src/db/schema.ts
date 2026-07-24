@@ -30,7 +30,7 @@ export const users = pgTable("users", {
     .notNull(),
 });
 
-export const authSessions = pgTable(
+export const sessions = pgTable(
   "sessions",
   {
     id: text("id").primaryKey(),
@@ -284,7 +284,7 @@ export const outputs = pgTable("outputs", {
 export const relations = defineRelations(
   {
     users,
-    authSessions,
+    sessions,
     accounts,
     verifications,
     agentSessions,
@@ -300,11 +300,11 @@ export const relations = defineRelations(
   (r) => ({
     users: {
       agentSessions: r.many.agentSessions(),
-      authSessions: r.many.authSessions(),
+      authSessions: r.many.sessions(),
       accounts: r.many.accounts(),
     },
     authSessions: {
-      user: r.one.users({ from: r.authSessions.userId, to: r.users.id }),
+      user: r.one.users({ from: r.sessions.userId, to: r.users.id }),
     },
     accounts: {
       user: r.one.users({ from: r.accounts.userId, to: r.users.id }),

@@ -15,7 +15,7 @@ import { Effect, Layer, ManagedRuntime, pipe } from "effect";
 import { StorageAdapter } from "../../storage/index.js";
 import { DB, AppDBLiveLayer } from "../../db/index.js";
 import { DatabaseService } from "../../db/queries.js";
-import { outputs } from "../../db/schema.js";
+import { outputs, users } from "../../db/schema.js";
 import { eq } from "drizzle-orm";
 import { parseDocument } from "../parsers.js";
 import { estimateTokenCount } from "../estimate-token-count.js";
@@ -30,6 +30,26 @@ const runtime = ManagedRuntime.make(
 
 const runDb = (effect: Effect.Effect<any, any, DatabaseService>) => runtime.runPromise(effect);
 const runRaw = (effect: Effect.Effect<any, any, DB>) => runtime.runPromise(effect);
+
+const TEST_USER_ID = "test-user-phase5";
+
+async function insertTestUser() {
+  await runRaw(
+    Effect.flatMap(DB, (db) =>
+      db
+        .insert(users)
+        .values({
+          id: TEST_USER_ID,
+          name: "Test User",
+          email: "test-phase5@shipwright.local",
+          emailVerified: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .onConflictDoNothing(),
+    ),
+  );
+}
 
 const CORPUS = resolve(REPO_ROOT, "docs/test_corpus");
 const BASE = "http://localhost:3000/api";
@@ -81,6 +101,8 @@ async function poll(sessionId: string, target: string, maxMs = 180000) {
 
 console.log("\n=== Phase 5 Gate Test ===\n");
 
+await insertTestUser();
+
 // ── Setup: insert session + corpus chunks ──────────────────────────────────
 console.log("1. Setting up test session");
 
@@ -92,7 +114,9 @@ const files = [
 ];
 
 const session = await runDb(
-  Effect.flatMap(DatabaseService, (svc) => svc.createAgentSession({ status: "processing" })),
+  Effect.flatMap(DatabaseService, (svc) =>
+    svc.createAgentSession({ status: "processing", userId: TEST_USER_ID }),
+  ),
 );
 const sessionId = session.id;
 
