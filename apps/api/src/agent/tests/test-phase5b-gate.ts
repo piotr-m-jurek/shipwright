@@ -20,7 +20,7 @@ import { DatabaseService } from "../../db/queries.js";
 import { agentSessions, outputs, users } from "../../db/schema.js";
 import { eq } from "drizzle-orm";
 import { parseDocument } from "../parsers.js";
-import { estimateTokenCount } from "../estimate-token-count.js";
+import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { ConfigService } from "../../config/config.js";
 
 const runtime = ManagedRuntime.make(
@@ -73,7 +73,7 @@ async function req(method: string, path: string, body?: unknown) {
   const res = await fetch(BASE + path, {
     method,
     headers: body ? { "Content-Type": "application/json" } : {},
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? JSON.stringify(body) : null,
   });
   try {
     return { status: res.status, body: await res.json() };
@@ -146,7 +146,7 @@ for (const { filename } of files) {
           content: parsed.text,
           chunkIndex: 0,
           charOffset: 0,
-          embedding: new Array(1536).fill(0),
+          embedding: Array.from({ length: 1536 }, () => 0),
         },
       ]),
     ),

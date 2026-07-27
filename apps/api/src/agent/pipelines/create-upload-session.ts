@@ -1,6 +1,6 @@
-import { DatabaseService } from "../db/queries.js";
+import { DatabaseService } from "../../db/queries.ts";
 import { CreateAgentSessionRequest } from "@shipwright/shared/schemas/api.js";
-import { StorageAdapter } from "../storage/index.js";
+import { StorageAdapter } from "../../storage/index.ts";
 import { Effect } from "effect";
 
 export const createUploadSession = Effect.fn("agent/createUploadSession")(function* (payload: {

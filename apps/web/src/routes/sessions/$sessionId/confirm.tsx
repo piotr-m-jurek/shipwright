@@ -20,6 +20,7 @@ import { useDropzone } from "react-dropzone";
 import { cn } from "@/lib/utils";
 import { ConfirmUploadRequest, CreateAgentSessionRequest } from "@shipwright/shared/schemas/api";
 import { AgentSessionId } from "@shipwright/shared/domain/ids";
+import { formatBytes } from "@/lib/format-bytes";
 
 export const Route = createFileRoute("/sessions/$sessionId/confirm")({
   component: RouteComponent,
@@ -327,12 +328,6 @@ function AdditionalUploadSection({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function fileIcon(file: File) {
   if (file.type.startsWith("text/") || file.name.endsWith(".md") || file.name.endsWith(".txt")) {

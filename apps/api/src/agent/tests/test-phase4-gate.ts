@@ -24,7 +24,7 @@ import { eq, count } from "drizzle-orm";
 import { DatabaseService } from "../../db/queries.js";
 import { DB, AppDBLiveLayer } from "../../db/index.js";
 import { parseDocument } from "../parsers.js";
-import { estimateTokenCount } from "../estimate-token-count.js";
+import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { Effect, Layer, ManagedRuntime, pipe } from "effect";
 import { StorageAdapter } from "../../storage/index.js";
 import { ConfigService } from "../../config/config.js";
@@ -78,7 +78,7 @@ async function req(method: string, path: string, body?: unknown) {
   const res = await fetch(BASE + path, {
     method,
     headers: body ? { "Content-Type": "application/json" } : {},
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? JSON.stringify(body) : null,
   });
   const text = await res.text();
   try {
@@ -159,7 +159,7 @@ for (const { filename } of corpusFiles) {
           content: parsed.text,
           chunkIndex: 0,
           charOffset: 0,
-          embedding: new Array(1536).fill(0),
+          embedding: Array.from({ length: 1536 }, () => 0),
         },
       ]),
     ),

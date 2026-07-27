@@ -1,9 +1,9 @@
 import { Effect, Layer, pipe, Schema } from "effect";
-import { EmbeddingModel, Tool, Toolkit } from "effect/unstable/ai";
+import { Tool, Toolkit } from "effect/unstable/ai";
 import { OpenAiEmbeddingModel } from "@effect/ai-openai";
 import { DatabaseService } from "../../db/queries.js";
 import { OpenAiClientLayer } from "../providers.js";
-import { ChunkingService } from "../chunking-service.ts";
+import { EmbeddingService } from "../embedding-service.ts";
 
 class QueryChunksToolParameters extends Schema.Class<QueryChunksToolParameters>(
   "QueryChunksToolParameters",
@@ -57,7 +57,7 @@ export const makeQueryChunksLayer = (sessionId: string) =>
   QueryChunksToolkit.toLayer(
     Effect.gen(function* () {
       const db = yield* DatabaseService;
-      const chunkster = yield* ChunkingService;
+      const chunkster = yield* EmbeddingService;
 
       return QueryChunksToolkit.of({
         "query-chunks": Effect.fn("tools/query-chunks")(function* ({

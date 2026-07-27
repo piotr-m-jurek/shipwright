@@ -60,7 +60,7 @@ pnpm --filter @shipwright/api db:push             apply DB schema changes
 
 **Note:** CLI (original Phase 7) is cut. Phase 9 (Effect rewrite) was done before Phase 7 (Monorepo) — both complete.
 
-**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE · Phase 9 COMPLETE · Phase 7 COMPLETE · Phase 8 PARTIALLY COMPLETE (Part A 5/5 ✓) · Phase 10 COMPLETE (gate passed 17.07.2026) · Phase 11 COMPLETE (implementation done, gate deferred pending OpenAI quota) · Phase 12 COMPLETE (gate passed 24.07.2026)
+**Current status:** Phase 3 COMPLETE · Phase 4 COMPLETE · Phase 5 COMPLETE · Phase 5b COMPLETE · Phase 6 COMPLETE · Phase 9 COMPLETE · Phase 7 COMPLETE · Phase 8 PARTIALLY COMPLETE (Part A 5/5 ✓) · Phase 10 COMPLETE (gate passed 17.07.2026) · Phase 11 COMPLETE (implementation done, gate deferred pending OpenAI quota) · Phase 12 COMPLETE (gate passed 24.07.2026) · Agent refactor COMPLETE (24.07.2026)
 
 ---
 
@@ -617,3 +617,38 @@ Unauthenticated GET /api/sessions/:id → 401 ✓
 GET /health (no auth) → 200 ✓
 Browser: upload → confirm → questions → outputs → download ✓
 ```
+
+---
+
+## Agent + DB Refactor (COMPLETE — 24.07.2026)
+
+### What was restructured
+
+**`apps/api/src/agent/` — pipeline split:**
+
+`session-actor.ts` was a god object (424 lines) containing the actor registry, snapshot persistence, and all five pipeline functions. Split into:
+
+| File | Responsibility |
+|---|---|
+| `session-actor.ts` (75 lines) | Actor registry, `getOrRestoreActor`, `wireSnapshotPersistence` only |
+| `pipelines/run-session-workflow.ts` | `runSessionWorkflow` — summarize → SUMMARIZATION_DONE → challenger → question generator → ANALYSIS_DONE |
+| `pipelines/generation.ts` | `runGeneratingPipeline`, `runRevisionPipeline`, `startRevision` |
+| `pipelines/submit-answers.ts` | `submitAnswers` — answer persistence, sufficiency heuristic, generating pipeline fork |
+| `pipelines/create-upload-session.ts` | Moved from `handlers/` — session + presigned URL creation |
+| `pipelines/confirm-upload-results.ts` | Moved from `handlers/` — S3 HeadObject checks |
+| `pipelines/process-uploaded-documents.ts` | Moved from root — parse → chunk → embed → store |
+
+Pre-existing structure retained: `writers/`, `tools/`, `lib/`, `machine.ts`, `providers.ts`, `schemas.ts`, `embedding-service.ts`, `parsers.ts`.
+
+**`apps/api/src/db/` — types extracted:**
+
+`types.ts` extracted from `queries.ts` — all `Insert*` / `Select*` type aliases in one place. `queries.ts` stays as a single `DatabaseService` for now; domain service split deferred to backlog.
+
+**Schema fix:**
+
+`defineRelations` was passing `sessions: authSessions` (wrong key) — Drizzle couldn't resolve the reverse relation from `users → authSessions`. Fixed: schema map now uses `authSessions` as key, all `r.sessions.*` references updated to `r.authSessions.*`.
+
+### Backlog items remaining
+
+- Split `DatabaseService` into domain services (`AgentSessionService`, `DocumentService`, `ChunkService`, `SummaryService`, `ClarificationService`, `OutputService`)
+- Branded ID types for `SessionId`, `UserId`, `DocumentId`, etc.

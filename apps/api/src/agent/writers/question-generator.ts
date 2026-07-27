@@ -1,11 +1,11 @@
 import { Effect, pipe } from "effect";
-import { Spans } from "../observability/spans.js";
-import { ClarifyingQuestionsEffectSchema, type GapReportEffect } from "./schemas.js";
-import { TextGenerationError } from "./errors.js";
-import type { ReconstructedSummary } from "../db/queries.js";
+import { Spans } from "../../observability/spans.ts";
+import { ClarifyingQuestionsEffectSchema, type GapReportEffect } from "../schemas.ts";
+import { TextGenerationError } from "../errors.ts";
+import type { ReconstructedSummary } from "../../db/queries.ts";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
-import { AnthropicClientLayer } from "./providers.js";
+import { AnthropicClientLayer } from "../providers.ts";
 
 const QuestionGeneratorSystemPrompt = `You are a requirements analyst preparing clarifying questions for a project team.
 

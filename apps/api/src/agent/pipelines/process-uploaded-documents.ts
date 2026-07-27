@@ -1,12 +1,12 @@
-import { StorageAdapter } from "../storage/index.js";
-import { parseDocument } from "./parsers.js";
-import { estimateTokenCount } from "./estimate-token-count.js";
-import { chunkDocument } from "./chunker.js";
+import { StorageAdapter } from "../../storage/index.ts";
+import { parseDocument } from "../parsers.ts";
+import { estimateTokenCount } from "../lib/estimate-token-count.ts";
+import { chunkDocument } from "../lib/chunker.ts";
 import { Effect, Schema, Array, pipe } from "effect";
-import { DatabaseService } from "../db/queries.js";
+import { DatabaseService } from "../../db/queries.ts";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { ChunkingService } from "./chunking-service.ts";
+import { EmbeddingService } from "../embedding-service.ts";
 
 // TODO: actually throw those errors, not DB errors
 export class DocumentNotFoundError extends Schema.TaggedErrorClass<DocumentNotFoundError>()(
@@ -32,7 +32,7 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
   sessionId: AgentSessionId;
 }) {
   const storage = yield* StorageAdapter;
-  const chunkerton = yield* ChunkingService;
+  const chunkerton = yield* EmbeddingService;
   const db = yield* DatabaseService;
   yield* Effect.forEach(
     uploads,

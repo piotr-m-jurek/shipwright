@@ -1,11 +1,11 @@
 import { Effect, Schema, Stream } from "effect";
-import type { ReconstructedSummary } from "../db/queries.js";
-import { Spans } from "../observability/spans.js";
+import type { ReconstructedSummary } from "../../db/queries.ts";
+import { Spans } from "../../observability/spans.ts";
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
 import "@effect/ai-anthropic/AnthropicLanguageModel";
-import { AnthropicClientLayer } from "./providers.js";
-import { makeQueryChunksLayer, QueryChunksToolkit } from "./tools/query-chunks.js";
+import { AnthropicClientLayer } from "../providers.ts";
+import { makeQueryChunksLayer, QueryChunksToolkit } from "../tools/query-chunks.ts";
 
 export class RevisionWriterError extends Schema.TaggedErrorClass<RevisionWriterError>()(
   "shipwright/agent/RevisionWriterError",

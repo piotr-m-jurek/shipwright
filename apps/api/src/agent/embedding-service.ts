@@ -2,7 +2,7 @@ import { Context, Effect, Layer, pipe, Schema } from "effect";
 import { EmbeddingModel } from "effect/unstable/ai";
 
 export class EmbeddingError extends Schema.TaggedErrorClass<EmbeddingError>()(
-  "shipwright/agent/ChunkingService/EmbeddingError",
+  "shipwright/agent/EmbeddingService/EmbeddingError",
   { cause: Schema.Defect() },
 ) {}
 
@@ -11,12 +11,12 @@ interface Interface {
   embedText: (text: string) => Effect.Effect<readonly number[], EmbeddingError>;
 }
 
-export class ChunkingService extends Context.Service<ChunkingService, Interface>()(
-  "ChunkingService",
+export class EmbeddingService extends Context.Service<EmbeddingService, Interface>()(
+  "Embeddingservice",
 ) {}
 
 export const layer = Layer.effect(
-  ChunkingService,
+  EmbeddingService,
   Effect.gen(function* () {
     const model = yield* EmbeddingModel.EmbeddingModel;
 
@@ -36,9 +36,6 @@ export const layer = Layer.effect(
       return res.vector;
     });
 
-    return {
-      embedChunks,
-      embedText,
-    };
+    return { embedChunks, embedText };
   }),
 );

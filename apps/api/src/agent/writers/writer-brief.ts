@@ -1,12 +1,12 @@
 import { Effect, Schema, Stream } from "effect";
-import { Spans } from "../observability/spans.js";
-import type { ReconstructedSummary } from "../db/queries.js";
+import { Spans } from "../../observability/spans.ts";
+import type { ReconstructedSummary } from "../../db/queries.ts";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
 import "@effect/ai-anthropic/AnthropicLanguageModel";
-import { AnthropicClientLayer } from "./providers.js";
-import { makeQueryChunksLayer, QueryChunksToolkit } from "./tools/query-chunks.js";
+import { AnthropicClientLayer } from "../providers.ts";
+import { makeQueryChunksLayer, QueryChunksToolkit } from "../tools/query-chunks.ts";
 
 export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(
   "shipwright/agent/BriefWriterError",

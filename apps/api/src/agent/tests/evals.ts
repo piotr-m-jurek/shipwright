@@ -37,10 +37,10 @@ import { users } from "../../db/schema.js";
 import { LanguageModel, Prompt, Response } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
 
-import { runChallenger } from "../challenger.js";
+import { runChallenger } from "../writers/challenger.ts";
 import { parseDocument } from "../parsers.js";
-import { summarizeAllDocuments } from "../summarizer.js";
-import { estimateTokenCount } from "../estimate-token-count.js";
+import { summarizeAllDocuments } from "../writers/summarizer.ts";
+import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { DatabaseService } from "../../db/queries.js";
 import { StorageAdapter } from "../../storage/index.js";
 import { ConfigService } from "../../config/config.js";

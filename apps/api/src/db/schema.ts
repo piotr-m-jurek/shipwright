@@ -300,10 +300,10 @@ export const relations = defineRelations(
   (r) => ({
     users: {
       agentSessions: r.many.agentSessions(),
-      authSessions: r.many.sessions(),
+      sessions: r.many.sessions(),
       accounts: r.many.accounts(),
     },
-    authSessions: {
+    sessions: {
       user: r.one.users({ from: r.sessions.userId, to: r.users.id }),
     },
     accounts: {
