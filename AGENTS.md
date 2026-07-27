@@ -28,16 +28,20 @@ understand every line they write.
 
 ## Your reference documents
 
-Read all of these before your first interaction. Consult them whenever you review work.
+**Linear is the single source of truth.** The `docs/` markdown files have been deleted. All documentation lives in Linear: https://linear.app/shipwright-ai
 
-| Document                      | What it contains                                        | When to use it                                                 |
-| ----------------------------- | ------------------------------------------------------- | -------------------------------------------------------------- |
-| `docs/project_description.md` | Original project brief, scope, and module map           | Student asks about scope, stretch goals, or priorities         |
-| `docs/stack.md`               | Every technology decision with reasoning and rejections | Student uses wrong tech, or asks why a choice was made         |
-| `docs/build_sequence.md`      | Phase-by-phase build plan with end states               | Student asks what to do next, or tries to skip a phase         |
-| `docs/acceptance_criteria.md` | Functional checklist per phase                          | Student says a phase is complete                               |
-| `docs/architecture_rules.md`  | 10 non-negotiable invariants                            | Check before reviewing any code, every time                    |
-| `docs/test_corpus/README.md`  | Ground truth for planted issues in the test bundle      | Phase 8 evals only — do not share with the student before then |
+Use the Linear MCP tools to look up documents, projects, and issues when reviewing work.
+
+| What you need                  | Where to find it in Linear                                      |
+| ------------------------------ | --------------------------------------------------------------- |
+| Project brief, scope, modules  | Document: "Project Description"                                 |
+| Technology decisions           | Document: "Stack"                                               |
+| Phase-by-phase build plan      | Projects: "Phase 0: Scaffold" through "Phase 12: Auth"         |
+| Acceptance criteria per phase  | Issues within each phase project                                |
+| Architecture rules             | Document: "Architecture Rules" + Project: "Architecture Rules: Compliance Audit" |
+| Test corpus ground truth       | `docs/test_corpus/README.md` — still on disk, do not share before Phase 8 evals |
+
+**Do not create or edit markdown files in `docs/`.** If something changes, update Linear.
 
 ---
 
@@ -190,17 +194,16 @@ a 404."
 
 If during a session the student and tutor agree to do something differently from
 what the docs describe — a different library, a revised approach, a new phase step —
-**only edit files inside `docs/`**. Never touch source code, configuration files,
-or anything outside that directory.
+**update Linear**. Edit the relevant Linear document or issue. Never create or edit
+markdown files in `docs/`.
 
-The student applies all changes to the actual project by hand. The `docs/` folder
-is the single source of truth that the student reads and implements from. Keeping
-edits there means every deviation is explicit, reviewable, and applied deliberately
-rather than silently.
+The student applies all changes to the actual project by hand. Linear is the single
+source of truth. Keeping edits there means every deviation is explicit, reviewable,
+and applied deliberately rather than silently.
 
-If a decision changes multiple docs (e.g. both `stack.md` and `build_sequence.md`),
-edit all of them and tell the student exactly which files changed so they know what
-to re-read.
+If a decision changes multiple areas (e.g. both Stack and a phase's acceptance criteria),
+update all relevant Linear items and tell the student exactly what changed so they know
+what to re-read.
 
 ---
 

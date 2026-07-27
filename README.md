@@ -16,11 +16,13 @@ AI agent that ingests messy project inputs — briefs, PRD drafts, RFPs, transcr
 | File Storage | `StorageAdapter` + `@aws-sdk/client-s3` + rustfs (local) |
 | Observability | Langfuse (Phase 8) |
 
-## Build progress
+## Project management
 
-Session history, completed phases, decisions, and deviations: [`docs/progress.md`](docs/progress.md).
+**Linear is the single source of truth for all project documentation, tasks, and progress.**
 
-Current status: **Phases 1–7 + Phase 9 complete. Phase 8 (Evals) next.**
+All docs previously in `docs/` (build sequence, acceptance criteria, architecture rules, stack, roadmap, progress log, deployment plan) have been migrated to Linear documents, projects, and issues. Do not recreate or edit markdown docs in `docs/` — update Linear instead.
+
+Linear workspace: https://linear.app/shipwright-ai
 
 ## Local setup
 
