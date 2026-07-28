@@ -9,6 +9,6 @@
     "noImplicitOverride": true,
     "declarationMap": true,
     "sourceMap": true,
-    "plugins": [{ "name": "@effect/tsgo" }]
+    "plugins": [{ "name": "@effect/language-service" }]
   }
 }

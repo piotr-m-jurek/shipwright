@@ -3,7 +3,13 @@
   "compilerOptions": {
     "moduleResolution": "bundler",
     "module": "preserve",
-    "verbatimModuleSyntax": true,
+    // TODO: restore verbatimModuleSyntax: true once TypeScript-Go fixes
+    // package.json discovery in LSP mode. Right now tsgo running from the
+    // monorepo root misclassifies every .ts file as CommonJS (ignoring
+    // apps/web/package.json "type":"module"), which causes verbatimModuleSyntax
+    // to fire on every import/export. moduleDetection:"force" does not help
+    // because tsgo 7.x does not implement it yet.
+    // "verbatimModuleSyntax": true,
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "noEmit": true,

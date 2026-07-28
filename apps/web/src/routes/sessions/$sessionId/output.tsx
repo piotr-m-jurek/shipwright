@@ -58,7 +58,7 @@ function useOutputPolling(sessionId: AgentSessionId) {
 
   const pollingAtom = useMemo(
     () => (hasOutputs ? outputAtom : Atom.withRefresh(outputAtom, "3 seconds")),
-    [hasOutputs],
+    [hasOutputs, outputAtom],
   );
   return useAtomValue(pollingAtom);
 }

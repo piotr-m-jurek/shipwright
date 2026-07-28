@@ -20,7 +20,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const model = yield* EmbeddingModel.EmbeddingModel;
 
-    const embedChunks = Effect.fn("EmbedChunks")(function* (chunks) {
+    const embedChunks = Effect.fn("EmbedChunks")(function* (chunks: string[]) {
       const res = yield* pipe(
         model.embedMany(chunks),
         Effect.mapError((cause) => new EmbeddingError({ cause })),
@@ -28,7 +28,7 @@ export const layer = Layer.effect(
       return res.embeddings.map(({ vector }) => vector);
     });
 
-    const embedText = Effect.fn("EmbedText")(function* (text) {
+    const embedText = Effect.fn("EmbedText")(function* (text: string) {
       const res = yield* pipe(
         model.embed(text),
         Effect.mapError((cause) => new EmbeddingError({ cause })),

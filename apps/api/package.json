@@ -15,7 +15,7 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "lint": "oxlint -c oxlint.config.js .",
+    "lint": "oxlint ."
     "fmt": "oxfmt src"
   },
   "dependencies": {

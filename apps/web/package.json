@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "oxlint -c oxlint.config.js src",
+    "lint": "oxlint src"
     "fmt": "oxfmt src"
   },
   "dependencies": {
