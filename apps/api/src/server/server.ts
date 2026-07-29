@@ -20,7 +20,11 @@ import { auth } from "../auth/auth.js";
 import { AuthorizationLayer } from "./authorization.js";
 import { EmbeddingService } from "../agent/embedding-service.ts";
 import { OpenAiEmbeddingModel } from "@effect/ai-openai";
-import { AnthropicClientLayer, OpenAiClientLayer } from "../agent/providers.ts";
+import {
+  AnthropicClientLayer,
+  OpenAiClientLayer,
+  OpenAiEmbeddingModelLayer,
+} from "../agent/providers.ts";
 
 export const ApiRoute = pipe(
   HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }),
@@ -87,11 +91,6 @@ const OtlpLayerProvided = pipe(
   Layer.provide(FetchHttpClient.layer),
 );
 
-const OpenAiEmbeddingModelLayer = pipe(
-  OpenAiEmbeddingModel.model("text-embedding-3-small", { dimensions: 1536 }),
-  Layer.provide(OpenAiClientLayer),
-);
-
 const EmbeddingServiceLayer = EmbeddingService.layer.pipe(
   Layer.provideMerge(OpenAiEmbeddingModelLayer),
 );
@@ -101,12 +100,13 @@ const ServiceLayer = pipe(
     DatabaseService.layer,
     OtlpLayerProvided,
     EmbeddingServiceLayer,
+    AnthropicClientLayer,
     /* , MessageQueue.layer */
   ),
   Layer.provideMerge(AppDBLayer),
-  Layer.provideMerge(NodeHttpServer.layer(createServer, { port: 3000 })),
   Layer.provideMerge(StorageAdapter.layer),
   Layer.provideMerge(ConfigService.layer),
+  Layer.provideMerge(NodeHttpServer.layer(createServer, { port: 3000 })),
 );
 
 const HttpServerLayer = HttpRouter.serve(AllRoutes).pipe(Layer.provide(ServiceLayer));
