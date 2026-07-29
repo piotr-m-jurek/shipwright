@@ -27,19 +27,11 @@
  * Postgres errors are unexpected infrastructure failures and are treated as
  * defects (Effect.orDie). Only `DeliveryTagNotFoundError` is a typed error.
  */
-import {
-  Context,
-  Effect,
-  Fiber,
-  FiberSet,
-  Layer,
-  Queue,
-  Schema,
-  pipe,
-} from "effect";
+import { Context, Effect, Fiber, FiberSet, Layer, Queue, Schema, pipe } from "effect";
 import { and, eq, isNull, lte, or } from "drizzle-orm";
 import { AppDBLayer, DB } from "../db/index.js";
 import { queueMessages } from "./schema.js";
+import { ConfigService } from "../config/config.ts";
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
@@ -52,45 +44,45 @@ export class DeliveryTagNotFoundError extends Schema.TaggedErrorClass<DeliveryTa
 
 export interface PublishOptions {
   /** Routing key — passed through for consumer filtering */
-  readonly routingKey?: string
+  readonly routingKey?: string;
   /** Max delivery attempts before dead-lettering. Default: 3 */
-  readonly maxAttempts?: number
+  readonly maxAttempts?: number;
   /** Delay first delivery until this date */
-  readonly visibleAfter?: Date
+  readonly visibleAfter?: Date;
 }
 
 /** A message delivered to a consumer handler. */
 export interface Delivery<A> {
-  readonly deliveryTag: string
-  readonly payload: A
-  readonly attempts: number
-  readonly routingKey: string | undefined
+  readonly deliveryTag: string;
+  readonly payload: A;
+  readonly attempts: number;
+  readonly routingKey: string | undefined;
   /** Acknowledge: mark the message done in Postgres. */
-  readonly ack: Effect.Effect<void>
+  readonly ack: Effect.Effect<void>;
   /**
    * Negative-acknowledge.
    * @param opts.requeue - re-enqueue for retry (default true).
    *   Pass false to dead-letter immediately.
    * @param opts.delayMs - optional visibility delay in ms before re-delivery.
    */
-  readonly nack: (opts?: { requeue?: boolean; delayMs?: number }) => Effect.Effect<void>
+  readonly nack: (opts?: { requeue?: boolean; delayMs?: number }) => Effect.Effect<void>;
 }
 
 /** Handle returned by `consume`. Call `interrupt` to stop the worker fiber. */
 export interface ConsumerHandle {
-  readonly interrupt: Effect.Effect<void>
+  readonly interrupt: Effect.Effect<void>;
 }
 
 // ─── Internal envelope flowing through the in-memory queue ───────────────────
 
 interface Envelope {
-  readonly messageId: string
-  readonly deliveryTag: string
-  readonly queue: string
-  readonly routingKey: string | undefined
+  readonly messageId: string;
+  readonly deliveryTag: string;
+  readonly queue: string;
+  readonly routingKey: string | undefined;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly payload: any
-  readonly attempts: number
+  readonly payload: any;
+  readonly attempts: number;
 }
 
 // ─── Service interface ────────────────────────────────────────────────────────
@@ -101,7 +93,7 @@ interface MessageQueueInterface {
    * Inserts a durable row in Postgres then offers to the in-memory queue.
    * Returns the Postgres row id.
    */
-  publish<A>(queue: string, payload: A, opts?: PublishOptions): Effect.Effect<string>
+  publish<A>(queue: string, payload: A, opts?: PublishOptions): Effect.Effect<string>;
 
   /**
    * Start consuming from a queue.
@@ -112,12 +104,12 @@ interface MessageQueueInterface {
   consume<A>(
     queue: string,
     handler: (delivery: Delivery<A>) => Effect.Effect<void>,
-  ): Effect.Effect<ConsumerHandle>
+  ): Effect.Effect<ConsumerHandle>;
 
   /**
    * Acknowledge a delivery — marks the message done in Postgres.
    */
-  ack(deliveryTag: string): Effect.Effect<void, DeliveryTagNotFoundError>
+  ack(deliveryTag: string): Effect.Effect<void, DeliveryTagNotFoundError>;
 
   /**
    * Negative-acknowledge a delivery.
@@ -127,7 +119,7 @@ interface MessageQueueInterface {
   nack(
     deliveryTag: string,
     opts?: { requeue?: boolean; delayMs?: number },
-  ): Effect.Effect<void, DeliveryTagNotFoundError>
+  ): Effect.Effect<void, DeliveryTagNotFoundError>;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -365,10 +357,7 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
             }
           });
 
-          const fiber: Fiber.Fiber<never, never> = yield* pipe(
-            workerLoop,
-            Effect.forkDetach,
-          );
+          const fiber: Fiber.Fiber<never, never> = yield* pipe(workerLoop, Effect.forkDetach);
           FiberSet.addUnsafe(fiberSet, fiber);
 
           return {
@@ -389,13 +378,4 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
       return MessageQueue.of({ publish, consume, ack, nack });
     }),
   );
-
-  /**
-   * Convenience layer that also wires up DB. Use in tests/scripts.
-   * In production compose with your existing AppDBLayer instead.
-   */
-  static readonly layerWithDb: Layer.Layer<MessageQueue, never, never> = pipe(
-    MessageQueue.layer,
-    Layer.provide(AppDBLayer),
-  ) as Layer.Layer<MessageQueue, never, never>;
 }
