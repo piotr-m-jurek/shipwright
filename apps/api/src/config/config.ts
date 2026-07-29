@@ -1,8 +1,13 @@
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import { Config, Context, Effect, Layer, Option, Redacted, Schema } from "effect";
-type ConfigServiceInterface = {
-  server: { allowedOrigins: readonly string[] };
-  db: { url: Redacted.Redacted<string>; migrationConfig: MigrationConfig };
+type Interface = {
+  server: {
+    allowedOrigins: readonly string[];
+  };
+  db: {
+    url: Redacted.Redacted<string>;
+    migrationConfig: MigrationConfig;
+  };
   storage: {
     endpoint: string;
     secretKey: Redacted.Redacted<string>;
@@ -23,52 +28,52 @@ type ConfigServiceInterface = {
     | undefined;
 };
 
-export class ConfigService extends Context.Service<ConfigService, ConfigServiceInterface>()(
+export class ConfigService extends Context.Service<ConfigService, Interface>()(
   "shipwright/config/ConfigService",
 ) {
   static readonly layer = Layer.effect(
     ConfigService,
     Effect.gen(function* () {
-      const observability = yield* Config.string("LANGFUSE_OTLP_ENDPOINT").pipe(
-        Effect.map((otlpEndpoint) =>
-          Effect.gen(function* () {
-            return {
-              otlpEndpoint,
-              publicKey: yield* Config.redacted("LANGFUSE_PUBLIC_KEY"),
-              secretKey: yield* Config.redacted("LANGFUSE_SECRET_KEY"),
-            };
-          }),
-        ),
-        Effect.option,
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.succeed(undefined),
-            onSome: (eff) => eff,
-          }),
-        ),
-      );
+      const observability: Interface['observability'] = yield* Effect.gen(function* () {
+        const otlpEndpoint = yield* Config.option(Config.string("LANGFUSE_OTLP_ENDPOINT"));
+        if (Option.isNone(otlpEndpoint)) {
+          return undefined;
+        }
+
+        return {
+          otlpEndpoint: otlpEndpoint.value,
+          publicKey: yield* Config.redacted("LANGFUSE_PUBLIC_KEY"),
+          secretKey: yield* Config.redacted("LANGFUSE_SECRET_KEY"),
+        };
+      });
+
+      const db: Interface["db"] = {
+        url: yield* Config.redacted("DATABASE_URL"),
+        migrationConfig: { migrationsFolder: "./src/db/out" },
+      };
+
+      const server: Interface["server"] = {
+        allowedOrigins: yield* Config.schema(Config.Array(Schema.String), "ALLOWED_ORIGINS"),
+      };
+
+      const storage: Interface["storage"] = {
+        endpoint: yield* Config.string("S3_ENDPOINT"),
+        secretKey: yield* Config.redacted("S3_SECRET_KEY"),
+        accessKey: yield* Config.redacted("S3_ACCESS_KEY"),
+        bucket: yield* Config.string("S3_BUCKET"),
+        allowedOrigins: yield* Config.schema(Config.Array(Schema.String), "S3_ALLOWED_ORIGINS"),
+      };
+
+      const ai: Interface["ai"] = {
+        openaiApiKey: yield* Config.redacted("OPENAI_API_KEY"),
+        anthropicApiKey: yield* Config.redacted("ANTHROPIC_API_KEY"),
+      };
 
       return {
-        server: {
-          allowedOrigins: yield* Config.schema(Config.Array(Schema.String), "ALLOWED_ORIGINS"),
-        },
-        db: {
-          url: yield* Config.redacted("DATABASE_URL"),
-          migrationConfig: {
-            migrationsFolder: "./src/db/out",
-          },
-        },
-        storage: {
-          endpoint: yield* Config.string("S3_ENDPOINT"),
-          secretKey: yield* Config.redacted("S3_SECRET_KEY"),
-          accessKey: yield* Config.redacted("S3_ACCESS_KEY"),
-          bucket: yield* Config.string("S3_BUCKET"),
-          allowedOrigins: yield* Config.schema(Config.Array(Schema.String), "S3_ALLOWED_ORIGINS"),
-        },
-        ai: {
-          openaiApiKey: yield* Config.redacted("OPENAI_API_KEY"),
-          anthropicApiKey: yield* Config.redacted("ANTHROPIC_API_KEY"),
-        },
+        server,
+        db,
+        storage,
+        ai,
         observability,
       };
     }),
