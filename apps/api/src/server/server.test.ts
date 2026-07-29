@@ -355,6 +355,6 @@ describe("GET /api/health", () => {
     const res = await get("/api/health");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toBe("Healthy");
+    expect(body).toBe({ status: "ok", version: "0.0.0" });
   });
 });

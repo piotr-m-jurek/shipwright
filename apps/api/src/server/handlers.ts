@@ -1,4 +1,4 @@
-import { Effect, pipe } from "effect";
+import { Effect, Layer, pipe } from "effect";
 import { StorageAdapter } from "../storage/index.js";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import {
@@ -33,21 +33,22 @@ import { confirmUploadResults } from "../agent/pipelines/confirm-upload-results.
 import { runSessionWorkflow } from "../agent/pipelines/run-session-workflow.js";
 import { submitAnswers } from "../agent/pipelines/submit-answers.js";
 import { startRevision } from "../agent/pipelines/generation.js";
+import { EmbeddingService } from "../agent/embedding-service.js";
 import { SessionStateError as ActorSessionStateError } from "../agent/errors.js";
 
 export const PublicApiHandlers = HttpApiBuilder.group(Api, "public", (handlers) =>
-  handlers.handle("health", () => Effect.succeed("Healthy")),
+  handlers.handle("health", () => Effect.succeed({ status: "ok", version: "0.0.0" })),
 );
 
 export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) =>
   handlers
     .handle(
       "sessionUploadUrl",
-      Effect.fnUntraced(function* ({ payload: { files } }) {
+      Effect.fnUntraced(function* (p) {
         const user = yield* CurrentUser;
 
         const { uploads, sessionId } = yield* pipe(
-          createUploadSession({ files, userId: user.id }),
+          createUploadSession({ files: p.payload.files, userId: user.id }),
           Effect.mapError(() => new CreateAgentSessionError()),
         );
         return CreateAgentSessionResponse.make({ uploads, sessionId });
@@ -66,8 +67,11 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
           return yield* new MissingUploads({ missingKeys });
         }
 
-        yield* pipe(
+        const _ = yield* pipe(
           processUploadedDocuments({ sessionId, uploads }),
+          Effect.provide(EmbeddingService.layer),
+          Effect.provide(DatabaseService.layer),
+          Effect.provide(StorageAdapter.layer),
           Effect.mapError((cause) => Effect.logError("processUploadedDocuments failed", cause)),
           Effect.forkDetach,
         );

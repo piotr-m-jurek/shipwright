@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "oxlint src"
+    "lint": "oxlint src",
     "fmt": "oxfmt src"
   },
   "dependencies": {

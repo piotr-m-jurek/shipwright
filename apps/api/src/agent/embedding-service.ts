@@ -13,29 +13,29 @@ interface Interface {
 
 export class EmbeddingService extends Context.Service<EmbeddingService, Interface>()(
   "Embeddingservice",
-) {}
+) {
+  static readonly layer = Layer.effect(
+    EmbeddingService,
+    Effect.gen(function* () {
+      const model = yield* EmbeddingModel.EmbeddingModel;
 
-export const layer = Layer.effect(
-  EmbeddingService,
-  Effect.gen(function* () {
-    const model = yield* EmbeddingModel.EmbeddingModel;
+      const embedChunks = Effect.fn("EmbedChunks")(function* (chunks: string[]) {
+        const res = yield* pipe(
+          model.embedMany(chunks),
+          Effect.mapError((cause) => new EmbeddingError({ cause })),
+        );
+        return res.embeddings.map(({ vector }) => vector);
+      });
 
-    const embedChunks = Effect.fn("EmbedChunks")(function* (chunks: string[]) {
-      const res = yield* pipe(
-        model.embedMany(chunks),
-        Effect.mapError((cause) => new EmbeddingError({ cause })),
-      );
-      return res.embeddings.map(({ vector }) => vector);
-    });
+      const embedText = Effect.fn("EmbedText")(function* (text: string) {
+        const res = yield* pipe(
+          model.embed(text),
+          Effect.mapError((cause) => new EmbeddingError({ cause })),
+        );
+        return res.vector;
+      });
 
-    const embedText = Effect.fn("EmbedText")(function* (text: string) {
-      const res = yield* pipe(
-        model.embed(text),
-        Effect.mapError((cause) => new EmbeddingError({ cause })),
-      );
-      return res.vector;
-    });
-
-    return { embedChunks, embedText };
-  }),
-);
+      return { embedChunks, embedText };
+    }),
+  );
+}

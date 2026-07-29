@@ -6,7 +6,7 @@ import { Effect, Schema, Array, pipe } from "effect";
 import { DatabaseService } from "../../db/queries.ts";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { EmbeddingService } from "../embedding-service.ts";
+import { EmbeddingService } from "../embedding-service.js";
 
 // TODO: actually throw those errors, not DB errors
 export class DocumentNotFoundError extends Schema.TaggedErrorClass<DocumentNotFoundError>()(

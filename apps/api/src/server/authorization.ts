@@ -2,22 +2,25 @@ import { Authorization, CurrentUser, Unauthorized } from "@shipwright/shared/mid
 import { Effect, Layer, Redacted } from "effect";
 import { auth } from "../auth/auth.js";
 
-export const AuthorizationLayer = Layer.effect(
+export const AuthorizationLayer = Layer.succeed(
   Authorization,
-  Effect.succeed(
-    Authorization.of({
-      cookie: Effect.fn(function* (httpEffect, { credential }) {
-        const session = yield* Effect.promise(() =>
-          auth.api.getSession({
-            headers: new Headers({
-              cookie: `better-auth.session_token=${Redacted.value(credential)}`,
+  Authorization.of({
+    cookie: (httpEffect, { credential }) =>
+      Effect.gen(function* () {
+        const session = yield* Effect.tryPromise({
+          try: () =>
+            auth.api.getSession({
+              headers: new Headers({
+                cookie: `better-auth.session_token=${Redacted.value(credential)}`,
+              }),
             }),
-          }),
-        );
+          catch: () => new Unauthorized({ message: "Session lookup failed" }),
+        });
 
         if (!session) {
           return yield* new Unauthorized({ message: "Invalid or missing session" });
         }
+        yield* Effect.logInfo("auth: providing CurrentUser");
 
         return yield* Effect.provideService(httpEffect, CurrentUser, {
           id: session.user.id,
@@ -25,6 +28,5 @@ export const AuthorizationLayer = Layer.effect(
           name: session.user.name,
         });
       }),
-    }),
-  ),
+  }),
 );

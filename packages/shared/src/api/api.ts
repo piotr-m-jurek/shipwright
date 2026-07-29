@@ -36,11 +36,14 @@ import { Authorization } from "./middleware.js";
 import { AgentSessionId } from "../domain/ids.ts";
 
 class PublicApiGroup extends HttpApiGroup.make("public")
-  .add(HttpApiEndpoint.get("health", "/health", { success: Schema.String }))
+  .add(
+    HttpApiEndpoint.get("health", "/health", {
+      success: Schema.Struct({ status: Schema.Literals(["ok", "error"]), version: Schema.String }),
+    }),
+  )
   .prefix("/api") {}
 
 class SystemApiGroup extends HttpApiGroup.make("system")
-  .middleware(Authorization)
   .add(
     HttpApiEndpoint.post("sessionUploadUrl", "/sessions/upload-url", {
       payload: CreateAgentSessionRequest,
@@ -94,6 +97,7 @@ class SystemApiGroup extends HttpApiGroup.make("system")
       error: [SessionStateError, RevisionError],
     }),
   )
+  .middleware(Authorization)
   .prefix("/api") {}
 
 export class Api extends HttpApi.make("api")

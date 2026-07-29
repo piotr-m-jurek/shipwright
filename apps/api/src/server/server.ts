@@ -18,11 +18,15 @@ import { DatabaseService } from "../db/queries.js";
 import { AppDBLayer } from "../db/index.js";
 import { auth } from "../auth/auth.js";
 import { AuthorizationLayer } from "./authorization.js";
+import { EmbeddingService } from "../agent/embedding-service.ts";
+import { OpenAiEmbeddingModel } from "@effect/ai-openai";
+import { AnthropicClientLayer, OpenAiClientLayer } from "../agent/providers.ts";
 
 export const ApiRoute = pipe(
   HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }),
   Layer.provide([SystemApiHandlers, PublicApiHandlers]),
-  Layer.provide(AuthorizationLayer),
+  // Layer.provideMerge(AnthropicClientLayer),
+  Layer.provideMerge(AuthorizationLayer),
 );
 
 const DocsRoute = HttpApiScalar.layer(Api, { path: "/docs" });
@@ -83,15 +87,29 @@ const OtlpLayerProvided = pipe(
   Layer.provide(FetchHttpClient.layer),
 );
 
+const OpenAiEmbeddingModelLayer = pipe(
+  OpenAiEmbeddingModel.model("text-embedding-3-small", { dimensions: 1536 }),
+  Layer.provide(OpenAiClientLayer),
+);
+
+const EmbeddingServiceLayer = EmbeddingService.layer.pipe(
+  Layer.provideMerge(OpenAiEmbeddingModelLayer),
+);
+
 const ServiceLayer = pipe(
-  Layer.mergeAll(DatabaseService.layer, OtlpLayerProvided /* , MessageQueue.layer */),
+  Layer.mergeAll(
+    DatabaseService.layer,
+    OtlpLayerProvided,
+    EmbeddingServiceLayer,
+    /* , MessageQueue.layer */
+  ),
   Layer.provideMerge(AppDBLayer),
-  Layer.provideMerge(StorageAdapter.layer),
   Layer.provideMerge(NodeHttpServer.layer(createServer, { port: 3000 })),
+  Layer.provideMerge(StorageAdapter.layer),
   Layer.provideMerge(ConfigService.layer),
 );
 
-const HttpServerLayer = pipe(HttpRouter.serve(AllRoutes), Layer.provide(ServiceLayer));
+const HttpServerLayer = HttpRouter.serve(AllRoutes).pipe(Layer.provide(ServiceLayer));
 
 // INFO: known issue with static files, will be removed when moved to monorepo
-NodeRuntime.runMain(Layer.launch(HttpServerLayer) as Effect.Effect<never, never, never>);
+NodeRuntime.runMain(Layer.launch(HttpServerLayer));
