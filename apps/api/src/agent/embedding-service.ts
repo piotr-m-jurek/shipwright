@@ -12,7 +12,7 @@ interface Interface {
 }
 
 export class EmbeddingService extends Context.Service<EmbeddingService, Interface>()(
-  "Embeddingservice",
+  "@shipwright/api/src/agent/EmbeddingService",
 ) {
   static readonly layer = Layer.effect(
     EmbeddingService,
