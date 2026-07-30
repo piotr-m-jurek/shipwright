@@ -81,11 +81,13 @@ export const SessionStorageHandlers = HttpApiBuilder.group(Api, "storage", (hand
         const db = yield* DatabaseService;
         const user = yield* CurrentUser;
 
-        yield* pipe(
-          db.getAgentSesionByIdForUser({ sessionId, userId: user.id }),
-          Effect.fromNullishOr,
-          Effect.mapError(() => new OutputNotFoundError()),
-        );
+        const agentSessionCheck = yield* db
+          .getAgentSesionByIdForUser({ sessionId, userId: user.id })
+          .pipe(Effect.orElseSucceed(() => undefined));
+
+        if (agentSessionCheck === undefined) {
+          return yield* new OutputNotFoundError();
+        }
 
         // Validate type param
         if (type !== "project_brief" && type !== "implementation_prd") {

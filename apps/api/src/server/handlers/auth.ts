@@ -1,7 +1,12 @@
 import { NodeHttpServerRequest } from "@effect/platform-node";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { auth } from "../../auth/auth.ts";
+
+class IncomingMessageResolveError extends Schema.TaggedErrorClass<IncomingMessageResolveError>()(
+  "IncomingMessageResolveError",
+  { cause: Schema.Defect() },
+) {}
 
 export const AuthRouteLayer = HttpRouter.add("*", "/api/auth/*", (req) =>
   Effect.gen(function* () {
@@ -18,7 +23,7 @@ export const AuthRouteLayer = HttpRouter.add("*", "/api/auth/*", (req) =>
           );
           incomingMessage.on("error", reject);
         }),
-      catch: (e) => e as Error,
+      catch: (e) => new IncomingMessageResolveError({ cause: e }),
     });
 
     const webRequest = new Request(url, {

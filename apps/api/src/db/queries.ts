@@ -18,7 +18,7 @@ import type {
   OutputSelect,
 } from "./types.js";
 
-import { AppDBLayer, DB } from "./index.js";
+import { DB } from "./index.js";
 import {
   agentSessions,
   chunks,
@@ -29,7 +29,7 @@ import {
   answers,
   outputs,
 } from "./schema.js";
-import { Context, Effect, Layer, pipe, Schema } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
@@ -55,7 +55,12 @@ export type ReconstructedSummary = DocumentSummary & {
   version: number;
 };
 
-export class DocumentNotFoundError extends Error {}
+export class DocumentNotFoundError extends Schema.TaggedErrorClass<DocumentNotFoundError>()(
+  "DocumentNotFoundError",
+  {},
+) {}
+{
+}
 
 export class AgentSessionNotFoundError extends Schema.TaggedErrorClass<AgentSessionNotFoundError>()(
   "AgentSessionNotFoundError",
@@ -134,7 +139,7 @@ const makeDatabaseService = Effect.gen(function* () {
   const getDocumentById = Effect.fnUntraced(function* (id: string) {
     const results = yield* db.select().from(documents).where(eq(documents.id, id)).limit(1);
     if (results.length !== 1) {
-      return yield* Effect.fail(new DocumentNotFoundError());
+      return yield* new DocumentNotFoundError();
     }
     return results[0];
   });

@@ -15,7 +15,7 @@ import {
 import { ConfigService } from "../config/config.js";
 import { OtlpLayer } from "../observability/observability.js";
 import { DatabaseService } from "../db/queries.js";
-import { AppDBLayer } from "../db/index.js";
+import { AppDBLayer, AppDBLiveLayer } from "../db/index.js";
 import { AuthorizationLayer } from "./authorization.js";
 import { EmbeddingService } from "../agent/embedding-service.ts";
 import { AnthropicClientLayer, OpenAiEmbeddingModelLayer } from "../agent/providers.ts";
@@ -32,7 +32,7 @@ export const ApiLayer = pipe(
   Layer.provide(AuthorizationLayer),
   Layer.provide(DatabaseService.layer),
   Layer.provide(StorageAdapter.layer),
-  Layer.provide(AppDBLayer.pipe(Layer.provide(ConfigService.layer))),
+  Layer.provide(AppDBLiveLayer),
   Layer.provide(ConfigService.layer),
 );
 
