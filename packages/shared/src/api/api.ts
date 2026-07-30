@@ -35,15 +35,16 @@ import {
 import { Authorization } from "./middleware.js";
 import { AgentSessionId } from "../domain/ids.ts";
 
-class PublicApiGroup extends HttpApiGroup.make("public")
-  .add(
-    HttpApiEndpoint.get("health", "/health", {
-      success: Schema.Struct({ status: Schema.Literals(["ok", "error"]), version: Schema.String }),
+export class PublicApiGroup extends HttpApiGroup.make("public").add(
+  HttpApiEndpoint.get("health", "/health", {
+    success: Schema.Struct({
+      status: Schema.Literals(["ok", "error"]),
+      version: Schema.String,
     }),
-  )
-  .prefix("/api") {}
+  }),
+) {}
 
-class SystemApiGroup extends HttpApiGroup.make("system")
+export class SessionStorageApi extends HttpApiGroup.make("storage")
   .add(
     HttpApiEndpoint.post("sessionUploadUrl", "/sessions/upload-url", {
       payload: CreateAgentSessionRequest,
@@ -56,6 +57,17 @@ class SystemApiGroup extends HttpApiGroup.make("system")
       success: ConfirmUploadResponse,
       error: [MissingUploads, ConfirmUploadError],
     }),
+
+    HttpApiEndpoint.get("getOutputDownloadUrl", "/sessions/:sessionId/output/:type/download-url", {
+      params: { sessionId: AgentSessionId, type: Schema.String },
+      success: OutputDownloadUrlResponse,
+      error: OutputNotFoundError,
+    }),
+  )
+  .middleware(Authorization) {}
+
+export class SessionComputationApi extends HttpApiGroup.make("compute")
+  .add(
     HttpApiEndpoint.get("getAgentSessionById", "/sessions/:id", {
       params: { sessionId: AgentSessionId },
       success: GetAgentSessionResponse,
@@ -74,6 +86,12 @@ class SystemApiGroup extends HttpApiGroup.make("system")
       success: GetAgentSessionProgressResponse,
       error: AnalysisPipelineError,
     }),
+  )
+
+  .middleware(Authorization) {}
+
+export class SessionResultsApi extends HttpApiGroup.make("results")
+  .add(
     HttpApiEndpoint.post("submitSessionAnswers", "/sessions/:sessionId/answers", {
       params: { sessionId: AgentSessionId },
       payload: PostAgentSessionAnswersRequest,
@@ -85,11 +103,6 @@ class SystemApiGroup extends HttpApiGroup.make("system")
       success: GetAgentSessionFinalOutputResponse,
       error: AgentSessionNotFound,
     }),
-    HttpApiEndpoint.get("getOutputDownloadUrl", "/sessions/:sessionId/output/:type/download-url", {
-      params: { sessionId: AgentSessionId, type: Schema.String },
-      success: OutputDownloadUrlResponse,
-      error: OutputNotFoundError,
-    }),
     HttpApiEndpoint.post("reviseOutput", "/sessions/:id/revise", {
       params: { sessionId: AgentSessionId },
       payload: ReviseRequest,
@@ -97,10 +110,12 @@ class SystemApiGroup extends HttpApiGroup.make("system")
       error: [SessionStateError, RevisionError],
     }),
   )
-  .middleware(Authorization)
-  .prefix("/api") {}
+  .middleware(Authorization) {}
 
 export class Api extends HttpApi.make("api")
   .add(PublicApiGroup)
-  .add(SystemApiGroup)
+  .add(SessionStorageApi)
+  .add(SessionComputationApi)
+  .add(SessionResultsApi)
+  .prefix("/api")
   .annotateMerge(OpenApi.annotations({ title: "Shipwright API" })) {}

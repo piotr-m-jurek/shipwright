@@ -1,87 +1,61 @@
 import { Effect, Layer, pipe } from "effect";
-import {
-  FetchHttpClient,
-  HttpRouter,
-  HttpServerResponse,
-  HttpStaticServer,
-} from "effect/unstable/http";
+import { FetchHttpClient, HttpRouter, HttpStaticServer } from "effect/unstable/http";
 import { createServer } from "node:http";
 import { HttpApiBuilder, HttpApiScalar } from "effect/unstable/httpapi";
-import { NodeHttpServer, NodeHttpServerRequest, NodeRuntime } from "@effect/platform-node";
+import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
 import path from "node:path";
 import { StorageAdapter } from "../storage/index.js";
 import { Api } from "@shipwright/shared/api.js";
-import { PublicApiHandlers, SystemApiHandlers } from "./handlers.js";
+import {
+  PublicApiHandlers,
+  SessionComputationHandlers,
+  SessionResultsHandlers,
+  SessionStorageHandlers,
+} from "./handlers/handlers.js";
 import { ConfigService } from "../config/config.js";
 import { OtlpLayer } from "../observability/observability.js";
 import { DatabaseService } from "../db/queries.js";
 import { AppDBLayer } from "../db/index.js";
-import { auth } from "../auth/auth.js";
 import { AuthorizationLayer } from "./authorization.js";
 import { EmbeddingService } from "../agent/embedding-service.ts";
-import { OpenAiEmbeddingModel } from "@effect/ai-openai";
-import {
-  AnthropicClientLayer,
-  OpenAiClientLayer,
-  OpenAiEmbeddingModelLayer,
-} from "../agent/providers.ts";
+import { AnthropicClientLayer, OpenAiEmbeddingModelLayer } from "../agent/providers.ts";
+import { AuthRouteLayer } from "./handlers/auth.ts";
 
-export const ApiRoute = pipe(
-  HttpApiBuilder.layer(Api, { openapiPath: "/openapi.json" }),
-  Layer.provide([SystemApiHandlers, PublicApiHandlers]),
-  // Layer.provideMerge(AnthropicClientLayer),
-  Layer.provideMerge(AuthorizationLayer),
+export const ApiLayer = pipe(
+  HttpApiBuilder.layer(Api, { openapiPath: "/opencode.json" }),
+  Layer.provide([
+    SessionStorageHandlers,
+    SessionComputationHandlers,
+    SessionResultsHandlers,
+    PublicApiHandlers,
+  ]),
+  Layer.provide(AuthorizationLayer),
+  Layer.provide(DatabaseService.layer),
+  Layer.provide(StorageAdapter.layer),
+  Layer.provide(AppDBLayer.pipe(Layer.provide(ConfigService.layer))),
+  Layer.provide(ConfigService.layer),
 );
 
-const DocsRoute = HttpApiScalar.layer(Api, { path: "/docs" });
+const DocsLayer = HttpApiScalar.layer(Api, { path: "/docs" });
 
-const StaticFiles = HttpStaticServer.layer({
+const StaticFilesLayer = HttpStaticServer.layer({
   root: path.resolve("dist"),
   spa: true,
   index: "index.html",
 });
 
-const AuthLayer = HttpRouter.add("*", "/api/auth/*", (req) =>
-  Effect.gen(function* () {
-    const incomingMessage = NodeHttpServerRequest.toIncomingMessage(req);
-    const url = new URL(req.url, "http://localhost:3000");
-
-    const body = yield* Effect.tryPromise({
-      try: () =>
-        new Promise<Buffer | null>((resolve, reject) => {
-          const chunks: Buffer[] = [];
-          incomingMessage.on("data", (chunk: Buffer) => chunks.push(chunk));
-          incomingMessage.on("end", () =>
-            resolve(chunks.length > 0 ? Buffer.concat(chunks) : null),
-          );
-          incomingMessage.on("error", reject);
-        }),
-      catch: (e) => e as Error,
-    });
-
-    const webRequest = new Request(url, {
-      method: incomingMessage.method ?? "GET",
-      headers: incomingMessage.headers as HeadersInit,
-      body: body === null ? null : Uint8Array.from(body),
-    });
-
-    const response = yield* Effect.promise(() => auth.handler(webRequest));
-    return HttpServerResponse.fromWeb(response);
-  }),
-);
-const AllRoutes = pipe(
-  Layer.unwrap(
-    Effect.gen(function* () {
-      const config = yield* ConfigService;
-      return Layer.mergeAll(
-        AuthLayer,
-        ApiRoute,
-        DocsRoute,
-        StaticFiles,
-        HttpRouter.cors({ allowedOrigins: config.server.allowedOrigins, credentials: true }),
-      );
-    }),
+const AllRoutesLayer = pipe(
+  ConfigService,
+  Effect.map((config) =>
+    Layer.mergeAll(
+      AuthRouteLayer,
+      ApiLayer,
+      DocsLayer,
+      StaticFilesLayer,
+      HttpRouter.cors({ allowedOrigins: config.server.allowedOrigins, credentials: true }),
+    ),
   ),
+  Layer.unwrap,
   Layer.provide(ConfigService.layer),
 );
 
@@ -97,19 +71,16 @@ const EmbeddingServiceLayer = EmbeddingService.layer.pipe(
 
 const ServiceLayer = pipe(
   Layer.mergeAll(
-    DatabaseService.layer,
     OtlpLayerProvided,
     EmbeddingServiceLayer,
     AnthropicClientLayer,
-    /* , MessageQueue.layer */
+    StorageAdapter.layer,
+    NodeHttpServer.layer(createServer, { port: 3000 }),
   ),
-  Layer.provideMerge(AppDBLayer),
-  Layer.provideMerge(StorageAdapter.layer),
-  Layer.provideMerge(ConfigService.layer),
-  Layer.provideMerge(NodeHttpServer.layer(createServer, { port: 3000 })),
+  Layer.provideMerge(DatabaseService.layer), // merges DatabaseService output, needs DB
+  Layer.provideMerge(AppDBLayer.pipe(Layer.provide(ConfigService.layer))), // provides DB to DatabaseService
 );
 
-const HttpServerLayer = HttpRouter.serve(AllRoutes).pipe(Layer.provide(ServiceLayer));
+const HttpServerLayer = HttpRouter.serve(AllRoutesLayer).pipe(Layer.provideMerge(ServiceLayer));
 
-// INFO: known issue with static files, will be removed when moved to monorepo
 NodeRuntime.runMain(Layer.launch(HttpServerLayer));

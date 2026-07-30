@@ -1,5 +1,5 @@
-import { Effect, Layer, pipe } from "effect";
-import { StorageAdapter } from "../storage/index.js";
+import { Effect, pipe } from "effect";
+import { StorageAdapter } from "../../storage/index.js";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import {
   AgentSessionNotFound,
@@ -12,8 +12,8 @@ import {
   RevisionError,
   SessionStateError,
 } from "@shipwright/shared/domain/errors.js";
-import { processUploadedDocuments } from "../agent/pipelines/process-uploaded-documents.js";
-import { getOrRestoreActor } from "../agent/session-actor.js";
+import { processUploadedDocuments } from "../../agent/pipelines/process-uploaded-documents.js";
+import { getOrRestoreActor } from "../../agent/session-actor.js";
 import {
   CreateAgentSessionResponse,
   GetAgentSessionResponse,
@@ -26,21 +26,20 @@ import {
   ReviseResponse,
 } from "@shipwright/shared/schemas/api.js";
 import { Api } from "@shipwright/shared/api.js";
-import { DatabaseService } from "../db/queries.js";
+import { DatabaseService } from "../../db/queries.js";
 import { CurrentUser } from "@shipwright/shared/middleware.js";
-import { createUploadSession } from "../agent/pipelines/create-upload-session.js";
-import { confirmUploadResults } from "../agent/pipelines/confirm-upload-results.js";
-import { runSessionWorkflow } from "../agent/pipelines/run-session-workflow.js";
-import { submitAnswers } from "../agent/pipelines/submit-answers.js";
-import { startRevision } from "../agent/pipelines/generation.js";
-import { EmbeddingService } from "../agent/embedding-service.js";
-import { SessionStateError as ActorSessionStateError } from "../agent/errors.js";
+import { createUploadSession } from "../../agent/pipelines/create-upload-session.js";
+import { confirmUploadResults } from "../../agent/pipelines/confirm-upload-results.js";
+import { runSessionWorkflow } from "../../agent/pipelines/run-session-workflow.js";
+import { submitAnswers } from "../../agent/pipelines/submit-answers.js";
+import { startRevision } from "../../agent/pipelines/generation.js";
+import { SessionStateError as ActorSessionStateError } from "../../agent/errors.js";
 
 export const PublicApiHandlers = HttpApiBuilder.group(Api, "public", (handlers) =>
   handlers.handle("health", () => Effect.succeed({ status: "ok", version: "0.0.0" })),
 );
 
-export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) =>
+export const SessionStorageHandlers = HttpApiBuilder.group(Api, "storage", (handlers) =>
   handlers
     .handle(
       "sessionUploadUrl",
@@ -67,16 +66,85 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
           return yield* new MissingUploads({ missingKeys });
         }
 
-        const _ = yield* pipe(
+        // TODO: messageQueue
+        yield* pipe(
           processUploadedDocuments({ sessionId, uploads }),
-          Effect.provide(EmbeddingService.layer),
-          Effect.provide(DatabaseService.layer),
-          Effect.provide(StorageAdapter.layer),
           Effect.mapError((cause) => Effect.logError("processUploadedDocuments failed", cause)),
           Effect.forkDetach,
         );
 
         return ConfirmUploadResponse.make({ valid: true });
+      }),
+    )
+    .handle("getOutputDownloadUrl", ({ params: { sessionId, type } }) =>
+      Effect.gen(function* () {
+        const db = yield* DatabaseService;
+        const user = yield* CurrentUser;
+
+        yield* pipe(
+          db.getAgentSesionByIdForUser({ sessionId, userId: user.id }),
+          Effect.fromNullishOr,
+          Effect.mapError(() => new OutputNotFoundError()),
+        );
+
+        // Validate type param
+        if (type !== "project_brief" && type !== "implementation_prd") {
+          return yield* new OutputNotFoundError();
+        }
+
+        const output = yield* db
+          .getLatestOutputByType({ sessionId, type })
+          .pipe(Effect.mapError(() => new OutputNotFoundError()));
+
+        if (!output?.s3Key) {
+          return yield* new OutputNotFoundError();
+        }
+
+        const storage = yield* StorageAdapter;
+        // Generate presigned GET URL with 15-minute TTL (not a PUT URL)
+        const url = yield* storage
+          .generatePresignedGetUrl(output.s3Key, 15)
+          .pipe(Effect.mapError(() => new OutputNotFoundError()));
+
+        return OutputDownloadUrlResponse.make({ url });
+      }),
+    ),
+);
+
+export const SessionComputationHandlers = HttpApiBuilder.group(Api, "compute", (handlers) =>
+  handlers
+    .handle("getAgentSessionById", ({ params: { sessionId } }) =>
+      Effect.gen(function* () {
+        const db = yield* DatabaseService;
+        const user = yield* CurrentUser;
+
+        const session = yield* db.getAgentSesionByIdForUser({ sessionId, userId: user.id }).pipe(
+          Effect.mapError(() => new AgentSessionNotFound()),
+          Effect.flatMap((s) =>
+            s === undefined ? Effect.fail(new AgentSessionNotFound()) : Effect.succeed(s),
+          ),
+        );
+
+        // Include current questions when session is awaiting answers
+        const questions =
+          session.status === "awaiting_answers"
+            ? yield* db
+                .getQuestionsBySessionId(sessionId)
+                .pipe(Effect.mapError(() => new AgentSessionNotFound()))
+            : [];
+
+        return GetAgentSessionResponse.make({
+          id: session.id,
+          createdAt: session.createdAt,
+          status: session.status,
+          questions: questions.map((q) => ({
+            id: q.id,
+            text: q.text,
+            rationale: q.rationale,
+            sourceDocuments: q.sourceDocuments,
+            orderIndex: q.orderIndex,
+          })),
+        });
       }),
     )
     .handle("confirmAnalysis", ({ params: { sessionId } }) =>
@@ -115,7 +183,11 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
       // Returns current session status for polling.
       // TODO: Remove at some point
       Effect.sync(() => GetAgentSessionProgressResponse.make({ started: true })),
-    )
+    ),
+);
+
+export const SessionResultsHandlers = HttpApiBuilder.group(Api, "results", (handlers) =>
+  handlers
     .handle("submitSessionAnswers", ({ payload: { answers }, params: { sessionId } }) =>
       Effect.gen(function* () {
         const result = yield* pipe(
@@ -150,73 +222,6 @@ export const SystemApiHandlers = HttpApiBuilder.group(Api, "system", (handlers) 
           implementationPrd: prd?.content ?? null,
           version: brief?.version ?? null,
         });
-      }),
-    )
-    .handle("getAgentSessionById", ({ params: { sessionId } }) =>
-      Effect.gen(function* () {
-        const db = yield* DatabaseService;
-        const user = yield* CurrentUser;
-
-        const session = yield* db.getAgentSesionByIdForUser({ sessionId, userId: user.id }).pipe(
-          Effect.mapError(() => new AgentSessionNotFound()),
-          Effect.flatMap((s) =>
-            s === undefined ? Effect.fail(new AgentSessionNotFound()) : Effect.succeed(s),
-          ),
-        );
-
-        // Include current questions when session is awaiting answers
-        const questions =
-          session.status === "awaiting_answers"
-            ? yield* db
-                .getQuestionsBySessionId(sessionId)
-                .pipe(Effect.mapError(() => new AgentSessionNotFound()))
-            : [];
-
-        return GetAgentSessionResponse.make({
-          id: session.id,
-          createdAt: session.createdAt,
-          status: session.status,
-          questions: questions.map((q) => ({
-            id: q.id,
-            text: q.text,
-            rationale: q.rationale,
-            sourceDocuments: q.sourceDocuments,
-            orderIndex: q.orderIndex,
-          })),
-        });
-      }),
-    )
-    .handle("getOutputDownloadUrl", ({ params: { sessionId, type } }) =>
-      Effect.gen(function* () {
-        const db = yield* DatabaseService;
-        const user = yield* CurrentUser;
-
-        yield* pipe(
-          db.getAgentSesionByIdForUser({ sessionId, userId: user.id }),
-          Effect.fromNullishOr,
-          Effect.mapError(() => new OutputNotFoundError()),
-        );
-
-        // Validate type param
-        if (type !== "project_brief" && type !== "implementation_prd") {
-          return yield* new OutputNotFoundError();
-        }
-
-        const output = yield* db
-          .getLatestOutputByType({ sessionId, type })
-          .pipe(Effect.mapError(() => new OutputNotFoundError()));
-
-        if (!output?.s3Key) {
-          return yield* new OutputNotFoundError();
-        }
-
-        const storage = yield* StorageAdapter;
-        // Generate presigned GET URL with 15-minute TTL (not a PUT URL)
-        const url = yield* storage
-          .generatePresignedGetUrl(output.s3Key, 15)
-          .pipe(Effect.mapError(() => new OutputNotFoundError()));
-
-        return OutputDownloadUrlResponse.make({ url });
       }),
     )
     .handle("reviseOutput", ({ payload: { feedback }, params: { sessionId } }) =>

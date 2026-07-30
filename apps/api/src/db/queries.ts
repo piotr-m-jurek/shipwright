@@ -502,8 +502,5 @@ export class DatabaseService extends Context.Service<
     }) => Effect.Effect<OutputSelect | undefined, EffectDrizzleQueryError>;
   }
 >()("shipwright/db/queries/DatabaseService") {
-  static readonly layer = pipe(
-    Layer.effect(DatabaseService, makeDatabaseService),
-    Layer.provide(AppDBLayer),
-  );
+  static readonly layer = Layer.effect(DatabaseService, makeDatabaseService);
 }
