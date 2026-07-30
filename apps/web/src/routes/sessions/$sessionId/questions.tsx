@@ -1,5 +1,7 @@
 import { ShipwrightApi } from "@/store/api";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { useAtomValue, useAtomSet } from "@effect/atom-react";
@@ -24,7 +26,7 @@ function RouteComponent() {
 // ---------------------------------------------------------------------------
 
 const sessionQueryFamily = Atom.family((sessionId: AgentSessionId) =>
-  ShipwrightApi.query("system", "getAgentSessionById", {
+  ShipwrightApi.query("compute", "getAgentSessionById", {
     params: { sessionId },
     reactivityKeys: ["session", sessionId],
     timeToLive: "30 seconds",
@@ -32,7 +34,7 @@ const sessionQueryFamily = Atom.family((sessionId: AgentSessionId) =>
 );
 
 const submitAnswersFamily = Atom.family((_nonce: number) =>
-  ShipwrightApi.mutation("system", "submitSessionAnswers"),
+  ShipwrightApi.mutation("results", "submitSessionAnswers"),
 );
 
 // ---------------------------------------------------------------------------
@@ -76,7 +78,9 @@ function QuestionsPage({ sessionId }: { sessionId: AgentSessionId }) {
     ),
     Match.when(AsyncResult.isFailure, () => (
       <div className="flex min-h-svh flex-col items-center justify-center gap-3">
-        <p className="text-xs text-destructive">Failed to load session.</p>
+        <Alert variant="destructive" className="max-w-xs">
+          <AlertDescription>Failed to load session.</AlertDescription>
+        </Alert>
       </div>
     )),
     Match.when(AsyncResult.isSuccess, ({ value: session }) => {
@@ -180,20 +184,20 @@ function AnswerForm({
         {/* Questions */}
         <div className="space-y-6">
           {questions.map((question, idx) => (
-            <div key={question.id} className="space-y-2">
-              <div className="space-y-1">
-                <p className="text-xs font-medium">
-                  {idx + 1}. {question.text}
-                </p>
-                {question.rationale && (
-                  <p className="text-xs text-muted-foreground/70 italic">{question.rationale}</p>
-                )}
-                {question.sourceDocuments.length > 0 && (
-                  <p className="text-xs text-muted-foreground/50">
-                    Source: {question.sourceDocuments.join(", ")}
-                  </p>
-                )}
-              </div>
+            <Field key={question.id}>
+              <FieldLabel className="font-medium">
+                {idx + 1}. {question.text}
+              </FieldLabel>
+              {question.rationale && (
+                <FieldDescription className="italic opacity-70">
+                  {question.rationale}
+                </FieldDescription>
+              )}
+              {question.sourceDocuments.length > 0 && (
+                <FieldDescription className="opacity-50">
+                  Source: {question.sourceDocuments.join(", ")}
+                </FieldDescription>
+              )}
               <Textarea
                 value={answers[question.id] ?? ""}
                 onChange={(e) => setAnswers((prev) => ({ ...prev, [question.id]: e.target.value }))}
@@ -201,14 +205,16 @@ function AnswerForm({
                 disabled={isSubmitting}
                 className="min-h-20 resize-none"
               />
-            </div>
+            </Field>
           ))}
         </div>
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-4">
           {AsyncResult.isFailure(submitResult) && (
-            <p className="text-xs text-destructive">Submission failed. Try again.</p>
+            <Alert variant="destructive">
+              <AlertDescription>Submission failed. Try again.</AlertDescription>
+            </Alert>
           )}
           <Button onClick={handleSubmit} disabled={!allAnswered || isSubmitting} className="gap-2">
             {isSubmitting ? (

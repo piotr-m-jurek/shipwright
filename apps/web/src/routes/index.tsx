@@ -11,6 +11,7 @@ import {
   AttachmentMedia,
   AttachmentTitle,
 } from "@/components/ui/attachment";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
@@ -37,11 +38,11 @@ function RouteComponent() {
 // ---------------------------------------------------------------------------
 
 const uploadUrlFamily = Atom.family((_nonce: number) =>
-  ShipwrightApi.mutation("system", "sessionUploadUrl"),
+  ShipwrightApi.mutation("storage", "sessionUploadUrl"),
 );
 
 const confirmUploadFamily = Atom.family((_nonce: number) =>
-  ShipwrightApi.mutation("system", "confirmUpload"),
+  ShipwrightApi.mutation("storage", "confirmUpload"),
 );
 
 /**
@@ -142,15 +143,21 @@ function UploadPage() {
 
 function LogoutButton() {
   const { data: session } = useSession();
-  if (!session) return null;
+  const navigate = useNavigate();
+
+  async function handleSignout() {
+    await signOut();
+    await navigate({ to: "/login" });
+  }
+
+  if (!session) {
+    return null;
+  }
+
   return (
-    <button
-      type="button"
-      onClick={() => signOut()}
-      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-    >
+    <Button variant="ghost" size="sm" onClick={handleSignout}>
       Sign out
-    </button>
+    </Button>
   );
 }
 
@@ -258,13 +265,9 @@ function UploadForm({ onUpload }: { onUpload: (files: File[]) => void }) {
         {/* Submit */}
         <div className="flex items-center justify-between gap-4">
           {files.length > 0 && !isUploading && (
-            <button
-              type="button"
-              onClick={() => setFiles([])}
-              className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-            >
+            <Button variant="ghost" size="sm" onClick={() => setFiles([])}>
               clear all
-            </button>
+            </Button>
           )}
           <div className="ml-auto">
             <Button
@@ -285,7 +288,9 @@ function UploadForm({ onUpload }: { onUpload: (files: File[]) => void }) {
         </div>
 
         {AsyncResult.isFailure(uploadResult) && (
-          <p className="text-xs text-destructive">Upload failed. Check your files and try again.</p>
+          <Alert variant="destructive">
+            <AlertDescription>Upload failed. Check your files and try again.</AlertDescription>
+          </Alert>
         )}
       </div>
     </div>

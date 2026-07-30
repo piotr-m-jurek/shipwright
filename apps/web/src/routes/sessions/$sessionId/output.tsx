@@ -1,5 +1,10 @@
 import { ShipwrightApi } from "@/store/api";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyDescription } from "@/components/ui/empty";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { useAtomValue, useAtomSet } from "@effect/atom-react";
@@ -29,7 +34,7 @@ function RouteComponent() {
 // ---------------------------------------------------------------------------
 
 const outputQueryFamily = Atom.family((sessionId: AgentSessionId) =>
-  ShipwrightApi.query("system", "getSessionFinalOutput", {
+  ShipwrightApi.query("results", "getSessionFinalOutput", {
     params: { sessionId },
     reactivityKeys: ["session", sessionId, "output"],
     timeToLive: "30 seconds",
@@ -38,13 +43,13 @@ const outputQueryFamily = Atom.family((sessionId: AgentSessionId) =>
 
 const downloadUrlFamily = Atom.family(
   ({ sessionId, type }: { sessionId: AgentSessionId; type: string }) =>
-    ShipwrightApi.query("system", "getOutputDownloadUrl", {
+    ShipwrightApi.query("storage", "getOutputDownloadUrl", {
       params: { sessionId, type },
     }),
 );
 
 const reviseFamily = Atom.family((_nonce: number) =>
-  ShipwrightApi.mutation("system", "reviseOutput"),
+  ShipwrightApi.mutation("results", "reviseOutput"),
 );
 
 function useOutputPolling(sessionId: AgentSessionId) {
@@ -82,7 +87,9 @@ function OutputPage({ sessionId }: { sessionId: AgentSessionId }) {
     ),
     Match.when(AsyncResult.isFailure, () => (
       <div className="flex min-h-svh flex-col items-center justify-center gap-3">
-        <p className="text-xs text-destructive">Failed to load outputs.</p>
+        <Alert variant="destructive" className="max-w-xs">
+          <AlertDescription>Failed to load outputs.</AlertDescription>
+        </Alert>
       </div>
     )),
     Match.when(AsyncResult.isSuccess, ({ value: { projectBrief, implementationPrd, version } }) => (
@@ -111,7 +118,7 @@ function OutputPage({ sessionId }: { sessionId: AgentSessionId }) {
                   downloadType="project_brief"
                   sessionId={sessionId}
                 />
-                <div className="w-px bg-border" />
+                <Separator orientation="vertical" />
                 <OutputPanel
                   title="Implementation PRD"
                   content={implementationPrd}
@@ -147,18 +154,22 @@ function OutputPanel({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b px-4 py-2">
-        <span className="font-mono text-xs font-medium">{title}</span>
+        <Label className="font-mono font-medium">{title}</Label>
         <DownloadButton sessionId={sessionId} type={downloadType} />
       </div>
-      <div className="flex-1 overflow-y-auto px-6 py-4">
-        {content ? (
-          <article className="prose prose-sm prose-neutral dark:prose-invert max-w-none text-xs">
-            <ReactMarkdown>{content}</ReactMarkdown>
-          </article>
-        ) : (
-          <p className="text-xs text-muted-foreground">No content yet.</p>
-        )}
-      </div>
+      <ScrollArea className="flex-1">
+        <div className="px-6 py-4">
+          {content ? (
+            <article className="prose prose-sm prose-neutral dark:prose-invert max-w-none text-xs">
+              <ReactMarkdown>{content}</ReactMarkdown>
+            </article>
+          ) : (
+            <Empty>
+              <EmptyDescription>No content yet.</EmptyDescription>
+            </Empty>
+          )}
+        </div>
+      </ScrollArea>
     </div>
   );
 }
@@ -227,17 +238,13 @@ function RevisionSection({ sessionId }: { sessionId: AgentSessionId }) {
   return (
     <div className="border-t px-6 py-4">
       {!open ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        >
+        <Button variant="ghost" size="sm" onClick={() => setOpen(true)} className="gap-1.5">
           <ArrowCounterClockwiseIcon className="size-3.5" />
           Request revision
-        </button>
+        </Button>
       ) : (
         <div className="space-y-3">
-          <p className="text-xs font-medium">Revision feedback</p>
+          <Label>Revision feedback</Label>
           <Textarea
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
@@ -247,7 +254,9 @@ function RevisionSection({ sessionId }: { sessionId: AgentSessionId }) {
           />
           <div className="flex items-center justify-between gap-4">
             {AsyncResult.isFailure(reviseResult) && (
-              <p className="text-xs text-destructive">Revision failed. Try again.</p>
+              <Alert variant="destructive">
+                <AlertDescription>Revision failed. Try again.</AlertDescription>
+              </Alert>
             )}
             <div className="ml-auto flex gap-2">
               <Button

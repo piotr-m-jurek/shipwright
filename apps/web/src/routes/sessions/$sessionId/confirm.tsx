@@ -2,13 +2,17 @@ import { ShipwrightApi } from "@/store/api";
 import { sessionFilesAtomFamily, type UploadedFileMeta } from "@/store/session-files";
 import {
   Attachment,
+  AttachmentAction,
+  AttachmentActions,
   AttachmentContent,
   AttachmentDescription,
   AttachmentGroup,
   AttachmentMedia,
   AttachmentTitle,
 } from "@/components/ui/attachment";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
@@ -36,15 +40,15 @@ function RouteComponent() {
 // ---------------------------------------------------------------------------
 
 const additionalUploadUrlFamily = Atom.family((_nonce: number) =>
-  ShipwrightApi.mutation("system", "sessionUploadUrl"),
+  ShipwrightApi.mutation("storage", "sessionUploadUrl"),
 );
 
 const additionalConfirmUploadFamily = Atom.family((_nonce: number) =>
-  ShipwrightApi.mutation("system", "confirmUpload"),
+  ShipwrightApi.mutation("storage", "confirmUpload"),
 );
 
 const confirmAnalysisFamily = Atom.family((_nonce: number) =>
-  ShipwrightApi.mutation("system", "confirmAnalysis"),
+  ShipwrightApi.mutation("compute", "confirmAnalysis"),
 );
 
 /**
@@ -144,7 +148,7 @@ function ConfirmPage({ sessionId }: { sessionId: AgentSessionId }) {
         {/* Already-uploaded files */}
         {uploadedFiles.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Uploaded</p>
+            <Label className="text-muted-foreground">Uploaded</Label>
             <AttachmentGroup>
               {uploadedFiles.map((file) => (
                 <Attachment key={file.filename} state="done">
@@ -180,7 +184,9 @@ function ConfirmPage({ sessionId }: { sessionId: AgentSessionId }) {
           </Link>
           <div className="flex items-center gap-3">
             {AsyncResult.isFailure(confirmResult) && (
-              <p className="text-xs text-destructive">Failed to start. Try again.</p>
+              <Alert variant="destructive">
+                <AlertDescription>Failed to start. Try again.</AlertDescription>
+              </Alert>
             )}
             <Button
               onClick={handleStartAnalysis}
@@ -284,15 +290,11 @@ function AdditionalUploadSection({
                   <AttachmentDescription>{formatBytes(file.size)}</AttachmentDescription>
                 </AttachmentContent>
                 {!isUploading && (
-                  <div className="relative z-20 flex shrink-0 items-center">
-                    <button
-                      type="button"
-                      onClick={() => removeFile(file.name)}
-                      className="flex size-6 items-center justify-center text-muted-foreground hover:text-foreground"
-                    >
+                  <AttachmentActions>
+                    <AttachmentAction onClick={() => removeFile(file.name)}>
                       <XIcon className="size-3.5" />
-                    </button>
-                  </div>
+                    </AttachmentAction>
+                  </AttachmentActions>
                 )}
               </Attachment>
             ))}
@@ -300,7 +302,9 @@ function AdditionalUploadSection({
 
           <div className="flex items-center justify-end gap-3">
             {AsyncResult.isFailure(addResult) && (
-              <p className="text-xs text-destructive">Upload failed. Try again.</p>
+              <Alert variant="destructive">
+                <AlertDescription>Upload failed. Try again.</AlertDescription>
+              </Alert>
             )}
             <Button
               variant="outline"
