@@ -29,9 +29,8 @@
  */
 import { Context, Effect, Fiber, FiberSet, Layer, Queue, Schema, pipe } from "effect";
 import { and, eq, isNull, lte, or } from "drizzle-orm";
-import { AppDBLayer, DB } from "../db/index.js";
+import { DB } from "../db/index.js";
 import { queueMessages } from "./schema.js";
-import { ConfigService } from "../config/config.ts";
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
@@ -101,10 +100,10 @@ interface MessageQueueInterface {
    * each delivery. The handler must call `delivery.ack()` or `delivery.nack()`.
    * Returns a handle whose `interrupt` effect stops the consumer fiber.
    */
-  consume<A>(
+  consume<P, A, E, R>(
     queue: string,
-    handler: (delivery: Delivery<A>) => Effect.Effect<void>,
-  ): Effect.Effect<ConsumerHandle>;
+    handler: (delivery: Delivery<P>) => Effect.Effect<A, E, R>,
+  ): Effect.Effect<ConsumerHandle, never, R>;
 
   /**
    * Acknowledge a delivery — marks the message done in Postgres.
@@ -145,20 +144,18 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
 
       // ── helpers ──────────────────────────────────────────────────────────
 
-      const getOrCreateMemQueue = (queueName: string): Effect.Effect<Queue.Queue<Envelope>> =>
-        Effect.gen(function* () {
-          const existing = memQueues.get(queueName);
-          if (existing !== undefined) return existing;
-          const q = yield* Queue.unbounded<Envelope>();
-          memQueues.set(queueName, q);
-          return q;
-        });
+      const getOrCreateMemQueue = Effect.fn("getOrCreateMemQueue")(function* (queueName: string) {
+        const existing = memQueues.get(queueName);
+        if (existing !== undefined) return existing;
+        const q = yield* Queue.unbounded<Envelope>();
+        memQueues.set(queueName, q);
+        return q;
+      });
 
-      const offerToMem = (env: Envelope): Effect.Effect<void> =>
-        Effect.gen(function* () {
-          const q = yield* getOrCreateMemQueue(env.queue);
-          yield* Queue.offer(q, env);
-        });
+      const offerToMem = Effect.fn("offerToMem")(function* (env: Envelope) {
+        const q = yield* getOrCreateMemQueue(env.queue);
+        yield* Queue.offer(q, env);
+      });
 
       // ── startup recovery ─────────────────────────────────────────────────
       // Re-hydrate in-memory queues from Postgres pending rows so no work is
@@ -199,171 +196,151 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
 
       // ── publish ───────────────────────────────────────────────────────────
 
-      const publish = <A>(
+      const publish = Effect.fn("publish")(function* <A>(
         queueName: string,
         payload: A,
         opts: PublishOptions = {},
-      ): Effect.Effect<string> =>
-        Effect.gen(function* () {
-          const deliveryTag = crypto.randomUUID();
-          const [row] = yield* db
-            .insert(queueMessages)
-            .values({
-              queue: queueName,
-              payload: payload as object,
-              routingKey: opts.routingKey,
-              maxAttempts: opts.maxAttempts ?? 3,
-              visibleAfter: opts.visibleAfter,
-              status: "processing",
-              attempts: 1,
-              deliveryTag,
-            })
-            .returning()
-            .pipe(Effect.orDie);
-
-          inFlight.set(deliveryTag, row.id);
-
-          yield* offerToMem({
-            messageId: row.id,
-            deliveryTag,
+      ) {
+        const deliveryTag = crypto.randomUUID();
+        const [row] = yield* db
+          .insert(queueMessages)
+          .values({
             queue: queueName,
+            payload: payload as object,
             routingKey: opts.routingKey,
-            payload,
+            maxAttempts: opts.maxAttempts ?? 3,
+            visibleAfter: opts.visibleAfter,
+            status: "processing",
             attempts: 1,
-          });
-
-          return row.id;
+            deliveryTag,
+          })
+          .returning()
+          .pipe(Effect.orDie);
+        inFlight.set(deliveryTag, row.id);
+        yield* offerToMem({
+          messageId: row.id,
+          deliveryTag,
+          queue: queueName,
+          routingKey: opts.routingKey,
+          payload,
+          attempts: 1,
         });
+        return row.id;
+      });
 
       // ── ack ───────────────────────────────────────────────────────────────
 
-      const ack = (deliveryTag: string): Effect.Effect<void, DeliveryTagNotFoundError> =>
-        Effect.gen(function* () {
-          const messageId = inFlight.get(deliveryTag);
-          if (messageId === undefined) {
-            return yield* Effect.fail(new DeliveryTagNotFoundError({ deliveryTag }));
-          }
-          inFlight.delete(deliveryTag);
-          yield* db
-            .update(queueMessages)
-            .set({ status: "done", deliveryTag: undefined })
-            .where(eq(queueMessages.id, messageId))
-            .pipe(Effect.orDie);
-        });
+      const ack = Effect.fn("ack")(function* (deliveryTag: string) {
+        const messageId = inFlight.get(deliveryTag);
+        if (messageId === undefined) {
+          return yield* new DeliveryTagNotFoundError({ deliveryTag });
+        }
+        inFlight.delete(deliveryTag);
+        yield* db
+          .update(queueMessages)
+          .set({ status: "done", deliveryTag: undefined })
+          .where(eq(queueMessages.id, messageId))
+          .pipe(Effect.orDie);
+      });
 
       // ── nack ──────────────────────────────────────────────────────────────
 
-      const nack = (
+      const nack = Effect.fn("nack")(function* (
         deliveryTag: string,
-        opts: { requeue?: boolean; delayMs?: number } = {},
-      ): Effect.Effect<void, DeliveryTagNotFoundError> =>
-        Effect.gen(function* () {
-          const messageId = inFlight.get(deliveryTag);
-          if (messageId === undefined) {
-            return yield* Effect.fail(new DeliveryTagNotFoundError({ deliveryTag }));
-          }
-          inFlight.delete(deliveryTag);
-
-          const [row] = yield* db
-            .select()
-            .from(queueMessages)
-            .where(eq(queueMessages.id, messageId))
-            .limit(1)
-            .pipe(Effect.orDie);
-
-          if (row === undefined) {
-            return yield* Effect.fail(new DeliveryTagNotFoundError({ deliveryTag }));
-          }
-
-          const nextAttempts = row.attempts + 1;
-          const shouldRequeue = (opts.requeue ?? true) && nextAttempts < row.maxAttempts;
-
-          if (!shouldRequeue) {
-            yield* db
-              .update(queueMessages)
-              .set({ status: "dead", attempts: nextAttempts, deliveryTag: undefined })
-              .where(eq(queueMessages.id, messageId))
-              .pipe(Effect.orDie);
-            return;
-          }
-
-          const newDeliveryTag = crypto.randomUUID();
-          const visibleAfter =
-            opts.delayMs !== undefined ? new Date(Date.now() + opts.delayMs) : undefined;
-
+        opts: {
+          requeue?: boolean;
+          delayMs?: number;
+        } = {},
+      ) {
+        const messageId = inFlight.get(deliveryTag);
+        if (messageId === undefined) {
+          return yield* new DeliveryTagNotFoundError({ deliveryTag });
+        }
+        inFlight.delete(deliveryTag);
+        const [row] = yield* db
+          .select()
+          .from(queueMessages)
+          .where(eq(queueMessages.id, messageId))
+          .limit(1)
+          .pipe(Effect.orDie);
+        if (row === undefined) {
+          return yield* new DeliveryTagNotFoundError({ deliveryTag });
+        }
+        const nextAttempts = row.attempts + 1;
+        const shouldRequeue = (opts.requeue ?? true) && nextAttempts < row.maxAttempts;
+        if (!shouldRequeue) {
           yield* db
             .update(queueMessages)
-            .set({
-              status: "pending",
-              attempts: nextAttempts,
-              deliveryTag: newDeliveryTag,
-              visibleAfter: visibleAfter ?? null,
-            })
+            .set({ status: "dead", attempts: nextAttempts, deliveryTag: undefined })
             .where(eq(queueMessages.id, messageId))
             .pipe(Effect.orDie);
-
-          // If no delay, re-offer to in-memory queue immediately.
-          // With a delay the message stays pending in Postgres; the next startup
-          // recovery (or a background poller) will re-hydrate it.
-          if (visibleAfter === undefined) {
-            inFlight.set(newDeliveryTag, messageId);
-            yield* offerToMem({
-              messageId,
-              deliveryTag: newDeliveryTag,
-              queue: row.queue,
-              routingKey: row.routingKey ?? undefined,
-              payload: row.payload,
-              attempts: nextAttempts,
-            });
-          }
-        });
+          return;
+        }
+        const newDeliveryTag = crypto.randomUUID();
+        const visibleAfter =
+          opts.delayMs !== undefined ? new Date(Date.now() + opts.delayMs) : undefined;
+        yield* db
+          .update(queueMessages)
+          .set({
+            status: "pending",
+            attempts: nextAttempts,
+            deliveryTag: newDeliveryTag,
+            visibleAfter: visibleAfter ?? null,
+          })
+          .where(eq(queueMessages.id, messageId))
+          .pipe(Effect.orDie);
+        if (visibleAfter === undefined) {
+          inFlight.set(newDeliveryTag, messageId);
+          yield* offerToMem({
+            messageId,
+            deliveryTag: newDeliveryTag,
+            queue: row.queue,
+            routingKey: row.routingKey ?? undefined,
+            payload: row.payload,
+            attempts: nextAttempts,
+          });
+        }
+      });
 
       // ── consume ───────────────────────────────────────────────────────────
 
-      const consume = <A>(
+      const consume = Effect.fn("consume")(function* <P, A, E, R>(
         queueName: string,
-        handler: (delivery: Delivery<A>) => Effect.Effect<void>,
-      ): Effect.Effect<ConsumerHandle> =>
-        Effect.gen(function* () {
-          const memQueue = yield* getOrCreateMemQueue(queueName);
-
-          const workerLoop: Effect.Effect<never> = Effect.gen(function* () {
-            // eslint-disable-next-line no-constant-condition
-            while (true) {
-              const envelope = yield* Queue.take(memQueue);
-
-              const delivery: Delivery<A> = {
-                deliveryTag: envelope.deliveryTag,
-                payload: envelope.payload as A,
-                attempts: envelope.attempts,
-                routingKey: envelope.routingKey,
-                ack: ack(envelope.deliveryTag).pipe(
+        handler: (delivery: Delivery<P>) => Effect.Effect<A, E, R>,
+      ) {
+        const memQueue = yield* getOrCreateMemQueue(queueName);
+        const workerLoop = Effect.gen(function* () {
+          while (true) {
+            const envelope = yield* Queue.take(memQueue);
+            const delivery: Delivery<P> = {
+              deliveryTag: envelope.deliveryTag,
+              payload: envelope.payload as P,
+              attempts: envelope.attempts,
+              routingKey: envelope.routingKey,
+              ack: ack(envelope.deliveryTag).pipe(
+                Effect.catchTag("DeliveryTagNotFoundError", () => Effect.void),
+              ),
+              nack: (nackOpts) =>
+                nack(envelope.deliveryTag, nackOpts).pipe(
                   Effect.catchTag("DeliveryTagNotFoundError", () => Effect.void),
                 ),
-                nack: (nackOpts) =>
-                  nack(envelope.deliveryTag, nackOpts).pipe(
-                    Effect.catchTag("DeliveryTagNotFoundError", () => Effect.void),
-                  ),
-              };
-
-              yield* handler(delivery).pipe(
-                Effect.catchCause((cause) =>
-                  Effect.logError("MessageQueue: handler failed, nacking").pipe(
-                    Effect.andThen(Effect.logError(cause)),
-                    Effect.andThen(delivery.nack({ requeue: true })),
-                  ),
+            };
+            yield* handler(delivery).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logError("MessageQueue: handler failed, nacking").pipe(
+                  Effect.andThen(Effect.logError(cause)),
+                  Effect.andThen(delivery.nack({ requeue: true })),
                 ),
-              );
-            }
-          });
-
-          const fiber: Fiber.Fiber<never, never> = yield* pipe(workerLoop, Effect.forkDetach);
-          FiberSet.addUnsafe(fiberSet, fiber);
-
-          return {
-            interrupt: Effect.asVoid(Fiber.interrupt(fiber)),
-          };
+              ),
+            );
+          }
         });
+        const fiber: Fiber.Fiber<never, never> = yield* pipe(workerLoop, Effect.forkDetach);
+        FiberSet.addUnsafe(fiberSet, fiber);
+        return {
+          interrupt: Effect.asVoid(Fiber.interrupt(fiber)),
+        };
+      });
 
       // ── cleanup ───────────────────────────────────────────────────────────
 

@@ -6,15 +6,7 @@
  *                       ↘ pending (nack, below max attempts)
  *                       ↘ dead (nack, max attempts reached)
  */
-import {
-  integer,
-  jsonb,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const queueMessageStatusEnum = pgEnum("queue_message_status", [
   "pending",

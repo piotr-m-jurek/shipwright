@@ -9,6 +9,7 @@ import { runPrdWriter } from "../writers/writer-prd.js";
 import { runRevisionBriefWriter, runRevisionPrdWriter } from "../writers/writer-revision.js";
 import { AnalysisPipelineError, SessionStateError } from "../errors.js";
 import type { MachineContext } from "@shipwright/shared/schemas/machine.js";
+import { MessageQueue } from "../../queue/index.ts";
 
 export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
   function* (sessionId: AgentSessionId) {
@@ -205,6 +206,7 @@ export const startRevision = Effect.fn("agent/startRevision")(function* (
 ) {
   yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
 
+  const mq = yield* MessageQueue;
   const actor = yield* getOrRestoreActor(sessionId);
 
   const state = actor.getSnapshot().value as string;
@@ -215,13 +217,7 @@ export const startRevision = Effect.fn("agent/startRevision")(function* (
   }
 
   actor.send({ type: "REVISION_REQUESTED", feedback });
-
-  yield* runRevisionPipeline(sessionId).pipe(
-    Effect.tapError((e) =>
-      Effect.sync(() => console.error("[session-actor] revision pipeline error:", e)),
-    ),
-    Effect.forkDetach,
-  );
+  yield* mq.publish("session.revise", { sessionId });
 
   return { started: true };
 });

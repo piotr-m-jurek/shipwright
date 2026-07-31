@@ -15,6 +15,9 @@ import { defineRelations } from "drizzle-orm";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
+import { queueMessages } from "../queue/index.ts";
+export { queueMessages, queueMessageStatusEnum } from "../queue/index.ts";
+
 // ── Better Auth tables ────────────────────────────────────────────────────
 
 export const users = pgTable("users", {
@@ -296,6 +299,7 @@ export const relations = defineRelations(
     questions,
     answers,
     outputs,
+    queueMessages,
   },
   (r) => ({
     users: {

@@ -1,16 +1,17 @@
-import { Effect, pipe } from "effect";
-import { runGeneratingPipeline } from "./generation.js";
+import { Effect } from "effect";
 import { getOrRestoreActor } from "../session-actor.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Spans } from "../../observability/spans.js";
 import { DatabaseService } from "../../db/queries.js";
 import { AnalysisPipelineError, SessionStateError } from "../errors.js";
+import { MessageQueue } from "../../queue/index.ts";
 
 export const submitAnswers = Effect.fn("agent/submitAnswers")(
   function* (sessionId: AgentSessionId, rawAnswers: { questionId: string; text: string }[]) {
     yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
 
     const db = yield* DatabaseService;
+    const mq = yield* MessageQueue;
     const actor = yield* getOrRestoreActor(sessionId);
 
     const state = actor.getSnapshot().value;
@@ -54,13 +55,7 @@ export const submitAnswers = Effect.fn("agent/submitAnswers")(
 
     const stateAfter = actor.getSnapshot().value as string;
     if (stateAfter === "generating") {
-      yield* pipe(
-        runGeneratingPipeline(sessionId),
-        Effect.tapError((e) =>
-          Effect.sync(() => console.error("[session-actor] generating pipeline error:", e)),
-        ),
-        Effect.forkDetach,
-      );
+      yield* mq.publish("session.generate", { sessionId });
     }
 
     return { sufficient, round: round + 1 };
