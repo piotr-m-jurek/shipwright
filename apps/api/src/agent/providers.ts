@@ -1,7 +1,12 @@
 import { AnthropicClient } from "@effect/ai-anthropic";
 import { Effect, Layer, pipe, Schema } from "effect";
 import { AiError, EmbeddingModel } from "effect/unstable/ai";
-import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientRequest,
+  HttpClientResponse,
+} from "effect/unstable/http";
 import { ConfigService } from "../config/config.js";
 
 export const AnthropicClientLayer = pipe(
@@ -14,7 +19,7 @@ export const AnthropicClientLayer = pipe(
 
 // ----- TEI response schema -----
 
-const TeiEmbedResponse = Schema.Array(Schema.Array(Schema.Number));
+const TeiEmbedResponse = Schema.Array(Schema.Array(Schema.Finite));
 
 // ----- Custom EmbeddingModel layer backed by HF Text Embeddings Inference -----
 
@@ -37,18 +42,17 @@ export const HuggingFaceTeiEmbeddingModelLayer: Layer.Layer<
           client.execute,
           Effect.flatMap(HttpClientResponse.schemaBodyJson(TeiEmbedResponse)),
           Effect.map((results) => ({
-            results,
+            results: results as number[][],
             usage: { inputTokens: undefined },
           })),
-          Effect.mapError(
-            (cause) =>
-              AiError.make({
-                module: "HuggingFaceTeiEmbeddingModel",
-                method: "embedMany",
-                reason: new AiError.InternalProviderError({
-                  description: `TEI request failed: ${String(cause)}`,
-                }),
+          Effect.mapError((cause) =>
+            AiError.make({
+              module: "HuggingFaceTeiEmbeddingModel",
+              method: "embedMany",
+              reason: new AiError.InternalProviderError({
+                description: `TEI request failed: ${String(cause)}`,
               }),
+            }),
           ),
         ),
     });
