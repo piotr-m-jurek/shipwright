@@ -1,6 +1,14 @@
 import { pipe, Schema } from "effect";
 import { AgentSessionId } from "../domain/ids.ts";
 
+export class GetHealthResponse extends Schema.Class<
+  GetHealthResponse,
+  { readonly brand: unique symbol }
+>("GetHealthResponse")({
+  status: Schema.Literals(["ok", "error"]),
+  version: Schema.String,
+}) {}
+
 export class GetAgentSessionResponse extends Schema.Class<
   GetAgentSessionResponse,
   { readonly brand: unique symbol }
@@ -40,25 +48,11 @@ export class OutputDownloadUrlResponse extends Schema.Class<
 
 export class ReviseRequest extends Schema.Class<ReviseRequest, { readonly brand: unique symbol }>(
   "ReviseRequest",
-)({
-  feedback: Schema.String,
-}) {}
+)({ feedback: Schema.String }) {}
 
 export class ReviseResponse extends Schema.Class<ReviseResponse, { readonly brand: unique symbol }>(
   "ReviseResponse",
-)({
-  started: Schema.Boolean,
-}) {}
-
-export class GetAgentSessionProgressResponse extends Schema.Class<
-  GetAgentSessionProgressResponse,
-  { readonly brand: unique symbol }
->("GetAgentSessionProgressResponse")({ started: Schema.Boolean }) {}
-
-export class GetAgentSessionProgressRequest extends Schema.Class<
-  GetAgentSessionProgressRequest,
-  { readonly brand: unique symbol }
->("GetAgentSessionProgressRequest")({}) {}
+)({ started: Schema.Boolean }) {}
 
 export class PostAgentSessionAnswersResponse extends Schema.Class<
   PostAgentSessionAnswersResponse,

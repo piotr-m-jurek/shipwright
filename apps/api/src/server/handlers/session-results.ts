@@ -26,7 +26,7 @@ export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
           submitAnswers(sessionId, answers as { questionId: string; text: string }[]),
           Effect.mapError(() => new AnalysisPipelineError()),
         );
-        return PostAgentSessionAnswersResponse.make({
+        return new PostAgentSessionAnswersResponse({
           sufficient: result.sufficient,
           round: result.round,
         });
@@ -37,19 +37,24 @@ export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
         const db = yield* DatabaseService;
         const user = yield* CurrentUser;
 
-        const session = yield* db
-          .getAgentSesionByIdForUser({ sessionId, userId: user.id })
-          .pipe(Effect.mapError(() => new AgentSessionNotFound()));
-        if (!session) return yield* new AgentSessionNotFound();
+        const session = yield* pipe(
+          db.getAgentSesionByIdForUser({ sessionId, userId: user.id }),
+          Effect.mapError(() => new AgentSessionNotFound()),
+        );
 
-        const allOutputs = yield* db
-          .getOutputsBySessionId(sessionId)
-          .pipe(Effect.mapError(() => new AgentSessionNotFound()));
+        if (!session) {
+          return yield* new AgentSessionNotFound();
+        }
+
+        const allOutputs = yield* pipe(
+          db.getOutputsBySessionId(sessionId),
+          Effect.mapError(() => new AgentSessionNotFound()),
+        );
 
         const brief = allOutputs.find((o) => o.type === "project_brief");
         const prd = allOutputs.find((o) => o.type === "implementation_prd");
 
-        return GetAgentSessionFinalOutputResponse.make({
+        return new GetAgentSessionFinalOutputResponse({
           projectBrief: brief?.content ?? null,
           implementationPrd: prd?.content ?? null,
           version: brief?.version ?? null,
@@ -67,7 +72,7 @@ export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
             return new RevisionError();
           }),
         );
-        return ReviseResponse.make({ started: result.started });
+        return new ReviseResponse({ started: result.started });
       }),
     ),
 );

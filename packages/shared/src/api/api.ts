@@ -1,18 +1,11 @@
-import { pipe, Schema } from "effect";
-import {
-  HttpApi,
-  HttpApiEndpoint,
-  OpenApi,
-  HttpApiSchema,
-  HttpApiGroup,
-} from "effect/unstable/httpapi";
+import { Schema } from "effect";
+import { HttpApi, HttpApiEndpoint, OpenApi, HttpApiGroup } from "effect/unstable/httpapi";
 import {
   CreateAgentSessionRequest,
   CreateAgentSessionResponse,
   ConfirmUploadRequest,
   ConfirmUploadResponse,
   GetAgentSessionResponse,
-  GetAgentSessionProgressResponse,
   PostAgentSessionAnswersRequest,
   PostAgentSessionAnswersResponse,
   GetAgentSessionFinalOutputResponse,
@@ -20,6 +13,7 @@ import {
   OutputDownloadUrlResponse,
   ReviseRequest,
   ReviseResponse,
+  GetHealthResponse,
 } from "../schemas/api.js";
 import {
   CreateAgentSessionError,
@@ -36,12 +30,7 @@ import { Authorization } from "./middleware.js";
 import { AgentSessionId } from "../domain/ids.ts";
 
 export class PublicApiGroup extends HttpApiGroup.make("public").add(
-  HttpApiEndpoint.get("health", "/health", {
-    success: Schema.Struct({
-      status: Schema.Literals(["ok", "error"]),
-      version: Schema.String,
-    }),
-  }),
+  HttpApiEndpoint.get("health", "/health", { success: GetHealthResponse }),
 ) {}
 
 export class SessionStorageApi extends HttpApiGroup.make("storage")
@@ -71,20 +60,12 @@ export class SessionComputationApi extends HttpApiGroup.make("compute")
     HttpApiEndpoint.get("getAgentSessionById", "/sessions/:id", {
       params: { sessionId: AgentSessionId },
       success: GetAgentSessionResponse,
-      error: pipe(
-        AgentSessionNotFound,
-        HttpApiSchema.asNoContent({ decode: () => new AgentSessionNotFound() }),
-      ),
+      error: AgentSessionNotFound,
     }),
     HttpApiEndpoint.post("confirmAnalysis", "/sessions/:sessionId/confirm", {
       params: { sessionId: AgentSessionId },
       success: ConfirmAnalysisResponse,
       error: ConfirmAnalysisError,
-    }),
-    HttpApiEndpoint.post("getSessionProgress", "/sessions/:sessionId/stream", {
-      params: { sessionId: AgentSessionId },
-      success: GetAgentSessionProgressResponse,
-      error: AnalysisPipelineError,
     }),
   )
 

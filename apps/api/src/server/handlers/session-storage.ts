@@ -30,7 +30,7 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
           createUploadSession({ files: p.payload.files, userId: user.id }),
           Effect.mapError(() => new CreateAgentSessionError()),
         );
-        return CreateAgentSessionResponse.make({ uploads, sessionId });
+        return new CreateAgentSessionResponse({ uploads, sessionId });
       }),
     )
     .handle(
@@ -49,7 +49,7 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
         }
 
         yield* mq.publish("documents.process", { sessionId, uploads });
-        return ConfirmUploadResponse.make({ valid: true });
+        return new ConfirmUploadResponse({ valid: true });
       }),
     )
     .handle("getOutputDownloadUrl", ({ params: { sessionId, type } }) =>
@@ -57,9 +57,10 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
         const db = yield* DatabaseService;
         const user = yield* CurrentUser;
 
-        const agentSessionCheck = yield* db
-          .getAgentSesionByIdForUser({ sessionId, userId: user.id })
-          .pipe(Effect.orElseSucceed(() => undefined));
+        const agentSessionCheck = yield* pipe(
+          db.getAgentSesionByIdForUser({ sessionId, userId: user.id }),
+          Effect.orElseSucceed(() => undefined),
+        );
 
         if (agentSessionCheck === undefined) {
           return yield* new OutputNotFoundError();
@@ -70,9 +71,10 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
           return yield* new OutputNotFoundError();
         }
 
-        const output = yield* db
-          .getLatestOutputByType({ sessionId, type })
-          .pipe(Effect.mapError(() => new OutputNotFoundError()));
+        const output = yield* pipe(
+          db.getLatestOutputByType({ sessionId, type }),
+          Effect.mapError(() => new OutputNotFoundError()),
+        );
 
         if (!output?.s3Key) {
           return yield* new OutputNotFoundError();
@@ -80,11 +82,12 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
 
         const storage = yield* StorageAdapter;
         // Generate presigned GET URL with 15-minute TTL (not a PUT URL)
-        const url = yield* storage
-          .generatePresignedGetUrl(output.s3Key, 15)
-          .pipe(Effect.mapError(() => new OutputNotFoundError()));
+        const url = yield* pipe(
+          storage.generatePresignedGetUrl(output.s3Key, 15),
+          Effect.mapError(() => new OutputNotFoundError()),
+        );
 
-        return OutputDownloadUrlResponse.make({ url });
+        return new OutputDownloadUrlResponse({ url });
       }),
     ),
 );

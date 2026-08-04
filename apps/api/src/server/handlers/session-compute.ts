@@ -1,16 +1,16 @@
-import { Effect, pipe } from "effect";
+import { Effect, Option, pipe } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { AgentSessionNotFound, ConfirmAnalysisError } from "@shipwright/shared/domain/errors.js";
 import { getOrRestoreActor } from "../../agent/session-actor.ts";
 import {
   GetAgentSessionResponse,
-  GetAgentSessionProgressResponse,
   ConfirmAnalysisResponse,
 } from "@shipwright/shared/schemas/api.js";
 import { Api } from "@shipwright/shared/api.js";
 import { DatabaseService } from "../../db/queries.ts";
 import { CurrentUser } from "@shipwright/shared/middleware.js";
 import { MessageQueue } from "../../queue/index.ts";
+import { QuestionSelect } from "../../db/types.ts";
 
 export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
   handlers
@@ -20,21 +20,18 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const user = yield* CurrentUser;
 
         const session = yield* db.getAgentSesionByIdForUser({ sessionId, userId: user.id }).pipe(
+          Effect.flatMap(Effect.fromNullishOr),
           Effect.mapError(() => new AgentSessionNotFound()),
-          Effect.flatMap((s) =>
-            s === undefined ? Effect.fail(new AgentSessionNotFound()) : Effect.succeed(s),
-          ),
         );
 
         // Include current questions when session is awaiting answers
-        const questions =
-          session.status === "awaiting_answers"
-            ? yield* db
-                .getQuestionsBySessionId(sessionId)
-                .pipe(Effect.mapError(() => new AgentSessionNotFound()))
-            : [];
+        const questions = yield* db.getQuestionsBySessionId(sessionId).pipe(
+          Effect.when(Effect.succeed(session.status === "awaiting_answers")),
+          Effect.mapError(() => new AgentSessionNotFound()),
+          Effect.map(Option.getOrElse(() => [] as QuestionSelect[])),
+        );
 
-        return GetAgentSessionResponse.make({
+        return new GetAgentSessionResponse({
           id: session.id,
           createdAt: session.createdAt,
           status: session.status,
@@ -59,20 +56,14 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const state = actor.getSnapshot();
 
         if (state.value !== "idle") {
-          return ConfirmAnalysisResponse.make({ started: true });
+          return new ConfirmAnalysisResponse({ started: true });
         }
 
         actor.send({ type: "UPLOAD_COMPLETE" });
         yield* mq.publish("session.workflow", { sessionId }, { maxAttempts: 5 });
         actor.send({ type: "USER_CONFIRM" }); // uploading → summarizing
 
-        return ConfirmAnalysisResponse.make({ started: true });
+        return new ConfirmAnalysisResponse({ started: true });
       }),
-    )
-    .handle("getSessionProgress", ({ params: { sessionId: _sessionId } }) =>
-      // Legacy endpoint — use POST /sessions/:id/confirm instead.
-      // Returns current session status for polling.
-      // TODO: Remove at some point
-      Effect.sync(() => GetAgentSessionProgressResponse.make({ started: true })),
     ),
 );
