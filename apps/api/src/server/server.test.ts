@@ -9,6 +9,8 @@ import { ApiLayer } from "./server.js";
 import { DbAgentSession } from "../db/services/agent-session.ts";
 import { DbDocument } from "../db/services/document.ts";
 import { DbChunk } from "../db/services/chunk.ts";
+import { AppDBLiveLayer } from "../db/index.js";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 // ---------------------------------------------------------------------------
 // Embedder mock
@@ -27,6 +29,7 @@ vi.mock("../agent/embed-chunks.js", async () => {
 
 const DbLayer = pipe(
   Layer.mergeAll(DbAgentSession.layer, DbDocument.layer, DbChunk.layer),
+  Layer.provideMerge(AppDBLiveLayer),
   Layer.provide(ConfigService.layer),
 );
 
@@ -107,7 +110,7 @@ const createdSessionIds: string[] = [];
 
 afterAll(async () => {
   for (const id of createdSessionIds) {
-    await runDb(Effect.flatMap(DbAgentSession, (db) => db.deleteAgentSession(id)));
+    await runDb(Effect.flatMap(DbAgentSession, (db) => db.deleteAgentSession(id as AgentSessionId)));
   }
 });
 

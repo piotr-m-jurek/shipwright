@@ -27,12 +27,12 @@ export class DbOutput extends Context.Service<DbOutput, Interface>()(
     Effect.gen(function* () {
       const db = yield* DB;
 
-      const createOutput = Effect.fnUntraced(function* (data: OutputInsert) {
+      const createOutput = Effect.fn("db/createOutput")(function* (data: OutputInsert) {
         const [result] = yield* db.insert(outputs).values(data).returning();
         return result;
       });
 
-      const getOutputsBySessionId = Effect.fnUntraced(function* (sessionId: AgentSessionId) {
+      const getOutputsBySessionId = Effect.fn("db/getOutputsBySessionId")(function* (sessionId: AgentSessionId) {
         return yield* db
           .select()
           .from(outputs)
@@ -40,7 +40,7 @@ export class DbOutput extends Context.Service<DbOutput, Interface>()(
           .orderBy(desc(outputs.version));
       });
 
-      const getLatestOutputByType = Effect.fnUntraced(function* (payload: {
+      const getLatestOutputByType = Effect.fn("db/getLatestOutputByType")(function* (payload: {
         sessionId: AgentSessionId;
         type: OutputSelect["type"];
       }) {

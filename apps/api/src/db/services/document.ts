@@ -41,35 +41,35 @@ export class DbDocument extends Context.Service<DbDocument, Interface>()(
     Effect.gen(function* () {
       const db = yield* DB;
 
-      const createDocument = Effect.fnUntraced(function* (data: InsertDocument) {
+      const createDocument = Effect.fn("db/createDocument")(function* (data: InsertDocument) {
         const [result] = yield* db.insert(documents).values(data).returning();
         return result;
       });
 
-      const getDocumentById = Effect.fnUntraced(function* (id: DocumentId) {
+      const getDocumentById = Effect.fn("db/getDocumentById")(function* (id: DocumentId) {
         const results = yield* db.select().from(documents).where(eq(documents.id, id)).limit(1);
         return Option.fromIterable(results);
       });
 
-      const getDocumentsBySessionId = Effect.fnUntraced(function* (sessionId: AgentSessionId) {
+      const getDocumentsBySessionId = Effect.fn("db/getDocumentsBySessionId")(function* (sessionId: AgentSessionId) {
         return yield* db.select().from(documents).where(eq(documents.sessionId, sessionId));
       });
 
-      const updateDocument = Effect.fnUntraced(function* (
+      const updateDocument = Effect.fn("db/updateDocument")(function* (
         documentId: DocumentId,
         payload: Pick<SelectDocument, "status" | "tokenCount">,
       ) {
         yield* db.update(documents).set(payload).where(eq(documents.id, documentId));
       });
 
-      const updateDocumentStatus = Effect.fnUntraced(function* (
+      const updateDocumentStatus = Effect.fn("db/updateDocumentStatus")(function* (
         documentId: DocumentId,
         status: SelectDocument["status"],
       ) {
         yield* db.update(documents).set({ status }).where(eq(documents.id, documentId));
       });
 
-      const updateDocumentTokenCount = Effect.fnUntraced(function* (
+      const updateDocumentTokenCount = Effect.fn("db/updateDocumentTokenCount")(function* (
         documentId: DocumentId,
         tokenCount: number,
       ) {

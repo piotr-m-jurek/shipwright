@@ -24,7 +24,7 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
   handlers
     .handle(
       "sessionUploadUrl",
-      Effect.fnUntraced(function* (p) {
+      Effect.fn("handler/createUploadSession")(function* (p) {
         const user = yield* CurrentUser;
 
         const { uploads, sessionId } = yield* pipe(
@@ -36,7 +36,7 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
     )
     .handle(
       "confirmUpload",
-      Effect.fnUntraced(function* ({ payload: { uploads }, params: { sessionId } }) {
+      Effect.fn("handler/confirmUploads")(function* ({ payload: { uploads }, params: { sessionId } }) {
         const mq = yield* MessageQueue;
 
         const results = yield* pipe(
@@ -60,6 +60,7 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
         const user = yield* CurrentUser;
 
         yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(
+          Effect.mapError(() => new OutputNotFoundError()),
           Effect.flatMap(Option.match({
             onNone: () => Effect.fail(new OutputNotFoundError()),
             onSome: Effect.succeed,
@@ -72,8 +73,8 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
         }
 
         const output = yield* outputDb.getLatestOutputByType({ sessionId, type }).pipe(
-          Effect.map(Option.getOrUndefined),
           Effect.mapError(() => new OutputNotFoundError()),
+          Effect.map(Option.getOrUndefined),
         );
 
         if (!output?.s3Key) {

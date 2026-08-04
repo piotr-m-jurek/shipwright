@@ -112,17 +112,17 @@ export class DbSummary extends Context.Service<DbSummary, Interface>()(
     Effect.gen(function* () {
       const db = yield* DB;
 
-      const createDocumentSummary = Effect.fnUntraced(function* (data: DocumentSummaryInsert) {
+      const createDocumentSummary = Effect.fn("db/createDocumentSummary")(function* (data: DocumentSummaryInsert) {
         const [result] = yield* db.insert(documentSummaries).values(data).returning();
         return result;
       });
 
-      const createSummaryItems = Effect.fnUntraced(function* (data: SummaryItemInsert[]) {
+      const createSummaryItems = Effect.fn("db/createSummaryItems")(function* (data: SummaryItemInsert[]) {
         if (data.length === 0) return [] as SummaryItemSelect[];
         return yield* db.insert(summaryItems).values(data).returning();
       });
 
-      const getCurrentDocumentSummaryVersion = Effect.fnUntraced(function* ({
+      const getCurrentDocumentSummaryVersion = Effect.fn("db/getCurrentDocumentSummaryVersion")(function* ({
         documentId,
         sessionId,
       }: {
@@ -145,7 +145,7 @@ export class DbSummary extends Context.Service<DbSummary, Interface>()(
         return results[0].version;
       });
 
-      const getFinalSummariesBySession = Effect.fnUntraced(function* (sessionId: AgentSessionId) {
+      const getFinalSummariesBySession = Effect.fn("db/getFinalSummariesBySession")(function* (sessionId: AgentSessionId) {
         const summaryRows = yield* db
           .selectDistinctOn([documentSummaries.documentId], {
             id: documentSummaries.id,

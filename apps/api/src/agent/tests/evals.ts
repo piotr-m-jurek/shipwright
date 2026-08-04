@@ -61,7 +61,8 @@ import {
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer, DbOutput.layer, AppDBLiveLayer),
+    Layer.mergeAll(StorageAdapter.layer, DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer, DbOutput.layer),
+    Layer.provideMerge(AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
 );

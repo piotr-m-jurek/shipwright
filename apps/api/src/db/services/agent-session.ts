@@ -42,13 +42,13 @@ export class DbAgentSession extends Context.Service<DbAgentSession, Interface>()
     Effect.gen(function* () {
       const db = yield* DB;
 
-      const createAgentSession = Effect.fnUntraced(function* (data: InsertAgentSession) {
+      const createAgentSession = Effect.fn("db/createAgentSession")(function* (data: InsertAgentSession) {
         const [result] = yield* db.insert(agentSessions).values(data).returning();
 
         return result;
       });
 
-      const updateAgentSession = Effect.fnUntraced(function* (
+      const updateAgentSession = Effect.fn("db/updateAgentSession")(function* (
         sessionId: AgentSessionId,
         status: SelectAgentSession["status"],
       ) {
@@ -61,7 +61,7 @@ export class DbAgentSession extends Context.Service<DbAgentSession, Interface>()
         return result;
       });
 
-      const updateAgentSessionSnapshot = Effect.fnUntraced(function* (
+      const updateAgentSessionSnapshot = Effect.fn("db/updateAgentSessionSnapshot")(function* (
         sessionId: AgentSessionId,
         status: SelectAgentSession["status"],
         xstateSnapshot: unknown,
@@ -72,7 +72,7 @@ export class DbAgentSession extends Context.Service<DbAgentSession, Interface>()
           .where(eq(agentSessions.id, sessionId));
       });
 
-      const getAgentSessionById = Effect.fnUntraced(function* (payload: {
+      const getAgentSessionById = Effect.fn("db/getAgentSessionById")(function* (payload: {
         sessionId: AgentSessionId;
       }) {
         const results = yield* db
@@ -83,7 +83,7 @@ export class DbAgentSession extends Context.Service<DbAgentSession, Interface>()
         return Option.fromIterable(results);
       });
 
-      const getAgentSessionByIdForUser = Effect.fnUntraced(function* (payload: {
+      const getAgentSessionByIdForUser = Effect.fn("db/getAgentSessionByIdForUser")(function* (payload: {
         sessionId: AgentSessionId;
         userId: UserId;
       }) {
@@ -97,7 +97,7 @@ export class DbAgentSession extends Context.Service<DbAgentSession, Interface>()
         return Option.fromIterable(results);
       });
 
-      const deleteAgentSession = Effect.fnUntraced(function* (sessionId: AgentSessionId) {
+      const deleteAgentSession = Effect.fn("db/deleteAgentSession")(function* (sessionId: AgentSessionId) {
         yield* db.delete(agentSessions).where(eq(agentSessions.id, sessionId));
       });
 

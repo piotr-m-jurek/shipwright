@@ -22,7 +22,7 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
     const outputDb = yield* DbOutput;
     const storage = yield* StorageAdapter;
 
-    const processBrief = Effect.fnUntraced(function* (
+    const processBrief = Effect.fn("agent/generateBrief")(function* (
       summaries: ReconstructedSummary[],
       answers: MachineContext["answers"],
       questions: MachineContext["questions"],
@@ -64,7 +64,7 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
       );
     });
 
-    const processPrd = Effect.fnUntraced(function* (
+    const processPrd = Effect.fn("agent/generatePrd")(function* (
       summaries: ReconstructedSummary[],
       answers: MachineContext["answers"],
       questions: MachineContext["questions"],
@@ -152,7 +152,7 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
     }).pipe(Effect.map(Option.getOrUndefined));
     const existingBriefRow = yield* outputDb.getLatestOutputByType({ sessionId, type: "project_brief" }).pipe(Effect.map(Option.getOrUndefined));
 
-    const processBrief = Effect.fnUntraced(function* ({
+    const processBrief = Effect.fn("agent/reviseBrief")(function* ({
       existingBrief,
       existingPrd,
     }: {
@@ -199,7 +199,7 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
       );
     });
 
-    const processPrd = Effect.fnUntraced(function* ({
+    const processPrd = Effect.fn("agent/revisePrd")(function* ({
       existingBrief,
       existingPrd,
     }: {

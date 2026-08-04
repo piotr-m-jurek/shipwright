@@ -21,6 +21,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const user = yield* CurrentUser;
 
         const session = yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(
+          Effect.mapError(() => new AgentSessionNotFound()),
           Effect.flatMap(Option.match({
             onNone: () => Effect.fail(new AgentSessionNotFound()),
             onSome: Effect.succeed,
@@ -29,8 +30,8 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
 
         // Include current questions when session is awaiting answers
         const questions = yield* clarificationDb.getQuestionsBySessionId(sessionId).pipe(
-          Effect.when(Effect.succeed(session.status === "awaiting_answers")),
           Effect.mapError(() => new AgentSessionNotFound()),
+          Effect.when(Effect.succeed(session.status === "awaiting_answers")),
           Effect.map(Option.getOrElse(() => [] as QuestionSelect[])),
         );
 

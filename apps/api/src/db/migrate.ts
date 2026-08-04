@@ -1,4 +1,3 @@
-// TODO: should be postgress-js
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
@@ -9,7 +8,7 @@ if (!url) throw new Error("DATABASE_URL is not set");
 const client = new pg.Client({ connectionString: url });
 await client.connect();
 
-const db = drizzle(client);
+const db = drizzle({ client });
 
 console.log("Running migrations...");
 await migrate(db, { migrationsFolder: "./src/db/out" });

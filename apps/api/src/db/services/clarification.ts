@@ -30,12 +30,12 @@ export class DbClarification extends Context.Service<DbClarification, Interface>
     Effect.gen(function* () {
       const db = yield* DB;
 
-      const createQuestions = Effect.fnUntraced(function* (data: QuestionInsert[]) {
+      const createQuestions = Effect.fn("db/createQuestions")(function* (data: QuestionInsert[]) {
         if (data.length === 0) return [] as QuestionSelect[];
         return yield* db.insert(questions).values(data).returning();
       });
 
-      const getQuestionsBySessionId = Effect.fnUntraced(function* (sessionId: AgentSessionId) {
+      const getQuestionsBySessionId = Effect.fn("db/getQuestionsBySessionId")(function* (sessionId: AgentSessionId) {
         return yield* db
           .select()
           .from(questions)
@@ -43,12 +43,12 @@ export class DbClarification extends Context.Service<DbClarification, Interface>
           .orderBy(asc(questions.orderIndex));
       });
 
-      const createAnswers = Effect.fnUntraced(function* (data: AnswerInsert[]) {
+      const createAnswers = Effect.fn("db/createAnswers")(function* (data: AnswerInsert[]) {
         if (data.length === 0) return [] as AnswerSelect[];
         return yield* db.insert(answers).values(data).returning();
       });
 
-      const getAnswersBySessionId = Effect.fnUntraced(function* (sessionId: AgentSessionId) {
+      const getAnswersBySessionId = Effect.fn("db/getAnswersBySessionId")(function* (sessionId: AgentSessionId) {
         return yield* db.select().from(answers).where(eq(answers.sessionId, sessionId));
       });
 

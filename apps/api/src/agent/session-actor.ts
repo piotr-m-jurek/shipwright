@@ -49,7 +49,7 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
   return actor;
 });
 
-const wireSnapshotPersistence = Effect.fnUntraced(function* wireSnapshotPersistence(
+const wireSnapshotPersistence = Effect.fn("agent/wireSnapshotPersistence")(function* (
   actor: AgentActor,
   sessionId: AgentSessionId,
 ) {

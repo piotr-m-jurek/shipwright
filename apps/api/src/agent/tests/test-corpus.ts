@@ -42,7 +42,8 @@ import { AnthropicClientLayer } from "../providers.js";
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer, AppDBLiveLayer),
+    Layer.mergeAll(StorageAdapter.layer, DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer),
+    Layer.provideMerge(AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
 );

@@ -28,10 +28,11 @@ import { ConfigService } from "../../config/config.js";
 const runtime = ManagedRuntime.make(
   Layer.mergeAll(
     StorageAdapter.layer.pipe(Layer.provide(ConfigService.layer)),
-    DbAgentSession.layer.pipe(Layer.provide(ConfigService.layer)),
-    DbDocument.layer.pipe(Layer.provide(ConfigService.layer)),
-    DbChunk.layer.pipe(Layer.provide(ConfigService.layer)),
-    AppDBLiveLayer,
+    DbAgentSession.layer,
+    DbDocument.layer,
+    DbChunk.layer,
+  ).pipe(
+    Layer.provideMerge(AppDBLiveLayer),
   ),
 );
 

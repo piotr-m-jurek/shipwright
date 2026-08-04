@@ -40,11 +40,11 @@ export class DbChunk extends Context.Service<DbChunk, Interface>()(
     Effect.gen(function* () {
       const db = yield* DB;
 
-      const createChunks = Effect.fnUntraced(function* (data: InsertChunk[]) {
+      const createChunks = Effect.fn("db/createChunks")(function* (data: InsertChunk[]) {
         return yield* db.insert(chunks).values(data).returning();
       });
 
-      const getChunksByDocumentId = Effect.fnUntraced(function* (documentId: DocumentId) {
+      const getChunksByDocumentId = Effect.fn("db/getChunksByDocumentId")(function* (documentId: DocumentId) {
         return yield* db
           .select()
           .from(chunks)
@@ -52,11 +52,11 @@ export class DbChunk extends Context.Service<DbChunk, Interface>()(
           .orderBy(asc(chunks.chunkIndex));
       });
 
-      const getChunksBySessionId = Effect.fnUntraced(function* (sessionId: AgentSessionId) {
+      const getChunksBySessionId = Effect.fn("db/getChunksBySessionId")(function* (sessionId: AgentSessionId) {
         return yield* db.select().from(chunks).where(eq(chunks.sessionId, sessionId));
       });
 
-      const getChunksBySimilarity = Effect.fnUntraced(function* ({
+      const getChunksBySimilarity = Effect.fn("db/getChunksBySimilarity")(function* ({
         embedding,
         sessionId,
         limit,

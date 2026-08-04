@@ -40,14 +40,14 @@ export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
         const user = yield* CurrentUser;
 
         yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(
+          Effect.mapError(() => new AgentSessionNotFound()),
           Effect.flatMap(Option.match({
             onNone: () => Effect.fail(new AgentSessionNotFound()),
             onSome: Effect.succeed,
           })),
         );
 
-        const allOutputs = yield* pipe(
-          outputDb.getOutputsBySessionId(sessionId),
+        const allOutputs = yield* outputDb.getOutputsBySessionId(sessionId).pipe(
           Effect.mapError(() => new AgentSessionNotFound()),
         );
 
