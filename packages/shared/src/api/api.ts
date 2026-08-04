@@ -57,7 +57,7 @@ export class SessionStorageApi extends HttpApiGroup.make("storage")
 
 export class SessionComputationApi extends HttpApiGroup.make("compute")
   .add(
-    HttpApiEndpoint.get("getAgentSessionById", "/sessions/:id", {
+    HttpApiEndpoint.get("getAgentSessionById", "/sessions/:sessionId", {
       params: { sessionId: AgentSessionId },
       success: GetAgentSessionResponse,
       error: AgentSessionNotFound,

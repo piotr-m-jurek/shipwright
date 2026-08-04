@@ -10,7 +10,6 @@ import { Api } from "@shipwright/shared/api.js";
 import { DbAgentSession } from "../../db/services/agent-session.ts";
 import { DbClarification } from "../../db/services/clarification.ts";
 import { CurrentUser } from "@shipwright/shared/middleware.js";
-import { MessageQueue } from "../../queue/index.ts";
 import { QuestionSelect } from "../../db/types.ts";
 
 export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
@@ -51,7 +50,6 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
     )
     .handle("confirmAnalysis", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
-        const mq = yield* MessageQueue;
         const actor = yield* pipe(
           getOrRestoreActor(sessionId),
           Effect.mapError(() => new ConfirmAnalysisError()),
@@ -63,9 +61,12 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
           return new ConfirmAnalysisResponse({ started: true });
         }
 
+        // Advance the actor: idle → uploading → summarizing.
+        // The actual session.workflow job is published by the documents.process
+        // consumer after chunks are written, ensuring no race between chunking
+        // and summarisation.
         actor.send({ type: "UPLOAD_COMPLETE" });
-        yield* mq.publish("session.workflow", { sessionId }, { maxAttempts: 5 });
-        actor.send({ type: "USER_CONFIRM" }); // uploading → summarizing
+        actor.send({ type: "USER_CONFIRM" });
 
         return new ConfirmAnalysisResponse({ started: true });
       }),

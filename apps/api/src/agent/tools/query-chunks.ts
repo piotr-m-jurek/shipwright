@@ -1,8 +1,7 @@
-import { Effect, Layer, pipe, Schema } from "effect";
+import { Effect, pipe, Schema } from "effect";
 import { Tool, Toolkit } from "effect/unstable/ai";
-import { OpenAiEmbeddingModel } from "@effect/ai-openai";
-import { DatabaseService } from "../../db/queries.js";
-import { OpenAiClientLayer } from "../providers.js";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import { DbChunk } from "../../db/services/chunk.ts";
 import { EmbeddingService } from "../embedding-service.ts";
 
 class QueryChunksToolParameters extends Schema.Class<QueryChunksToolParameters>(
@@ -15,10 +14,9 @@ class QueryChunksToolParameters extends Schema.Class<QueryChunksToolParameters>(
     }),
   ),
   limit: pipe(
-    Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 20 })),
-    Schema.withDecodingDefault(Effect.succeed(5)),
+    Schema.optionalKey(Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 20 }))),
     Schema.annotate({
-      description: "Maximum number of chunks to return (1–20, default 5)",
+      description: "Maximum number of chunks to return (1–20, default 5). Omit to use the default.",
     }),
   ),
 }) {}
@@ -48,22 +46,18 @@ export const QueryChunksTool = Tool.make("query-chunks", {
 
 export const QueryChunksToolkit = Toolkit.make(QueryChunksTool);
 
-const requiredLayers = pipe(
-  OpenAiEmbeddingModel.model("text-embedding-3-small", { dimensions: 1536 }),
-  Layer.provide(OpenAiClientLayer),
-);
-
-export const makeQueryChunksLayer = (sessionId: string) =>
+export const makeQueryChunksLayer = (sessionId: AgentSessionId) =>
   QueryChunksToolkit.toLayer(
     Effect.gen(function* () {
-      const db = yield* DatabaseService;
+      const db = yield* DbChunk;
       const chunkster = yield* EmbeddingService;
 
-      return QueryChunksToolkit.of({
-        "query-chunks": Effect.fn("tools/query-chunks")(function* ({
-          query,
-          limit,
-        }: typeof QueryChunksToolParameters.Type) {
+        return QueryChunksToolkit.of({
+          "query-chunks": Effect.fn("tools/query-chunks")(function* ({
+            query,
+            limit: rawLimit,
+          }: typeof QueryChunksToolParameters.Type) {
+            const limit = rawLimit ?? 5;
           const embedding = yield* pipe(
             chunkster.embedText(query),
             Effect.catch(() => Effect.succeed([])),
@@ -79,8 +73,8 @@ export const makeQueryChunksLayer = (sessionId: string) =>
               ),
             );
 
-          return { results: similarChunks };
+          return new QueryChunksToolSuccess({ results: similarChunks });
         }),
       });
     }),
-  ).pipe(Layer.provide(requiredLayers));
+  );

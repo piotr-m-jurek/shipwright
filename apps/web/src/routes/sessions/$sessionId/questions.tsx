@@ -38,6 +38,45 @@ const submitAnswersFamily = Atom.family((_nonce: number) =>
 );
 
 // ---------------------------------------------------------------------------
+// Pipeline steps — order matters
+// ---------------------------------------------------------------------------
+
+type PipelineStep = {
+  status: string;
+  label: string;
+  description: string;
+};
+
+const PIPELINE_STEPS: PipelineStep[] = [
+  { status: "uploading",        label: "Upload",    description: "Receiving documents" },
+  { status: "summarizing",      label: "Summarise", description: "Reading and summarising content" },
+  { status: "processing",       label: "Process",   description: "Chunking and indexing" },
+  { status: "analyzing",        label: "Analyse",   description: "Finding gaps and contradictions" },
+  { status: "awaiting_answers", label: "Questions", description: "Ready for your input" },
+  { status: "re_evaluating",    label: "Evaluate",  description: "Reviewing your answers" },
+  { status: "generating",       label: "Generate",  description: "Writing outputs" },
+];
+
+const ERROR_STATUS_LABELS: Record<string, string> = {
+  uploading_error:     "Upload failed",
+  processing_error:    "Processing failed",
+  analyzing_error:     "Analysis failed",
+  re_evaluating_error: "Re-evaluation failed",
+  generating_error:    "Generation failed",
+  revising_error:      "Revision failed",
+  error:               "An error occurred",
+  partial_error:       "Some documents could not be processed",
+};
+
+function isErrorStatus(status: string): boolean {
+  return status in ERROR_STATUS_LABELS || status === "error" || status === "partial_error";
+}
+
+function stepIndexForStatus(status: string): number {
+  return PIPELINE_STEPS.findIndex((s) => s.status === status);
+}
+
+// ---------------------------------------------------------------------------
 // Polling wrapper — refreshes every 2s while not awaiting_answers / complete
 // ---------------------------------------------------------------------------
 
@@ -47,7 +86,11 @@ function useSessionPolling(sessionId: AgentSessionId) {
 
   const status = AsyncResult.isSuccess(sessionResult) ? sessionResult.value.status : null;
 
-  const shouldPoll = status !== "awaiting_answers" && status !== "complete";
+  const shouldPoll =
+    status !== null &&
+    status !== "awaiting_answers" &&
+    status !== "complete" &&
+    !isErrorStatus(status);
 
   const pollingAtom = useMemo(
     () => (shouldPoll ? Atom.withRefresh(baseAtom, "2 seconds") : baseAtom),
@@ -56,6 +99,86 @@ function useSessionPolling(sessionId: AgentSessionId) {
   );
 
   return useAtomValue(pollingAtom);
+}
+
+// ---------------------------------------------------------------------------
+// Progress stepper
+// ---------------------------------------------------------------------------
+
+function PipelineProgress({ status }: { status: string }) {
+  const currentIdx = stepIndexForStatus(status);
+
+  return (
+    <div className="w-full max-w-sm space-y-4">
+      <ol className="space-y-2">
+        {PIPELINE_STEPS.map((step, idx) => {
+          const isDone    = idx < currentIdx;
+          const isActive  = idx === currentIdx;
+          const isPending = idx > currentIdx;
+
+          return (
+            <li key={step.status} className="flex items-start gap-3">
+              {/* Step indicator */}
+              <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
+                {isDone ? (
+                  <svg
+                    className="size-4 text-foreground"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <polyline points="3,8 6.5,12 13,4" />
+                  </svg>
+                ) : isActive ? (
+                  <Spinner className="size-3.5" />
+                ) : (
+                  <span className="size-1.5 rounded-full bg-muted-foreground/30" />
+                )}
+              </div>
+
+              {/* Step text */}
+              <div className={isPending ? "opacity-35" : ""}>
+                <p className={`text-xs font-medium ${isActive ? "" : isDone ? "line-through opacity-50" : ""}`}>
+                  {step.label}
+                </p>
+                {isActive && (
+                  <p className="text-xs text-muted-foreground">{step.description}…</p>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Error display
+// ---------------------------------------------------------------------------
+
+function PipelineError({ status }: { status: string }) {
+  const message = ERROR_STATUS_LABELS[status] ?? "Something went wrong";
+  // Which step failed — derive from the prefix before "_error"
+  const failedBase = status.replace(/_error$/, "");
+  const failedStep = PIPELINE_STEPS.find((s) => s.status === failedBase);
+
+  return (
+    <div className="w-full max-w-sm space-y-4">
+      <Alert variant="destructive">
+        <AlertDescription className="space-y-1">
+          <p className="font-medium">{message}</p>
+          {failedStep && (
+            <p className="text-xs opacity-80">Failed during: {failedStep.label}</p>
+          )}
+          <p className="text-xs opacity-70 pt-1">
+            Check server logs or contact support if this persists.
+          </p>
+        </AlertDescription>
+      </Alert>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -70,16 +193,20 @@ function QuestionsPage({ sessionId }: { sessionId: AgentSessionId }) {
     Match.when(
       (r) => AsyncResult.isWaiting(r) && !AsyncResult.isSuccess(r),
       () => (
-        <div className="flex min-h-svh flex-col items-center justify-center gap-3">
-          <Spinner className="size-5" />
+        <div className="flex min-h-svh flex-col items-center justify-center gap-6">
+          <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
+          <Spinner className="size-4" />
           <p className="text-xs text-muted-foreground">Loading session…</p>
         </div>
       ),
     ),
     Match.when(AsyncResult.isFailure, () => (
-      <div className="flex min-h-svh flex-col items-center justify-center gap-3">
-        <Alert variant="destructive" className="max-w-xs">
-          <AlertDescription>Failed to load session.</AlertDescription>
+      <div className="flex min-h-svh flex-col items-center justify-center gap-6">
+        <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
+        <Alert variant="destructive" className="max-w-sm">
+          <AlertDescription>
+            Failed to load session. Check your connection and reload.
+          </AlertDescription>
         </Alert>
       </div>
     )),
@@ -87,6 +214,7 @@ function QuestionsPage({ sessionId }: { sessionId: AgentSessionId }) {
       if (session.status === "complete") {
         return <Navigate to={"/sessions/$sessionId/output"} params={{ sessionId }} />;
       }
+
       if (session.status === "awaiting_answers" && session.questions.length > 0) {
         return (
           <AnswerForm
@@ -95,34 +223,25 @@ function QuestionsPage({ sessionId }: { sessionId: AgentSessionId }) {
           />
         );
       }
+
+      if (isErrorStatus(session.status)) {
+        return (
+          <div className="flex min-h-svh flex-col items-center justify-center gap-6">
+            <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
+            <PipelineError status={session.status} />
+          </div>
+        );
+      }
+
       return (
-        <div className="flex min-h-svh flex-col items-center justify-center gap-3">
-          <Spinner className="size-5" />
-          <p className="text-xs text-muted-foreground">{statusLabel(session.status)}</p>
+        <div className="flex min-h-svh flex-col items-center justify-center gap-6">
+          <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
+          <PipelineProgress status={session.status} />
         </div>
       );
     }),
     Match.orElse(() => null),
   );
-}
-
-function statusLabel(status: string): string {
-  switch (status) {
-    case "uploading":
-      return "Uploading documents…";
-    case "processing":
-      return "Processing documents…";
-    case "summarizing":
-      return "Summarising documents…";
-    case "analyzing":
-      return "Analysing for gaps and contradictions…";
-    case "generating":
-      return "Generating outputs…";
-    case "revising":
-      return "Revising outputs…";
-    default:
-      return `Working… (${status})`;
-  }
 }
 
 // ---------------------------------------------------------------------------

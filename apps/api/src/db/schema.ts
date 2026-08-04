@@ -15,8 +15,8 @@ import { defineRelations } from "drizzle-orm";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
-import { queueMessages } from "../queue/index.ts";
-export { queueMessages, queueMessageStatusEnum } from "../queue/index.ts";
+import { queueMessages } from "../queue/schema.ts";
+export { queueMessages, queueMessageStatusEnum } from "../queue/schema.ts";
 
 // ── Better Auth tables ────────────────────────────────────────────────────
 
@@ -95,6 +95,7 @@ export const verifications = pgTable(
 export const sessionStatusEnum = pgEnum("session_status", [
   "idle",
   "uploading",
+  "summarizing",
   "processing",
   "analyzing",
   "awaiting_answers",
@@ -169,7 +170,7 @@ export const chunks = pgTable("chunks", {
   charOffset: integer("char_offset"),
   chunkIndex: integer("chunk_index").notNull(),
   content: text("content").notNull(),
-  embedding: vector("embedding", { dimensions: 1536 }).notNull(),
+  embedding: vector("embedding", { dimensions: 1024 }).notNull(),
   headingPath: text("heading_path").array(),
   pageNumber: integer("page_number"),
 });

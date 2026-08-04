@@ -52,7 +52,7 @@ export const ClarifyingQuestionsEffectSchema = Schema.Struct({
     Schema.isMinLength(3),
     Schema.isMaxLength(7),
   ),
-  stopReason: Schema.optional(Schema.Literals(["sufficient_gaps", "round_limit"])),
+  stopReason: Schema.optionalKey(Schema.Literals(["sufficient_gaps", "round_limit"])),
 });
 
 export type ClarifyingQuestionsEffect = typeof ClarifyingQuestionsEffectSchema.Type;

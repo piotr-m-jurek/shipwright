@@ -1,0 +1,1 @@
+ALTER TYPE "session_status" ADD VALUE 'summarizing' BEFORE 'processing';

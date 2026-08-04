@@ -16,7 +16,7 @@ type Interface = {
     allowedOrigins: readonly string[];
   };
   ai: {
-    openaiApiKey: Redacted.Redacted<string>;
+    teiUrl: string;
     anthropicApiKey: Redacted.Redacted<string>;
   };
   observability:
@@ -65,7 +65,7 @@ export class ConfigService extends Context.Service<ConfigService, Interface>()(
       };
 
       const ai: Interface["ai"] = {
-        openaiApiKey: yield* Config.redacted("OPENAI_API_KEY"),
+        teiUrl: yield* Config.string("TEI_URL"),
         anthropicApiKey: yield* Config.redacted("ANTHROPIC_API_KEY"),
       };
 

@@ -9,11 +9,16 @@ import { Api } from "@shipwright/shared/api.js";
 import { SessionCompute } from "./handlers/session-compute.ts";
 import { ConfigService } from "../config/config.js";
 import { OtlpLayer } from "../observability/observability.js";
-import { DatabaseService } from "../db/queries.js";
+import { DbAgentSession } from "../db/services/agent-session.ts";
+import { DbDocument } from "../db/services/document.ts";
+import { DbChunk } from "../db/services/chunk.ts";
+import { DbSummary } from "../db/services/summary.ts";
+import { DbClarification } from "../db/services/clarification.ts";
+import { DbOutput } from "../db/services/output.ts";
 import { AppDBLiveLayer } from "../db/index.js";
 import { AuthorizationLayer } from "./authorization.js";
 import { EmbeddingService } from "../agent/embedding-service.ts";
-import { AnthropicClientLayer, OpenAiEmbeddingModelLayer } from "../agent/providers.ts";
+import { AnthropicClientLayer, HuggingFaceTeiEmbeddingModelLayerProvided } from "../agent/providers.ts";
 import { AuthRouteLayer } from "./handlers/auth.ts";
 import { SessionStorage } from "./handlers/session-storage.ts";
 import { SessionResults } from "./handlers/session-results.ts";
@@ -25,7 +30,7 @@ export const ApiLayer = pipe(
   HttpApiBuilder.layer(Api, { openapiPath: "/opencode.json" }),
   Layer.provide([SessionStorage, SessionCompute, SessionResults, PublicApi]),
   Layer.provide(AuthorizationLayer),
-  Layer.provide(DatabaseService.layer),
+  Layer.provide([DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer, DbClarification.layer, DbOutput.layer]),
   Layer.provide(StorageAdapter.layer),
   Layer.provide(AppDBLiveLayer),
   Layer.provide(ConfigService.layer),
@@ -64,13 +69,13 @@ const OtlpLayerProvided = pipe(
 );
 
 const EmbeddingServiceLayer = EmbeddingService.layer.pipe(
-  Layer.provideMerge(OpenAiEmbeddingModelLayer),
+  Layer.provideMerge(HuggingFaceTeiEmbeddingModelLayerProvided),
 );
 
 const JobHandlersLayer = pipe(
   JobHandlers.layer,
   Layer.provide([
-    DatabaseService.layer,
+    DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer, DbClarification.layer, DbOutput.layer,
     EmbeddingServiceLayer,
     AnthropicClientLayer,
     StorageAdapter.layer,
@@ -82,7 +87,7 @@ const JobHandlersLayer = pipe(
 const ServiceLayer = pipe(
   Layer.mergeAll(OtlpLayerProvided, NodeHttpServer.layer(createServer, { port: 3000 })),
   Layer.provideMerge([
-    DatabaseService.layer,
+    DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer, DbClarification.layer, DbOutput.layer,
     EmbeddingServiceLayer,
     AnthropicClientLayer,
     StorageAdapter.layer,

@@ -11,6 +11,8 @@
     "build": "pnpm -r build",
     "lint": "pnpm -r --parallel lint",
     "fmt": "pnpm -r --parallel fmt",
+    "db:reset": "scripts/db-reset.sh",
+    "session:requeue": "scripts/session-requeue.sh",
     "docs:effect-update": "git subtree pull --prefix docs/effect-smol effect-smol main --squash",
     "docs:effect-atom-update": "git subtree pull --prefix docs/effect-atom effect-atom main --squash"
   },

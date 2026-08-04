@@ -5,6 +5,88 @@ import { runSessionWorkflow } from "../agent/pipelines/run-session-workflow.ts";
 import { processUploadedDocuments } from "../agent/pipelines/process-uploaded-documents.ts";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas";
 import { runGeneratingPipeline, runRevisionPipeline } from "../agent/pipelines/generation.ts";
+import { Spans } from "../observability/spans.ts";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Wraps a job handler in a named span and logs any cause (typed error or
+ * defect) before re-throwing so the MessageQueue consumer can nack.
+ *
+ * Using Effect.withSpan means every queue job appears as a root trace in
+ * Langfuse with the sessionId attached, making it trivial to correlate a
+ * failed job to a session.
+ */
+function withJobSpan<A, E, R>(
+  spanName: string,
+  sessionId: AgentSessionId,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> {
+  return effect.pipe(
+    Effect.tapCause((cause) =>
+      Effect.logError(`[${spanName}] job failed`).pipe(
+        Effect.annotateLogs({ spanName, sessionId }),
+        Effect.andThen(Effect.logError(cause)),
+      ),
+    ),
+    Effect.withSpan(spanName, { attributes: Spans.session(sessionId) }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
+const SessionWorkflowPayload = Schema.Struct({ sessionId: AgentSessionId });
+const sessionWorkflowHandler = Effect.fn("sessionWorkflowHandler")(function* (
+  delivery: Delivery<unknown>,
+) {
+  const { sessionId } = yield* Schema.decodeUnknownEffect(SessionWorkflowPayload)(delivery.payload);
+  yield* withJobSpan("queue/session.workflow", sessionId, runSessionWorkflow(sessionId));
+  yield* delivery.ack;
+});
+
+const DocumentsConsumePayload = Schema.Struct({
+  sessionId: AgentSessionId,
+  uploads: ConfirmUploadRequest.fields.uploads,
+});
+const documentsConsumeHandler = Effect.fn("documentsConsumeHandler")(function* (
+  delivery: Delivery<unknown>,
+) {
+  const { sessionId, uploads } = yield* Schema.decodeUnknownEffect(DocumentsConsumePayload)(
+    delivery.payload,
+  );
+  yield* withJobSpan(
+    "queue/documents.process",
+    sessionId,
+    processUploadedDocuments({ sessionId, uploads }),
+  );
+  yield* delivery.ack;
+});
+
+const SessionGeneratePayload = Schema.Struct({ sessionId: AgentSessionId });
+const sessionGenerateHandler = Effect.fn("sessionGenerateHandler")(function* (
+  delivery: Delivery<unknown>,
+) {
+  const { sessionId } = yield* Schema.decodeUnknownEffect(SessionGeneratePayload)(delivery.payload);
+  yield* withJobSpan("queue/session.generate", sessionId, runGeneratingPipeline(sessionId));
+  yield* delivery.ack;
+});
+
+const SessionRevisePayload = Schema.Struct({ sessionId: AgentSessionId });
+const sessionReviseHanlder = Effect.fn("sessionReviseHandler")(function* (
+  delivery: Delivery<unknown>,
+) {
+  const { sessionId } = yield* Schema.decodeUnknownEffect(SessionRevisePayload)(delivery.payload);
+  yield* withJobSpan("queue/session.revise", sessionId, runRevisionPipeline(sessionId));
+  yield* delivery.ack;
+});
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
 
 export class JobHandlers extends Context.Service<JobHandlers, void>()(
   "@shipwright/api/queue/job-handlers/JobHandlers",
@@ -21,45 +103,3 @@ export class JobHandlers extends Context.Service<JobHandlers, void>()(
     }),
   );
 }
-
-const SessionWorkflowPayload = Schema.Struct({ sessionId: AgentSessionId });
-const sessionWorkflowHandler = Effect.fn("sessionWorkflowhandler")(function* (
-  delivery: Delivery<unknown>,
-) {
-  const { sessionId } = yield* Schema.decodeUnknownEffect(SessionWorkflowPayload)(delivery.payload);
-
-  yield* runSessionWorkflow(sessionId);
-  yield* delivery.ack;
-});
-
-const DocumentsConsumePayload = Schema.Struct({
-  sessionId: AgentSessionId,
-  uploads: ConfirmUploadRequest.fields.uploads,
-});
-const documentsConsumeHandler = Effect.fn("documentsConsumeHandler")(function* (
-  delivery: Delivery<unknown>,
-) {
-  const { sessionId, uploads } = yield* Schema.decodeUnknownEffect(DocumentsConsumePayload)(
-    delivery.payload,
-  );
-  yield* processUploadedDocuments({ sessionId, uploads });
-  yield* delivery.ack;
-});
-
-const SessionGeneratePayload = Schema.Struct({ sessionId: AgentSessionId });
-const sessionGenerateHandler = Effect.fn("sessionGenerateHandler")(function* (
-  delivery: Delivery<unknown>,
-) {
-  const { sessionId } = yield* Schema.decodeUnknownEffect(SessionGeneratePayload)(delivery.payload);
-  yield* runGeneratingPipeline(sessionId);
-  yield* delivery.ack;
-});
-
-const SessionRevisePayload = Schema.Struct({ sessionId: AgentSessionId });
-const sessionReviseHanlder = Effect.fn("sessionReviseHandler")(function* (
-  delivery: Delivery<unknown>,
-) {
-  const { sessionId } = yield* Schema.decodeUnknownEffect(SessionRevisePayload)(delivery.payload);
-  yield* runRevisionPipeline(sessionId);
-  yield* delivery.ack;
-});

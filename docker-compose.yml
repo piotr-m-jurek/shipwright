@@ -10,6 +10,15 @@ services:
     volumes:
       - db_data:/etc/pg/data
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+    platform: linux/amd64
+    ports:
+      - 8080:80
+    volumes:
+      - tei_model_cache:/data
+    command: --model-id mixedbread-ai/mxbai-embed-large-v1
+
   rustfs:
     image: rustfs/rustfs
     environment:
@@ -165,6 +174,7 @@ services:
       - langfuse_minio_data:/data
 
 volumes:
+  tei_model_cache:
   db_data:
   rustfs_data:
   langfuse_postgres_data:
