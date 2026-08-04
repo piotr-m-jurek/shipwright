@@ -21,6 +21,14 @@ services:
 
   rustfs:
     image: rustfs/rustfs
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && rustfs server --address ":9000" --console-address ":9001" /data'
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/minio/health/live"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+      start_period: 3s
     environment:
       - RUSTFS_ACCESS_KEY=${RUSTFS_ACCESS_KEY}
       - RUSTFS_SECRET_KEY=${RUSTFS_SECRET_KEY}
@@ -29,7 +37,7 @@ services:
       - 9000:9000
       - 9001:9001
     volumes:
-      - rustfs_data:/etc/rustfs/data
+      - rustfs_data:/data
 
   langfuse-web:
     image: docker.io/langfuse/langfuse:3
@@ -37,7 +45,7 @@ services:
     depends_on:
       langfuse-postgres:
         condition: service_healthy
-      minio:
+      rustfs:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -61,15 +69,15 @@ services:
       REDIS_AUTH: ${LANGFUSE_REDIS_AUTH}
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
-      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
-      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_PASSWORD}
-      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://rustfs:9000
       LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
       LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
-      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
-      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_PASSWORD}
-      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9000
       LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
       # Headless init — creates org/project/user on first boot, no manual signup
       LANGFUSE_INIT_ORG_ID: shipwright-org
@@ -88,7 +96,7 @@ services:
     depends_on:
       langfuse-postgres:
         condition: service_healthy
-      minio:
+      rustfs:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -153,26 +161,6 @@ services:
     volumes:
       - langfuse_redis_data:/data
 
-  minio:
-    image: cgr.dev/chainguard/minio
-    restart: always
-    entrypoint: sh
-    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 1s
-      timeout: 5s
-      retries: 5
-      start_period: 1s
-    environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: ${LANGFUSE_MINIO_PASSWORD}
-    ports:
-      - 9090:9000    # Langfuse event blob storage — different from rustfs on 9000
-      - 127.0.0.1:9091:9001
-    volumes:
-      - langfuse_minio_data:/data
-
 volumes:
   tei_model_cache:
   db_data:
@@ -181,4 +169,3 @@ volumes:
   langfuse_clickhouse_data:
   langfuse_clickhouse_logs:
   langfuse_redis_data:
-  langfuse_minio_data:

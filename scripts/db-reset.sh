@@ -2,7 +2,7 @@
 # db-reset.sh — wipe user data and restart the shipwright database
 #
 # Destroys: shipwright postgres (db_data), rustfs object storage (rustfs_data)
-# Preserves: langfuse, clickhouse, redis, minio, tei model cache
+# Preserves: langfuse, clickhouse, redis, tei model cache
 #
 # Usage:
 #   pnpm db:reset          (from repo root)
