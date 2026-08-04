@@ -11,6 +11,7 @@ import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { EmbeddingService } from "../embedding-service.js";
 import { MessageQueue } from "../../queue/index.ts";
 
+
 // TODO: actually throw those errors, not DB errors
 export class DocumentNotFoundError extends Schema.TaggedErrorClass<DocumentNotFoundError>()(
   "DocumentNotFoundError",
