@@ -10,7 +10,7 @@ import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { useState, useMemo } from "react";
 import { Match, pipe } from "effect";
 import { PostAgentSessionAnswersRequest } from "@shipwright/shared/schemas/api";
-import { AgentSessionId } from "@shipwright/shared/domain/ids";
+import { AgentSessionId, type QuestionId } from "@shipwright/shared/domain/ids";
 
 export const Route = createFileRoute("/sessions/$sessionId/questions")({
   component: RouteComponent,
@@ -249,7 +249,7 @@ function QuestionsPage({ sessionId }: { sessionId: AgentSessionId }) {
 // ---------------------------------------------------------------------------
 
 type Question = {
-  id: string;
+  id: QuestionId;
   text: string;
   rationale: string;
   sourceDocuments: readonly string[];

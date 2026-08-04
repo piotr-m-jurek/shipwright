@@ -1,11 +1,12 @@
 import { DbAgentSession } from "../../db/services/agent-session.ts";
 import { DbDocument } from "../../db/services/document.ts";
 import { CreateAgentSessionRequest } from "@shipwright/shared/schemas/api.js";
+import type { UserId } from "@shipwright/shared/domain/ids";
 import { StorageAdapter } from "../../storage/index.ts";
 import { Effect } from "effect";
 
 export const createUploadSession = Effect.fn("agent/createUploadSession")(function* (payload: {
-  userId: string;
+  userId: UserId;
   files: CreateAgentSessionRequest["files"];
 }) {
   yield* Effect.annotateCurrentSpan({

@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Option } from "effect";
 import { InsertAgentSession, SelectAgentSession } from "../types.ts";
-import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { agentSessions } from "../schema.ts";
 import { DB } from "../index.ts";
@@ -28,7 +28,7 @@ interface Interface {
 
   getAgentSessionByIdForUser: (payload: {
     sessionId: AgentSessionId;
-    userId: string;
+    userId: UserId;
   }) => Effect.Effect<Option.Option<SelectAgentSession>, EffectDrizzleQueryError>;
 
   deleteAgentSession: (sessionId: AgentSessionId) => Effect.Effect<void, EffectDrizzleQueryError>;
@@ -85,7 +85,7 @@ export class DbAgentSession extends Context.Service<DbAgentSession, Interface>()
 
       const getAgentSessionByIdForUser = Effect.fnUntraced(function* (payload: {
         sessionId: AgentSessionId;
-        userId: string;
+        userId: UserId;
       }) {
         const results = yield* db
           .select()

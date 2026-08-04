@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 import type { InsertChunk, SelectChunk } from "../types.ts";
-import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { chunks } from "../schema.ts";
 import { DB } from "../index.ts";
@@ -10,7 +10,7 @@ interface Interface {
   createChunks: (data: InsertChunk[]) => Effect.Effect<SelectChunk[], EffectDrizzleQueryError>;
 
   getChunksByDocumentId: (
-    documentId: string,
+    documentId: DocumentId,
   ) => Effect.Effect<SelectChunk[], EffectDrizzleQueryError>;
 
   getChunksBySessionId: (
@@ -44,7 +44,7 @@ export class DbChunk extends Context.Service<DbChunk, Interface>()(
         return yield* db.insert(chunks).values(data).returning();
       });
 
-      const getChunksByDocumentId = Effect.fnUntraced(function* (documentId: string) {
+      const getChunksByDocumentId = Effect.fnUntraced(function* (documentId: DocumentId) {
         return yield* db
           .select()
           .from(chunks)

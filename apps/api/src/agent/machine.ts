@@ -1,10 +1,11 @@
 import { assign, createActor, setup } from "xstate";
 import type { MachineContext } from "@shipwright/shared/schemas/machine.js";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 // ── Initial context ────────────────────────────────────────────────────────
 
 export const initialContext: MachineContext = {
-  sessionId: "",
+  sessionId: "" as AgentSessionId,
   documents: [],
   documentSummaries: [],
   questions: [],

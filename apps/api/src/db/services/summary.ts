@@ -5,7 +5,7 @@ import type {
   SummaryItemInsert,
   SummaryItemSelect,
 } from "../types.ts";
-import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import type { AgentSessionId, DocumentId, SummaryId } from "@shipwright/shared/domain/ids";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { documentSummaries, summaryItems } from "../schema.ts";
 import { DB } from "../index.ts";
@@ -29,9 +29,9 @@ type DocumentSummary = {
 
 /** Summary row joined with its items, shaped as a rich domain object. */
 export type ReconstructedSummary = DocumentSummary & {
-  id: string;
-  documentId: string;
-  sessionId: string;
+  id: SummaryId;
+  documentId: DocumentId;
+  sessionId: AgentSessionId;
   tokenCount: number;
   version: number;
 };
@@ -40,9 +40,9 @@ export type ReconstructedSummary = DocumentSummary & {
 
 function reconstructSummaries(
   summaryRows: {
-    id: string;
-    documentId: string;
-    sessionId: string;
+    id: SummaryId;
+    documentId: DocumentId;
+    sessionId: AgentSessionId;
     sourceDocument: string;
     summary: string;
     tokenCount: number;
@@ -95,7 +95,7 @@ interface Interface {
   ) => Effect.Effect<SummaryItemSelect[], EffectDrizzleQueryError>;
 
   getCurrentDocumentSummaryVersion: (args: {
-    documentId: string;
+    documentId: DocumentId;
     sessionId: AgentSessionId;
   }) => Effect.Effect<number, EffectDrizzleQueryError>;
 
@@ -126,7 +126,7 @@ export class DbSummary extends Context.Service<DbSummary, Interface>()(
         documentId,
         sessionId,
       }: {
-        documentId: string;
+        documentId: DocumentId;
         sessionId: AgentSessionId;
       }) {
         const results = yield* db

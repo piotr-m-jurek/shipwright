@@ -1,4 +1,5 @@
 import { Authorization, CurrentUser, Unauthorized } from "@shipwright/shared/middleware.js";
+import { UserId } from "@shipwright/shared/domain/ids";
 import { Effect, Layer, Redacted } from "effect";
 import { auth } from "../auth/auth.js";
 
@@ -23,7 +24,7 @@ export const AuthorizationLayer = Layer.succeed(
         yield* Effect.logInfo("auth: providing CurrentUser");
 
         return yield* Effect.provideService(httpEffect, CurrentUser, {
-          id: session.user.id,
+          id: UserId.make(session.user.id),
           email: session.user.email,
           name: session.user.name,
         });

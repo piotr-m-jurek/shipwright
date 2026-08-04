@@ -65,7 +65,7 @@ const confirmAnalysisFamily = Atom.family((_nonce: number) =>
  */
 const addFilesAtom = ShipwrightApi.runtime.fn<{
   files: File[];
-  onDone: (added: UploadedFileMeta[], newSessionId: string) => void;
+  onDone: (added: UploadedFileMeta[], newSessionId: AgentSessionId) => void;
 }>()(
   Effect.fnUntraced(function* ({ files, onDone }, ctx) {
     const nonce = Date.now();

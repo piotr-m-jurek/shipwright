@@ -1,5 +1,6 @@
 import { Context, Schema } from "effect";
 import { HttpApiMiddleware, HttpApiSecurity } from "effect/unstable/httpapi";
+import type { UserId } from "../domain/ids.ts";
 
 export class Unauthorized extends Schema.TaggedErrorClass<Unauthorized>()(
   "Unauthorized",
@@ -8,7 +9,7 @@ export class Unauthorized extends Schema.TaggedErrorClass<Unauthorized>()(
 ) {}
 
 interface Interface {
-  id: string;
+  id: UserId;
   email: string;
   name: string;
 }

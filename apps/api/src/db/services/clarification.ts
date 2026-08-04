@@ -1,5 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 import type { QuestionInsert, QuestionSelect, AnswerInsert, AnswerSelect } from "../types.ts";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { questions, answers } from "../schema.ts";
 import { DB } from "../index.ts";
@@ -11,13 +12,13 @@ interface Interface {
   ) => Effect.Effect<QuestionSelect[], EffectDrizzleQueryError>;
 
   getQuestionsBySessionId: (
-    sessionId: string,
+    sessionId: AgentSessionId,
   ) => Effect.Effect<QuestionSelect[], EffectDrizzleQueryError>;
 
   createAnswers: (data: AnswerInsert[]) => Effect.Effect<AnswerSelect[], EffectDrizzleQueryError>;
 
   getAnswersBySessionId: (
-    sessionId: string,
+    sessionId: AgentSessionId,
   ) => Effect.Effect<AnswerSelect[], EffectDrizzleQueryError>;
 }
 
@@ -34,7 +35,7 @@ export class DbClarification extends Context.Service<DbClarification, Interface>
         return yield* db.insert(questions).values(data).returning();
       });
 
-      const getQuestionsBySessionId = Effect.fnUntraced(function* (sessionId: string) {
+      const getQuestionsBySessionId = Effect.fnUntraced(function* (sessionId: AgentSessionId) {
         return yield* db
           .select()
           .from(questions)
@@ -47,7 +48,7 @@ export class DbClarification extends Context.Service<DbClarification, Interface>
         return yield* db.insert(answers).values(data).returning();
       });
 
-      const getAnswersBySessionId = Effect.fnUntraced(function* (sessionId: string) {
+      const getAnswersBySessionId = Effect.fnUntraced(function* (sessionId: AgentSessionId) {
         return yield* db.select().from(answers).where(eq(answers.sessionId, sessionId));
       });
 

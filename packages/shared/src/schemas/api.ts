@@ -1,5 +1,5 @@
 import { pipe, Schema } from "effect";
-import { AgentSessionId } from "../domain/ids.ts";
+import { AgentSessionId, DocumentId, QuestionId } from "../domain/ids.ts";
 
 export class GetHealthResponse extends Schema.Class<
   GetHealthResponse,
@@ -13,13 +13,13 @@ export class GetAgentSessionResponse extends Schema.Class<
   GetAgentSessionResponse,
   { readonly brand: unique symbol }
 >("GetAgentSessionResponse")({
-  id: Schema.String,
+  id: AgentSessionId,
   createdAt: Schema.DateFromString,
   status: Schema.String,
   inputMode: Schema.Literal("context", "retrieval"),
   questions: Schema.Array(
     Schema.Struct({
-      id: Schema.String,
+      id: QuestionId,
       text: Schema.String,
       rationale: Schema.String,
       sourceDocuments: Schema.Array(Schema.String),
@@ -64,7 +64,7 @@ export class PostAgentSessionAnswersRequest extends Schema.Class<
   PostAgentSessionAnswersRequest,
   { readonly brand: unique symbol }
 >("PostAgentSessionAnswersRequest")({
-  answers: Schema.Array(Schema.Struct({ questionId: Schema.String, text: Schema.String })),
+  answers: Schema.Array(Schema.Struct({ questionId: QuestionId, text: Schema.String })),
 }) {}
 
 export class CreateAgentSessionRequest extends Schema.Class<
@@ -90,7 +90,7 @@ export class CreateAgentSessionResponse extends Schema.Class<
       Schema.Struct({
         presignedUrl: Schema.String,
         s3Key: Schema.String,
-        documentId: Schema.String,
+        documentId: DocumentId,
       }),
     ),
     Schema.mutable,
@@ -101,7 +101,7 @@ export class ConfirmUploadRequest extends Schema.Class<
   ConfirmUploadRequest,
   { readonly brand: unique symbol }
 >("ConfirmUploadRequest")({
-  uploads: Schema.Array(Schema.Struct({ s3Key: Schema.String, documentId: Schema.String })),
+  uploads: Schema.Array(Schema.Struct({ s3Key: Schema.String, documentId: DocumentId })),
 }) {}
 
 export class ConfirmUploadResponse extends Schema.Class<

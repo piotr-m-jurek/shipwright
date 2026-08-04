@@ -51,7 +51,7 @@ import { ConfigService } from "../../config/config.js";
 import { AnthropicClientLayer } from "../providers.js";
 import type { GapReportEffect } from "../schemas.js";
 import type { ReconstructedSummary } from "../../db/services/summary.ts";
-import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 import {
   FaithfulnessEvalSchema,
@@ -494,16 +494,16 @@ async function main() {
       const [briefRow, prdRow, summaries] = await Promise.all([
         runEffect(
           Effect.flatMap(DbOutput, (db) =>
-            db.getLatestOutputByType({ sessionId: existingSessionId as AgentSessionId, type: "project_brief" }),
+            db.getLatestOutputByType({ sessionId: AgentSessionId.make(existingSessionId), type: "project_brief" }),
           ).pipe(Effect.map(Option.getOrUndefined)),
         ),
         runEffect(
           Effect.flatMap(DbOutput, (db) =>
-            db.getLatestOutputByType({ sessionId: existingSessionId as AgentSessionId, type: "implementation_prd" }),
+            db.getLatestOutputByType({ sessionId: AgentSessionId.make(existingSessionId), type: "implementation_prd" }),
           ).pipe(Effect.map(Option.getOrUndefined)),
         ),
         runEffect(
-          Effect.flatMap(DbSummary, (db) => db.getFinalSummariesBySession(existingSessionId as AgentSessionId)),
+          Effect.flatMap(DbSummary, (db) => db.getFinalSummariesBySession(AgentSessionId.make(existingSessionId))),
         ),
       ]);
 

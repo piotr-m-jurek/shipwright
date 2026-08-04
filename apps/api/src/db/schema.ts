@@ -13,7 +13,17 @@ import {
 import { defineRelations } from "drizzle-orm";
 
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
-import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import type {
+  AgentSessionId,
+  AnswerId,
+  ChunkId,
+  DocumentId,
+  MessageId,
+  OutputId,
+  QuestionId,
+  SummaryId,
+  SummaryItemId,
+} from "@shipwright/shared/domain/ids";
 
 import { queueMessages } from "../queue/schema.ts";
 export { queueMessages, queueMessageStatusEnum } from "../queue/schema.ts";
@@ -134,7 +144,7 @@ export const documentStatusEnum = pgEnum("document_status", [
 ]);
 
 export const documents = pgTable("documents", {
-  id: uuid("id").primaryKey().defaultRandom().notNull(),
+  id: uuid("id").primaryKey().defaultRandom().notNull().$type<DocumentId>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at")
     .notNull()
@@ -154,7 +164,7 @@ export const documents = pgTable("documents", {
 });
 
 export const chunks = pgTable("chunks", {
-  id: uuid("id").primaryKey().defaultRandom().notNull(),
+  id: uuid("id").primaryKey().defaultRandom().notNull().$type<ChunkId>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at")
     .notNull()
@@ -166,7 +176,8 @@ export const chunks = pgTable("chunks", {
     .$type<AgentSessionId>(),
   documentId: uuid("document_id")
     .references(() => documents.id, { onDelete: "cascade" })
-    .notNull(),
+    .notNull()
+    .$type<DocumentId>(),
   charOffset: integer("char_offset"),
   chunkIndex: integer("chunk_index").notNull(),
   content: text("content").notNull(),
@@ -186,11 +197,12 @@ export const summaryItemTypeEnum = pgEnum("summary_item_type", [
 ]);
 
 export const documentSummaries = pgTable("document_summaries", {
-  id: uuid("id").primaryKey().defaultRandom().notNull(),
+  id: uuid("id").primaryKey().defaultRandom().notNull().$type<SummaryId>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   documentId: uuid("document_id")
     .references(() => documents.id, { onDelete: "cascade" })
-    .notNull(),
+    .notNull()
+    .$type<DocumentId>(),
   sessionId: uuid("session_id")
     .references(() => agentSessions.id, { onDelete: "cascade" })
     .notNull()
@@ -208,10 +220,11 @@ export const documentSummaries = pgTable("document_summaries", {
 });
 
 export const summaryItems = pgTable("summary_items", {
-  id: uuid("id").primaryKey().defaultRandom().notNull(),
+  id: uuid("id").primaryKey().defaultRandom().notNull().$type<SummaryItemId>(),
   summaryId: uuid("summary_id")
     .references(() => documentSummaries.id, { onDelete: "cascade" })
-    .notNull(),
+    .notNull()
+    .$type<SummaryId>(),
   itemType: summaryItemTypeEnum("item_type").notNull(),
   text: text("text").notNull(),
   sourceDocument: text("source_document").notNull(),
@@ -222,7 +235,7 @@ export const summaryItems = pgTable("summary_items", {
 export const messageRoleEnum = pgEnum("role", ["user", "assistant", "system"]);
 
 export const messages = pgTable("messages", {
-  id: uuid("id").primaryKey().defaultRandom().notNull(),
+  id: uuid("id").primaryKey().defaultRandom().notNull().$type<MessageId>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at")
     .notNull()
@@ -238,7 +251,7 @@ export const messages = pgTable("messages", {
 });
 
 export const questions = pgTable("questions", {
-  id: uuid("id").primaryKey().defaultRandom().notNull(),
+  id: uuid("id").primaryKey().defaultRandom().notNull().$type<QuestionId>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at")
     .notNull()
@@ -246,7 +259,8 @@ export const questions = pgTable("questions", {
     .$onUpdate(() => new Date()),
   sessionId: uuid("session_id")
     .references(() => agentSessions.id, { onDelete: "cascade" })
-    .notNull(),
+    .notNull()
+    .$type<AgentSessionId>(),
   text: text("text").notNull(),
   sourceDocuments: text("source_documents").array().notNull(),
   rationale: text("rationale").notNull(),
@@ -254,7 +268,7 @@ export const questions = pgTable("questions", {
 });
 
 export const answers = pgTable("answers", {
-  id: uuid("id").primaryKey().defaultRandom().notNull(),
+  id: uuid("id").primaryKey().defaultRandom().notNull().$type<AnswerId>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at")
     .notNull()
@@ -262,10 +276,12 @@ export const answers = pgTable("answers", {
     .$onUpdate(() => new Date()),
   sessionId: uuid("session_id")
     .references(() => agentSessions.id, { onDelete: "cascade" })
-    .notNull(),
+    .notNull()
+    .$type<AgentSessionId>(),
   questionId: uuid("question_id")
     .references(() => questions.id, { onDelete: "cascade" })
-    .notNull(),
+    .notNull()
+    .$type<QuestionId>(),
   text: text("text").notNull(),
   round: integer("round").notNull(),
 });
@@ -273,7 +289,7 @@ export const answers = pgTable("answers", {
 export const outputTypeEnum = pgEnum("output_type", ["project_brief", "implementation_prd"]);
 
 export const outputs = pgTable("outputs", {
-  id: uuid("id").primaryKey().defaultRandom().notNull(),
+  id: uuid("id").primaryKey().defaultRandom().notNull().$type<OutputId>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at")
     .notNull()

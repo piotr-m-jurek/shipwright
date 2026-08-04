@@ -1,10 +1,12 @@
+import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
+
 export const Spans = {
-  session: (sessionId: string) => ({
+  session: (sessionId: AgentSessionId) => ({
     "langfuse.session.id": sessionId,
     "shipwright.session.id": sessionId,
   }),
 
-  document: (opts: { filename: string; id?: string }) => ({
+  document: (opts: { filename: string; id?: DocumentId }) => ({
     "shipwright.document.filename": opts.filename,
     ...(opts.id !== undefined ? { "shipwright.document.id": opts.id } : {}),
   }),

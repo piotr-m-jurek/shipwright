@@ -1,7 +1,7 @@
 import { Effect, Schema, Option, pipe } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import type { SelectChunk, SummaryItemInsert } from "../../db/types.ts";
-import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { DbDocument } from "../../db/services/document.ts";
 import { DbChunk } from "../../db/services/chunk.ts";
 import { DbSummary } from "../../db/services/summary.ts";
@@ -47,7 +47,7 @@ export const summarizeAllDocuments = Effect.fn("agent/summarizeAllDocuments")(fu
 });
 
 export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* (
-  documentId: string,
+  documentId: DocumentId,
   sessionId: AgentSessionId,
   filename: string,
 ) {
@@ -120,7 +120,7 @@ const persistSummary = Effect.fn("persistSummary")(
     summary: DocumentSummaryEffect;
     summaryType: "map_intermediate" | "final";
     batchIndex?: number;
-    documentId: string;
+    documentId: DocumentId;
     sessionId: AgentSessionId;
     version: number;
   }) {

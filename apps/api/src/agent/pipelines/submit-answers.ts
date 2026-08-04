@@ -1,13 +1,13 @@
 import { Effect } from "effect";
 import { getOrRestoreActor } from "../session-actor.js";
-import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import type { AgentSessionId, QuestionId } from "@shipwright/shared/domain/ids";
 import { Spans } from "../../observability/spans.js";
 import { DbClarification } from "../../db/services/clarification.ts";
 import { AnalysisPipelineError, SessionStateError } from "../errors.js";
 import { MessageQueue } from "../../queue/index.ts";
 
 export const submitAnswers = Effect.fn("agent/submitAnswers")(
-  function* (sessionId: AgentSessionId, rawAnswers: { questionId: string; text: string }[]) {
+  function* (sessionId: AgentSessionId, rawAnswers: { questionId: QuestionId; text: string }[]) {
     yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
 
     const db = yield* DbClarification;

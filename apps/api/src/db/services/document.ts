@@ -4,13 +4,13 @@ import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { DB } from "../index.ts";
 import { documents } from "../schema.ts";
 import { eq } from "drizzle-orm";
-import { AgentSessionId } from "@shipwright/shared/domain/ids";
+import { type AgentSessionId, type DocumentId } from "@shipwright/shared/domain/ids";
 
 interface Interface {
   createDocument: (data: InsertDocument) => Effect.Effect<SelectDocument, EffectDrizzleQueryError>;
 
   getDocumentById: (
-    id: string,
+    id: DocumentId,
   ) => Effect.Effect<Option.Option<SelectDocument>, EffectDrizzleQueryError>;
 
   getDocumentsBySessionId: (
@@ -18,17 +18,17 @@ interface Interface {
   ) => Effect.Effect<SelectDocument[], EffectDrizzleQueryError>;
 
   updateDocument: (
-    documentId: string,
+    documentId: DocumentId,
     payload: Pick<SelectDocument, "status" | "tokenCount">,
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
 
   updateDocumentStatus: (
-    documentId: string,
+    documentId: DocumentId,
     status: SelectDocument["status"],
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
 
   updateDocumentTokenCount: (
-    documentId: string,
+    documentId: DocumentId,
     tokenCount: number,
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
 }
@@ -46,7 +46,7 @@ export class DbDocument extends Context.Service<DbDocument, Interface>()(
         return result;
       });
 
-      const getDocumentById = Effect.fnUntraced(function* (id: string) {
+      const getDocumentById = Effect.fnUntraced(function* (id: DocumentId) {
         const results = yield* db.select().from(documents).where(eq(documents.id, id)).limit(1);
         return Option.fromIterable(results);
       });
@@ -56,21 +56,21 @@ export class DbDocument extends Context.Service<DbDocument, Interface>()(
       });
 
       const updateDocument = Effect.fnUntraced(function* (
-        documentId: string,
+        documentId: DocumentId,
         payload: Pick<SelectDocument, "status" | "tokenCount">,
       ) {
         yield* db.update(documents).set(payload).where(eq(documents.id, documentId));
       });
 
       const updateDocumentStatus = Effect.fnUntraced(function* (
-        documentId: string,
+        documentId: DocumentId,
         status: SelectDocument["status"],
       ) {
         yield* db.update(documents).set({ status }).where(eq(documents.id, documentId));
       });
 
       const updateDocumentTokenCount = Effect.fnUntraced(function* (
-        documentId: string,
+        documentId: DocumentId,
         tokenCount: number,
       ) {
         yield* db.update(documents).set({ tokenCount }).where(eq(documents.id, documentId));

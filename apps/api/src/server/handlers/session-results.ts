@@ -24,7 +24,7 @@ export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
     .handle("submitSessionAnswers", ({ payload: { answers }, params: { sessionId } }) =>
       Effect.gen(function* () {
         const result = yield* pipe(
-          submitAnswers(sessionId, answers as { questionId: string; text: string }[]),
+          submitAnswers(sessionId, [...answers]),
           Effect.mapError(() => new AnalysisPipelineError()),
         );
         return new PostAgentSessionAnswersResponse({

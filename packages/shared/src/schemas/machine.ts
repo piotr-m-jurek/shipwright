@@ -1,12 +1,13 @@
 import { Schema } from "effect";
+import { AgentSessionId, DocumentId, QuestionId, SummaryId } from "../domain/ids.ts";
 
 export class MachineContextEffectSchema extends Schema.Class<MachineContextEffectSchema>(
   "MachineContextEffectSchema",
 )({
-  sessionId: Schema.String.check(Schema.isUUID()),
+  sessionId: AgentSessionId,
   documents: Schema.Array(
     Schema.Struct({
-      id: Schema.String.check(Schema.isUUID()),
+      id: DocumentId,
       filename: Schema.String,
       tokenCount: Schema.Int.check(Schema.isGreaterThan(0)),
     }),
@@ -15,8 +16,8 @@ export class MachineContextEffectSchema extends Schema.Class<MachineContextEffec
   // All downstream passes (Challenger, Writers) consume these — never raw text.
   documentSummaries: Schema.Array(
     Schema.Struct({
-      id: Schema.String.check(Schema.isUUID()), // document_summaries.id
-      documentId: Schema.String.check(Schema.isUUID()),
+      id: SummaryId, // document_summaries.id
+      documentId: DocumentId,
       sourceDocument: Schema.String, // documents.filename
       content: Schema.String, // final summary content
       tokenCount: Schema.Int.check(Schema.isGreaterThan(0)),
@@ -24,7 +25,7 @@ export class MachineContextEffectSchema extends Schema.Class<MachineContextEffec
   ),
   questions: Schema.Array(
     Schema.Struct({
-      id: Schema.String.check(Schema.isUUID()),
+      id: QuestionId,
       text: Schema.String,
       rationale: Schema.String,
       sourceDocuments: Schema.Array(Schema.String),
@@ -32,7 +33,7 @@ export class MachineContextEffectSchema extends Schema.Class<MachineContextEffec
   ),
   answers: Schema.Array(
     Schema.Struct({
-      questionId: Schema.String.check(Schema.isUUID()),
+      questionId: QuestionId,
       text: Schema.String,
       round: Schema.Int,
     }),

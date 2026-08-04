@@ -8,7 +8,7 @@ export class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoun
   {},
 ) {}
 
-const registry = new Map<string, AgentActor>();
+const registry = new Map<AgentSessionId, AgentActor>();
 
 // XState states that map to the 'error' value in the Postgres session_status enum.
 const ERROR_STATES = new Set([
