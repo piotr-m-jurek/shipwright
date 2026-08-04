@@ -1,5 +1,5 @@
 import { NodeHttpServerRequest } from "@effect/platform-node";
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { auth } from "../../auth/auth.ts";
 
@@ -15,11 +15,13 @@ export const AuthRouteLayer = HttpRouter.add("*", "/api/auth/*", (req) =>
 
     const body = yield* Effect.tryPromise({
       try: () =>
-        new Promise<Buffer | null>((resolve, reject) => {
+        new Promise<Option.Option<Buffer>>((resolve, reject) => {
           const chunks: Buffer[] = [];
           incomingMessage.on("data", (chunk: Buffer) => chunks.push(chunk));
           incomingMessage.on("end", () =>
-            resolve(chunks.length > 0 ? Buffer.concat(chunks) : null),
+            resolve(
+              chunks.length > 0 ? Option.some(Buffer.concat(chunks)) : Option.none(),
+            ),
           );
           incomingMessage.on("error", reject);
         }),
@@ -29,7 +31,11 @@ export const AuthRouteLayer = HttpRouter.add("*", "/api/auth/*", (req) =>
     const webRequest = new Request(url, {
       method: incomingMessage.method ?? "GET",
       headers: incomingMessage.headers as HeadersInit,
-      body: body === null ? null : Uint8Array.from(body),
+      // Web Request constructor requires null for "no body" — explicit boundary serialisation
+      body: Option.match(body, {
+        onNone: () => null,
+        onSome: (b) => Uint8Array.from(b),
+      }),
     });
 
     const response = yield* Effect.promise(() => auth.handler(webRequest));

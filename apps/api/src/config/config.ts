@@ -19,13 +19,11 @@ type Interface = {
     teiUrl: string;
     anthropicApiKey: Redacted.Redacted<string>;
   };
-  observability:
-    | {
-        otlpEndpoint: string;
-        publicKey: Redacted.Redacted<string>;
-        secretKey: Redacted.Redacted<string>;
-      }
-    | undefined;
+  observability: Option.Option<{
+    otlpEndpoint: string;
+    publicKey: Redacted.Redacted<string>;
+    secretKey: Redacted.Redacted<string>;
+  }>;
 };
 
 export class ConfigService extends Context.Service<ConfigService, Interface>()(
@@ -34,18 +32,13 @@ export class ConfigService extends Context.Service<ConfigService, Interface>()(
   static readonly layer = Layer.effect(
     ConfigService,
     Effect.gen(function* () {
-      const observability: Interface['observability'] = yield* Effect.gen(function* () {
-        const otlpEndpoint = yield* Config.option(Config.string("LANGFUSE_OTLP_ENDPOINT"));
-        if (Option.isNone(otlpEndpoint)) {
-          return undefined;
-        }
-
-        return {
-          otlpEndpoint: otlpEndpoint.value,
-          publicKey: yield* Config.redacted("LANGFUSE_PUBLIC_KEY"),
-          secretKey: yield* Config.redacted("LANGFUSE_SECRET_KEY"),
-        };
-      });
+      const observability: Interface["observability"] = yield* Config.option(
+        Config.all({
+          otlpEndpoint: Config.string("LANGFUSE_OTLP_ENDPOINT"),
+          publicKey: Config.redacted("LANGFUSE_PUBLIC_KEY"),
+          secretKey: Config.redacted("LANGFUSE_SECRET_KEY"),
+        }),
+      );
 
       const db: Interface["db"] = {
         url: yield* Config.redacted("DATABASE_URL"),

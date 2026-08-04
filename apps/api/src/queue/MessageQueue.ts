@@ -27,7 +27,7 @@
  * Postgres errors are unexpected infrastructure failures and are treated as
  * defects (Effect.orDie). Only `DeliveryTagNotFoundError` is a typed error.
  */
-import { Context, Effect, Fiber, FiberSet, Layer, Queue, Schema, pipe } from "effect";
+import { Context, Effect, Fiber, FiberSet, Layer, Option, Queue, Schema, pipe } from "effect";
 import { and, eq, isNull, lte, or } from "drizzle-orm";
 import { DB } from "../db/index.js";
 import { queueMessages } from "./schema.js";
@@ -55,7 +55,7 @@ export interface Delivery<A> {
   readonly deliveryTag: string;
   readonly payload: A;
   readonly attempts: number;
-  readonly routingKey: string | undefined;
+  readonly routingKey: Option.Option<string>;
   /** Acknowledge: mark the message done in Postgres. */
   readonly ack: Effect.Effect<void>;
   /**
@@ -78,7 +78,7 @@ interface Envelope {
   readonly messageId: string;
   readonly deliveryTag: string;
   readonly queue: string;
-  readonly routingKey: string | undefined;
+  readonly routingKey: Option.Option<string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly payload: any;
   readonly attempts: number;
@@ -145,8 +145,8 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
       // ── helpers ──────────────────────────────────────────────────────────
 
       const getOrCreateMemQueue = Effect.fn("getOrCreateMemQueue")(function* (queueName: string) {
-        const existing = memQueues.get(queueName);
-        if (existing !== undefined) return existing;
+        const existing = Option.fromUndefinedOr(memQueues.get(queueName));
+        if (Option.isSome(existing)) return existing.value;
         const q = yield* Queue.unbounded<Envelope>();
         memQueues.set(queueName, q);
         return q;
@@ -188,7 +188,7 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
           messageId: row.id,
           deliveryTag,
           queue: row.queue,
-          routingKey: row.routingKey ?? undefined,
+          routingKey: Option.fromNullOr(row.routingKey),
           payload: row.payload,
           attempts: row.attempts,
         });
@@ -202,12 +202,13 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
         opts: PublishOptions = {},
       ) {
         const deliveryTag = crypto.randomUUID();
+        const routingKey = Option.fromUndefinedOr(opts.routingKey);
         const [row] = yield* db
           .insert(queueMessages)
           .values({
             queue: queueName,
             payload: payload as object,
-            routingKey: opts.routingKey,
+            routingKey: Option.getOrUndefined(routingKey),
             maxAttempts: opts.maxAttempts ?? 3,
             visibleAfter: opts.visibleAfter,
             status: "processing",
@@ -221,7 +222,7 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
           messageId: row.id,
           deliveryTag,
           queue: queueName,
-          routingKey: opts.routingKey,
+          routingKey,
           payload,
           attempts: 1,
         });
@@ -231,15 +232,16 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
       // ── ack ───────────────────────────────────────────────────────────────
 
       const ack = Effect.fn("ack")(function* (deliveryTag: string) {
-        const messageId = inFlight.get(deliveryTag);
-        if (messageId === undefined) {
+        const messageId = Option.fromUndefinedOr(inFlight.get(deliveryTag));
+        if (Option.isNone(messageId)) {
           return yield* new DeliveryTagNotFoundError({ deliveryTag });
         }
         inFlight.delete(deliveryTag);
         yield* db
           .update(queueMessages)
+          // deliveryTag: undefined is Drizzle's convention for "set column to NULL"
           .set({ status: "done", deliveryTag: undefined })
-          .where(eq(queueMessages.id, messageId))
+          .where(eq(queueMessages.id, messageId.value))
           .pipe(Effect.orDie);
       });
 
@@ -252,51 +254,57 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
           delayMs?: number;
         } = {},
       ) {
-        const messageId = inFlight.get(deliveryTag);
-        if (messageId === undefined) {
+        const messageId = Option.fromUndefinedOr(inFlight.get(deliveryTag));
+        if (Option.isNone(messageId)) {
           return yield* new DeliveryTagNotFoundError({ deliveryTag });
         }
         inFlight.delete(deliveryTag);
         const [row] = yield* db
           .select()
           .from(queueMessages)
-          .where(eq(queueMessages.id, messageId))
+          .where(eq(queueMessages.id, messageId.value))
           .limit(1)
           .pipe(Effect.orDie);
-        if (row === undefined) {
+        const rowOpt = Option.fromUndefinedOr(row);
+        if (Option.isNone(rowOpt)) {
           return yield* new DeliveryTagNotFoundError({ deliveryTag });
         }
-        const nextAttempts = row.attempts + 1;
-        const shouldRequeue = (opts.requeue ?? true) && nextAttempts < row.maxAttempts;
+        const msg = rowOpt.value;
+        const nextAttempts = msg.attempts + 1;
+        const shouldRequeue = (opts.requeue ?? true) && nextAttempts < msg.maxAttempts;
         if (!shouldRequeue) {
           yield* db
             .update(queueMessages)
+            // deliveryTag: undefined is Drizzle's convention for "set column to NULL"
             .set({ status: "dead", attempts: nextAttempts, deliveryTag: undefined })
-            .where(eq(queueMessages.id, messageId))
+            .where(eq(queueMessages.id, messageId.value))
             .pipe(Effect.orDie);
           return;
         }
         const newDeliveryTag = crypto.randomUUID();
-        const visibleAfter =
-          opts.delayMs !== undefined ? new Date(Date.now() + opts.delayMs) : undefined;
+        const visibleAfter = Option.map(
+          Option.fromUndefinedOr(opts.delayMs),
+          (ms) => new Date(Date.now() + ms),
+        );
         yield* db
           .update(queueMessages)
           .set({
             status: "pending",
             attempts: nextAttempts,
             deliveryTag: newDeliveryTag,
-            visibleAfter: visibleAfter ?? null,
+            // DB boundary: nullable column, Option → null
+            visibleAfter: Option.getOrNull(visibleAfter),
           })
-          .where(eq(queueMessages.id, messageId))
+          .where(eq(queueMessages.id, messageId.value))
           .pipe(Effect.orDie);
-        if (visibleAfter === undefined) {
-          inFlight.set(newDeliveryTag, messageId);
+        if (Option.isNone(visibleAfter)) {
+          inFlight.set(newDeliveryTag, messageId.value);
           yield* offerToMem({
-            messageId,
+            messageId: messageId.value,
             deliveryTag: newDeliveryTag,
-            queue: row.queue,
-            routingKey: row.routingKey ?? undefined,
-            payload: row.payload,
+            queue: msg.queue,
+            routingKey: Option.fromNullOr(msg.routingKey),
+            payload: msg.payload,
             attempts: nextAttempts,
           });
         }

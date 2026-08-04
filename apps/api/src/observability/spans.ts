@@ -1,4 +1,12 @@
+import { Option } from "effect";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
+
+/** Spread an optional value as `{ [key]: value }` or `{}`. */
+const optionalAttr = <K extends string, V>(key: K, value: V | undefined): Record<K, V> | {} =>
+  Option.match(Option.fromUndefinedOr(value), {
+    onNone: () => ({}),
+    onSome: (v) => ({ [key]: v }) as Record<K, V>,
+  });
 
 export const Spans = {
   session: (sessionId: AgentSessionId) => ({
@@ -8,7 +16,7 @@ export const Spans = {
 
   document: (opts: { filename: string; id?: DocumentId }) => ({
     "shipwright.document.filename": opts.filename,
-    ...(opts.id !== undefined ? { "shipwright.document.id": opts.id } : {}),
+    ...optionalAttr("shipwright.document.id", opts.id),
   }),
 
   chunk: (index: number) => ({
@@ -27,13 +35,11 @@ export const Spans = {
     gaps?: number;
     ambiguities?: number;
   }) => ({
-    ...(opts.documents !== undefined ? { "shipwright.document.count": opts.documents } : {}),
-    ...(opts.answers !== undefined ? { "shipwright.answer.count": opts.answers } : {}),
-    ...(opts.feedbackLength !== undefined
-      ? { "shipwright.revision.feedback.length": opts.feedbackLength }
-      : {}),
-    ...(opts.conflicts !== undefined ? { "shipwright.gap.conflicts": opts.conflicts } : {}),
-    ...(opts.gaps !== undefined ? { "shipwright.gap.gaps": opts.gaps } : {}),
-    ...(opts.ambiguities !== undefined ? { "shipwright.gap.ambiguities": opts.ambiguities } : {}),
+    ...optionalAttr("shipwright.document.count", opts.documents),
+    ...optionalAttr("shipwright.answer.count", opts.answers),
+    ...optionalAttr("shipwright.revision.feedback.length", opts.feedbackLength),
+    ...optionalAttr("shipwright.gap.conflicts", opts.conflicts),
+    ...optionalAttr("shipwright.gap.gaps", opts.gaps),
+    ...optionalAttr("shipwright.gap.ambiguities", opts.ambiguities),
   }),
 } as const;
