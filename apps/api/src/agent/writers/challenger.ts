@@ -4,7 +4,7 @@ import { TextGenerationError } from "../errors.ts";
 import type { ReconstructedSummary } from "../../db/services/summary.ts";
 import { GapReportEffectSchema } from "../schemas.ts";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
-import { AnthropicLanguageModel } from "@effect/ai-anthropic";
+import { AnthropicHaikuModelLayer } from "../providers.ts";
 
 const ChallengerSystemPrompt = `You are an adversarial requirements reviewer. Your job is to find everything wrong, missing, or contradictory across a set of project document summaries.
 
@@ -27,8 +27,6 @@ RULES:
 4. A conflict requires evidence from both sides. If only one document says something, it is not a conflict — it may be a gap or ambiguity.
 5. Priority: conflicts are the most critical, then gaps, then ambiguities.`;
 
-const launchPlanModel = AnthropicLanguageModel.model("claude-haiku-4-5");
-
 export const runChallenger = Effect.fn("agent/run-challenger")(function* (
   summaries: ReconstructedSummary[],
 ) {
@@ -48,7 +46,7 @@ export const runChallenger = Effect.fn("agent/run-challenger")(function* (
   );
 
   return value;
-}, Effect.provide(launchPlanModel));
+}, Effect.provide(AnthropicHaikuModelLayer));
 
 function prepareDocument(doc: ReconstructedSummary): string {
   return [

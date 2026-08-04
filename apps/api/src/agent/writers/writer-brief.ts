@@ -4,9 +4,7 @@ import type { ReconstructedSummary } from "../../db/services/summary.ts";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel } from "effect/unstable/ai";
-import { AnthropicLanguageModel } from "@effect/ai-anthropic";
-import "@effect/ai-anthropic/AnthropicLanguageModel";
-import { AnthropicClientLayer } from "../providers.ts";
+import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
 import { makeQueryChunksLayer, QueryChunksToolkit } from "../tools/query-chunks.ts";
 
 export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(
@@ -71,8 +69,6 @@ function formatSummariesForBrief(
     .join("\n\n");
 }
 
-const sonnetModel = AnthropicLanguageModel.model("claude-sonnet-4-6");
-
 export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
   function* (
     summaries: ReconstructedSummary[],
@@ -117,6 +113,6 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
       Effect.mapError((cause) => new BriefWriterError({ cause })),
     );
   },
-  Effect.provide(sonnetModel),
+  Effect.provide(AnthropicSonnetModelLayer),
   Effect.provide(AnthropicClientLayer),
 );

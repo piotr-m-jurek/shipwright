@@ -4,8 +4,7 @@ import { ClarifyingQuestionsEffectSchema, type GapReportEffect } from "../schema
 import { TextGenerationError } from "../errors.ts";
 import type { ReconstructedSummary } from "../../db/services/summary.ts";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
-import { AnthropicLanguageModel } from "@effect/ai-anthropic";
-import { AnthropicClientLayer } from "../providers.ts";
+import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers.ts";
 
 const QuestionGeneratorSystemPrompt = `You are a requirements analyst preparing clarifying questions for a project team.
 
@@ -23,8 +22,6 @@ RULES:
 5. rationale: explain in one sentence why this question must be answered before writing outputs.
 6. Do not ask about issues that can be reasonably assumed or inferred from the documents.
 7. If fewer than 3 meaningful questions exist, still produce exactly 3 — ask about the most important open decisions.`;
-
-const haikuModel = AnthropicLanguageModel.model("claude-haiku-4-5");
 
 export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(
   function* (gapReport: GapReportEffect, summaries: ReconstructedSummary[]) {
@@ -50,7 +47,7 @@ export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(
 
     return value;
   },
-  Effect.provide(haikuModel),
+  Effect.provide(AnthropicHaikuModelLayer),
   Effect.provide(AnthropicClientLayer),
 );
 

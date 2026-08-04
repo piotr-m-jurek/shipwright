@@ -3,9 +3,7 @@ import type { ReconstructedSummary } from "../../db/services/summary.ts";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Spans } from "../../observability/spans.ts";
 import { LanguageModel } from "effect/unstable/ai";
-import { AnthropicLanguageModel } from "@effect/ai-anthropic";
-import "@effect/ai-anthropic/AnthropicLanguageModel";
-import { AnthropicClientLayer } from "../providers.ts";
+import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
 import { makeQueryChunksLayer, QueryChunksToolkit } from "../tools/query-chunks.ts";
 
 export class RevisionWriterError extends Schema.TaggedErrorClass<RevisionWriterError>()(
@@ -76,8 +74,6 @@ function formatRevisionInput(
   ].join("\n\n");
 }
 
-const sonnetModel = AnthropicLanguageModel.model("claude-sonnet-4-6");
-
 export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
   function* (
     summaries: ReconstructedSummary[],
@@ -121,7 +117,7 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
       Effect.mapError((cause) => new RevisionWriterError({ cause })),
     );
   },
-  Effect.provide(sonnetModel),
+  Effect.provide(AnthropicSonnetModelLayer),
   Effect.provide(AnthropicClientLayer),
 );
 
@@ -168,6 +164,6 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
       Effect.mapError((cause) => new RevisionWriterError({ cause })),
     );
   },
-  Effect.provide(sonnetModel),
+  Effect.provide(AnthropicSonnetModelLayer),
   Effect.provide(AnthropicClientLayer),
 );

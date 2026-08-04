@@ -35,7 +35,7 @@ import { Effect, Layer, ManagedRuntime, Option, pipe, Schema, Stream } from "eff
 import { DB, AppDBLiveLayer } from "../../db/index.js";
 import { users } from "../../db/schema.js";
 import { LanguageModel, Prompt, Response } from "effect/unstable/ai";
-import { AnthropicLanguageModel } from "@effect/ai-anthropic";
+import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
 
 import { runChallenger } from "../writers/challenger.ts";
 import { parseDocument } from "../parsers.js";
@@ -48,7 +48,6 @@ import { DbSummary } from "../../db/services/summary.ts";
 import { DbOutput } from "../../db/services/output.ts";
 import { StorageAdapter } from "../../storage/index.js";
 import { ConfigService } from "../../config/config.js";
-import { AnthropicClientLayer } from "../providers.js";
 import type { GapReportEffect } from "../schemas.js";
 import type { ReconstructedSummary } from "../../db/services/summary.ts";
 import { AgentSessionId } from "@shipwright/shared/domain/ids";
@@ -311,8 +310,6 @@ Respond with JSON matching exactly this structure:
   "result": { "score": 0.0-1.0, "reasoning": "...", "pass": true/false, "citations": [] }
 }`;
 
-const sonnetModel = AnthropicLanguageModel.model("claude-sonnet-4-6");
-
 async function runPartB(briefText: string, summaries: ReconstructedSummary[]): Promise<boolean> {
   console.log("\n── Part B: Faithfulness eval (LLM-as-judge) ───────────────");
 
@@ -344,7 +341,7 @@ async function runPartB(briefText: string, summaries: ReconstructedSummary[]): P
   );
 
   const rawJson = await runtime.runPromise(
-    judgeEffect.pipe(Effect.provide(sonnetModel), Effect.provide(AnthropicClientLayer)),
+    judgeEffect.pipe(Effect.provide(AnthropicSonnetModelLayer), Effect.provide(AnthropicClientLayer)),
   );
 
   // Strip markdown code fences if present
@@ -432,7 +429,7 @@ async function runPartC(prdText: string, summaries: ReconstructedSummary[]): Pro
   );
 
   const rawJson = await runtime.runPromise(
-    judgeEffect.pipe(Effect.provide(sonnetModel), Effect.provide(AnthropicClientLayer)),
+    judgeEffect.pipe(Effect.provide(AnthropicSonnetModelLayer), Effect.provide(AnthropicClientLayer)),
   );
 
   const json = rawJson

@@ -4,9 +4,7 @@ import type { ReconstructedSummary } from "../../db/services/summary.ts";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel } from "effect/unstable/ai";
-import { AnthropicLanguageModel } from "@effect/ai-anthropic";
-import "@effect/ai-anthropic/AnthropicLanguageModel";
-import { AnthropicClientLayer } from "../providers.ts";
+import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
 import { makeQueryChunksLayer, QueryChunksToolkit } from "../tools/query-chunks.ts";
 
 export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()(
@@ -92,8 +90,6 @@ function formatSummariesForPrd(
     .join("\n\n");
 }
 
-const sonnetModel = AnthropicLanguageModel.model("claude-sonnet-4-6");
-
 export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
   function* (
     summaries: ReconstructedSummary[],
@@ -137,6 +133,6 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
       Effect.mapError((cause) => new PrdWriterError({ cause })),
     );
   },
-  Effect.provide(sonnetModel),
+  Effect.provide(AnthropicSonnetModelLayer),
   Effect.provide(AnthropicClientLayer),
 );

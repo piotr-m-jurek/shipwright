@@ -8,9 +8,8 @@ import { DbSummary } from "../../db/services/summary.ts";
 import { TextGenerationError } from "../errors.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
-import { AnthropicLanguageModel } from "@effect/ai-anthropic";
 import { type DocumentSummaryEffect, DocumentSummaryEffectSchema } from "../schemas.ts";
-import { AnthropicClientLayer } from "../providers.ts";
+import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers.ts";
 
 class ChunksRetrievalError extends Schema.TaggedErrorClass<ChunksRetrievalError>()(
   "ChunksRetrievalError",
@@ -193,8 +192,6 @@ ANTI-HALLUCINATION RULE: Do not add any requirement, constraint, or assumption t
 When a running summary is present: the new chunk is additional evidence, not a replacement. Merge both into a single coherent output.
   `;
 
-const haikuModel = AnthropicLanguageModel.model("claude-haiku-4-5");
-
 export const runReducePass = Effect.fn("agent/runReducePass")(
   function* (
     current: Option.Option<DocumentSummaryEffect>,
@@ -220,7 +217,7 @@ export const runReducePass = Effect.fn("agent/runReducePass")(
 
     return value;
   },
-  Effect.provide(haikuModel),
+  Effect.provide(AnthropicHaikuModelLayer),
   Effect.provide(AnthropicClientLayer),
 );
 

@@ -1,6 +1,7 @@
-import { AnthropicClient } from "@effect/ai-anthropic";
+import { AnthropicClient, AnthropicLanguageModel } from "@effect/ai-anthropic";
 import { Effect, Layer, pipe, Schema } from "effect";
 import { AiError, EmbeddingModel } from "effect/unstable/ai";
+import "@effect/ai-anthropic/AnthropicLanguageModel";
 import {
   FetchHttpClient,
   HttpClient,
@@ -58,6 +59,12 @@ export const HuggingFaceTeiEmbeddingModelLayer: Layer.Layer<
     });
   }),
 );
+
+// ── Named model layers ────────────────────────────────────────────────────
+// All .model() calls live here. Writers receive these via Effect.provide().
+
+export const AnthropicHaikuModelLayer = AnthropicLanguageModel.model("claude-haiku-4-5");
+export const AnthropicSonnetModelLayer = AnthropicLanguageModel.model("claude-sonnet-4-6");
 
 export const HuggingFaceTeiEmbeddingModelLayerProvided = pipe(
   HuggingFaceTeiEmbeddingModelLayer,
