@@ -141,7 +141,8 @@ export const documents = pgTable("documents", {
     .$onUpdate(() => new Date()),
   sessionId: uuid("session_id")
     .references(() => agentSessions.id, { onDelete: "cascade" })
-    .notNull(),
+    .notNull()
+    .$type<AgentSessionId>(),
   filename: text("filename").notNull(),
   mimeType: text("mime_type").notNull(),
   sizeBytes: integer("size_bytes").notNull(),
@@ -160,7 +161,8 @@ export const chunks = pgTable("chunks", {
     .$onUpdate(() => new Date()),
   sessionId: uuid("session_id")
     .references(() => agentSessions.id, { onDelete: "cascade" })
-    .notNull(),
+    .notNull()
+    .$type<AgentSessionId>(),
   documentId: uuid("document_id")
     .references(() => documents.id, { onDelete: "cascade" })
     .notNull(),
@@ -190,7 +192,8 @@ export const documentSummaries = pgTable("document_summaries", {
     .notNull(),
   sessionId: uuid("session_id")
     .references(() => agentSessions.id, { onDelete: "cascade" })
-    .notNull(),
+    .notNull()
+    .$type<AgentSessionId>(),
   // filename of the source document — denormalised for query convenience
   sourceDocument: text("source_document").notNull(),
   version: integer("version").notNull().default(1),
@@ -226,7 +229,8 @@ export const messages = pgTable("messages", {
     .$onUpdate(() => new Date()),
   sessionId: uuid("session_id")
     .references(() => agentSessions.id, { onDelete: "cascade" })
-    .notNull(),
+    .notNull()
+    .$type<AgentSessionId>(),
   content: text("content").notNull(),
   role: messageRoleEnum("role").notNull(),
   agentPass: text("agent_pass"),
@@ -276,7 +280,8 @@ export const outputs = pgTable("outputs", {
     .$onUpdate(() => new Date()),
   sessionId: uuid("session_id")
     .references(() => agentSessions.id, { onDelete: "cascade" })
-    .notNull(),
+    .notNull()
+    .$type<AgentSessionId>(),
   type: outputTypeEnum().notNull(),
   content: text(),
   version: integer(),

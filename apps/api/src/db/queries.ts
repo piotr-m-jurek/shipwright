@@ -425,6 +425,7 @@ export class DatabaseService extends Context.Service<
       sessionId: AgentSessionId;
       userId: string;
     }) => Effect.Effect<SelectAgentSession | undefined, EffectDrizzleQueryError>;
+    deleteAgentSession: (sessionId: AgentSessionId) => Effect.Effect<void, EffectDrizzleQueryError>;
 
     createDocument: (
       data: InsertDocument,
@@ -451,6 +452,9 @@ export class DatabaseService extends Context.Service<
     createChunks: (data: InsertChunk[]) => Effect.Effect<SelectChunk[], EffectDrizzleQueryError>;
     getChunksByDocumentId: (
       documentId: string,
+    ) => Effect.Effect<SelectChunk[], EffectDrizzleQueryError>;
+    getChunksBySessionId: (
+      sessionId: string,
     ) => Effect.Effect<SelectChunk[], EffectDrizzleQueryError>;
     getChunksBySimilarity: (payload: {
       sessionId: string;
@@ -491,11 +495,6 @@ export class DatabaseService extends Context.Service<
     getAnswersBySessionId: (
       sessionId: string,
     ) => Effect.Effect<AnswerSelect[], EffectDrizzleQueryError>;
-
-    deleteAgentSession: (sessionId: AgentSessionId) => Effect.Effect<void, EffectDrizzleQueryError>;
-    getChunksBySessionId: (
-      sessionId: string,
-    ) => Effect.Effect<SelectChunk[], EffectDrizzleQueryError>;
 
     createOutput: (data: OutputInsert) => Effect.Effect<OutputSelect, EffectDrizzleQueryError>;
     getOutputsBySessionId: (

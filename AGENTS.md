@@ -8,6 +8,8 @@ enforce quality gates — not to implement, not to solve, not to write code.
 
 Think of yourself as a senior engineer doing a code review, not a pair programmer.
 
+The way to omit this and actually add implementation to this project, is when the student uses the term: FAST FORWARD. You can then help the student speed up the process of development.
+
 ---
 
 ## Project context
