@@ -8,6 +8,10 @@ export const createUploadSession = Effect.fn("agent/createUploadSession")(functi
   userId: string;
   files: CreateAgentSessionRequest["files"];
 }) {
+  yield* Effect.annotateCurrentSpan({
+    "shipwright.user.id": payload.userId,
+    "shipwright.upload.count": payload.files.length,
+  });
   const agentSessionDb = yield* DbAgentSession;
   const documentDb = yield* DbDocument;
   const storage = yield* StorageAdapter;

@@ -22,6 +22,13 @@ export const submitAnswers = Effect.fn("agent/submitAnswers")(
     }
 
     const round = actor.getSnapshot().context.round;
+    yield* Effect.logInfo(`[submitAnswers] round ${round}, ${rawAnswers.length} answers`).pipe(
+      Effect.annotateLogs({ sessionId, round, answerCount: rawAnswers.length }),
+    );
+    yield* Effect.annotateCurrentSpan({
+      "shipwright.answer.round": round,
+      "shipwright.answer.count": rawAnswers.length,
+    });
 
     const persistedAnswers = yield* db.createAnswers(
       rawAnswers.map((a) => ({
@@ -41,21 +48,43 @@ export const submitAnswers = Effect.fn("agent/submitAnswers")(
       })),
     });
 
-    // Sufficiency heuristic: all answers non-empty and at least one full round completed.
+    // Sufficiency heuristic: all answers non-empty.
+    // round is 0-indexed (0 = first round). After USER_ANSWERED the machine
+    // increments it, so by the time we read the snapshot here it is still the
+    // pre-send value. We consider any complete first round sufficient — the
+    // round-limit guard in the machine handles forced progression at round 2.
     const allAnswered = rawAnswers.every((a) => a.text.trim().length > 0);
-    const sufficient = allAnswered && round >= 1;
+    const sufficient = allAnswered;
+
+    yield* Effect.logInfo(`[submitAnswers] sufficiency: ${sufficient}`).pipe(
+      Effect.annotateLogs({ sessionId, round, sufficient }),
+    );
+    yield* Effect.annotateCurrentSpan({ "shipwright.answer.sufficient": sufficient });
 
     const currentQuestions = actor.getSnapshot().context.questions;
 
     if (sufficient) {
       actor.send({ type: "ANSWERS_SUFFICIENT", questions: currentQuestions });
+      yield* Effect.logInfo("[submitAnswers] sent ANSWERS_SUFFICIENT").pipe(
+        Effect.annotateLogs({ sessionId }),
+      );
     } else {
       actor.send({ type: "ANSWERS_INSUFFICIENT", questions: currentQuestions });
+      yield* Effect.logInfo("[submitAnswers] sent ANSWERS_INSUFFICIENT").pipe(
+        Effect.annotateLogs({ sessionId }),
+      );
     }
 
     const stateAfter = actor.getSnapshot().value as string;
+    yield* Effect.logInfo(`[submitAnswers] state after sends: ${stateAfter}`).pipe(
+      Effect.annotateLogs({ sessionId, stateAfter }),
+    );
+
     if (stateAfter === "generating") {
       yield* mq.publish("session.generate", { sessionId });
+      yield* Effect.logInfo("[submitAnswers] published session.generate").pipe(
+        Effect.annotateLogs({ sessionId }),
+      );
     }
 
     return { sufficient, round: round + 1 };

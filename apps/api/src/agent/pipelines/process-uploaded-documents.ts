@@ -9,6 +9,7 @@ import { DbChunk } from "../../db/services/chunk.ts";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { EmbeddingService } from "../embedding-service.js";
+import { MessageQueue } from "../../queue/index.ts";
 
 // TODO: actually throw those errors, not DB errors
 export class DocumentNotFoundError extends Schema.TaggedErrorClass<DocumentNotFoundError>()(
@@ -33,6 +34,14 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
   uploads: ConfirmUploadRequest["uploads"];
   sessionId: AgentSessionId;
 }) {
+  yield* Effect.annotateCurrentSpan({
+    "shipwright.session.id": sessionId,
+    "shipwright.upload.count": uploads.length,
+  });
+  yield* Effect.logInfo(`[processUploadedDocuments] starting — ${uploads.length} document(s)`).pipe(
+    Effect.annotateLogs({ sessionId, uploadCount: uploads.length }),
+  );
+
   const storage = yield* StorageAdapter;
   const chunkerton = yield* EmbeddingService;
   const agentSessionDb = yield* DbAgentSession;
@@ -53,6 +62,14 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
           const parsed = yield* parseDocument(Buffer.from(rawDocument), doc.filename);
           const chunks = chunkDocument(parsed);
           const tokenCount = estimateTokenCount(parsed.text);
+
+          yield* Effect.logInfo(`[processUploadedDocuments] ${doc.filename}: ${chunks.length} chunks, ${tokenCount} tokens`).pipe(
+            Effect.annotateLogs({ documentId: doc.id, sessionId, chunkCount: chunks.length, tokenCount }),
+          );
+          yield* Effect.annotateCurrentSpan({
+            "shipwright.chunk.count": chunks.length,
+            "shipwright.document.token_count": tokenCount,
+          });
 
           const embeddings = yield* chunkerton.embedChunks(chunks.map((ch) => ch.content));
           const zipped = Array.zip(chunks, embeddings);
@@ -75,7 +92,20 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
 
         yield* pipe(
           processDoc,
+          Effect.tapCause((cause) =>
+            Effect.logError(`[process-uploaded-documents] document failed: ${doc.filename}`).pipe(
+              Effect.annotateLogs({ documentId: doc.id, sessionId }),
+              Effect.andThen(Effect.logError(cause)),
+            ),
+          ),
           Effect.tapError(() => documentDb.updateDocumentStatus(doc.id, "error")),
+          Effect.withSpan("agent/process-document", {
+            attributes: {
+              "shipwright.document.id": doc.id,
+              "shipwright.document.filename": doc.filename,
+              "shipwright.session.id": sessionId,
+            },
+          }),
         );
       }),
     { concurrency: 2 },
@@ -87,5 +117,19 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
   const someError = docs.some((doc) => doc.status === "error");
   const status = allError ? "error" : someError ? "partial_error" : "processing";
 
+  yield* Effect.logInfo(`[processUploadedDocuments] finalising — status: ${status}`).pipe(
+    Effect.annotateLogs({ sessionId, status, docCount: docs.length }),
+  );
+  yield* Effect.annotateCurrentSpan({ "shipwright.session.final_status": status });
   yield* agentSessionDb.updateAgentSession(sessionId, status);
+
+  // Only kick off the workflow if at least some documents processed successfully.
+  // If all failed, there are no chunks to summarise — the session stays in error.
+  if (!allError) {
+    const mq = yield* MessageQueue;
+    yield* mq.publish("session.workflow", { sessionId }, { maxAttempts: 5 });
+    yield* Effect.logInfo("[processUploadedDocuments] published session.workflow").pipe(
+      Effect.annotateLogs({ sessionId }),
+    );
+  }
 });

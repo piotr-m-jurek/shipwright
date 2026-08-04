@@ -5,6 +5,7 @@ import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api.js";
 export const confirmUploadResults = Effect.fn("agent/confirmUploadResults")(function* (
   uploads: ConfirmUploadRequest["uploads"],
 ) {
+  yield* Effect.annotateCurrentSpan({ "shipwright.upload.count": uploads.length });
   const storage = yield* StorageAdapter;
   return yield* pipe(
     uploads,

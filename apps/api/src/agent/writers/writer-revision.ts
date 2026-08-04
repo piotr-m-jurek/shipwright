@@ -115,6 +115,9 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
         () => "",
         (acc, delta) => acc + delta,
       ),
+      Effect.tap((text) =>
+        Effect.annotateCurrentSpan({ "shipwright.output.chars": text.length }),
+      ),
       Effect.mapError((cause) => new RevisionWriterError({ cause })),
     );
   },
@@ -158,6 +161,9 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
       Stream.runFold(
         () => "",
         (acc, delta) => acc + delta,
+      ),
+      Effect.tap((text) =>
+        Effect.annotateCurrentSpan({ "shipwright.output.chars": text.length }),
       ),
       Effect.mapError((cause) => new RevisionWriterError({ cause })),
     );

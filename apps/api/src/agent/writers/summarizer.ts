@@ -66,6 +66,11 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
     return yield* new NoChunksError();
   }
 
+  yield* Effect.annotateCurrentSpan({ "shipwright.chunk.total": chunks.length });
+  yield* Effect.logInfo(`[summarizeDocument] processing ${chunks.length} chunks`).pipe(
+    Effect.annotateLogs({ documentId, sessionId, filename }),
+  );
+
   const currentHighestVersion = yield* pipe(
     summaryDb.getCurrentDocumentSummaryVersion({ documentId, sessionId }),
     Effect.mapError((cause) => new DocumentSummaryReadError({ cause })),
@@ -73,6 +78,9 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
 
   let current: Option.Option<DocumentSummaryEffect> = Option.none();
   for (const chunk of chunks) {
+    yield* Effect.logInfo(
+      `[summarizeDocument] chunk ${chunk.chunkIndex + 1}/${chunks.length}`,
+    ).pipe(Effect.annotateLogs({ documentId, sessionId, chunkIndex: chunk.chunkIndex }));
     const summary = yield* runReducePass(current, chunk, filename);
     yield* persistSummary({
       summary,
@@ -85,6 +93,11 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
     current = Option.some(summary);
   }
 
+  if (Option.isNone(current)) {
+    yield* Effect.logError("[summarizeDocument] no summary produced after processing all chunks").pipe(
+      Effect.annotateLogs({ documentId, sessionId, chunkCount: chunks.length }),
+    );
+  }
   const final = Option.getOrThrow(current);
   return yield* persistSummary({
     summary: final,
@@ -111,6 +124,13 @@ const persistSummary = Effect.fn("persistSummary")(
     sessionId: AgentSessionId;
     version: number;
   }) {
+    yield* Effect.annotateCurrentSpan({
+      "shipwright.session.id": sessionId,
+      "shipwright.document.id": documentId,
+      "shipwright.summary.type": summaryType,
+      "shipwright.summary.version": version,
+      ...(batchIndex !== undefined ? { "shipwright.summary.batch_index": batchIndex } : {}),
+    });
     const summaryDb = yield* DbSummary;
     const row = yield* summaryDb.createDocumentSummary({
       documentId,

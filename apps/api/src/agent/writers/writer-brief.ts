@@ -111,6 +111,9 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
         () => "",
         (acc, delta) => acc + delta,
       ),
+      Effect.tap((text) =>
+        Effect.annotateCurrentSpan({ "shipwright.output.chars": text.length }),
+      ),
       Effect.mapError((cause) => new BriefWriterError({ cause })),
     );
   },
