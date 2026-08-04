@@ -1,12 +1,14 @@
 import { describe, it, expect, afterAll, vi } from "vitest";
-import { Effect, Layer, pipe } from "effect";
+import { Effect, Layer, Option, pipe } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { S3Client, PutObjectCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
 import { ConfigService } from "../config/config.js";
 import { StorageAdapter } from "../storage/index.js";
 import { ApiLayer } from "./server.js";
-import { DatabaseService } from "../db/queries.js";
+import { DbAgentSession } from "../db/services/agent-session.ts";
+import { DbDocument } from "../db/services/document.ts";
+import { DbChunk } from "../db/services/chunk.ts";
 
 // ---------------------------------------------------------------------------
 // Embedder mock
@@ -23,13 +25,15 @@ vi.mock("../agent/embed-chunks.js", async () => {
 // Test handler setup
 // ---------------------------------------------------------------------------
 
-const DbLayer = pipe(DatabaseService.layer, Layer.provide(ConfigService.layer));
+const DbLayer = pipe(
+  Layer.mergeAll(DbAgentSession.layer, DbDocument.layer, DbChunk.layer),
+  Layer.provide(ConfigService.layer),
+);
 
 const TestRoutes = pipe(
   ApiLayer,
   Layer.provide(NodeHttpServer.layerHttpServices),
   Layer.provide(StorageAdapter.layer),
-  Layer.provide(DatabaseService.layer),
   Layer.provide(ConfigService.layer),
 );
 
@@ -46,7 +50,7 @@ afterAll(() => dispose());
 // Helpers
 // ---------------------------------------------------------------------------
 
-function runDb<A>(effect: Effect.Effect<A, unknown, DatabaseService>) {
+function runDb<A>(effect: Effect.Effect<A, unknown, DbAgentSession | DbDocument | DbChunk>) {
   return Effect.runPromise(Effect.provide(effect, DbLayer));
 }
 
@@ -103,7 +107,7 @@ const createdSessionIds: string[] = [];
 
 afterAll(async () => {
   for (const id of createdSessionIds) {
-    await runDb(Effect.flatMap(DatabaseService, (db) => db.deleteAgentSession(id)));
+    await runDb(Effect.flatMap(DbAgentSession, (db) => db.deleteAgentSession(id)));
   }
 });
 
@@ -166,12 +170,13 @@ describe("POST /api/sessions/upload-url", () => {
     const body = await res.json();
     createdSessionIds.push(body.sessionId);
 
-    const session = await runDb(
-      Effect.flatMap(DatabaseService, (db) => db.getAgentSesionById(body.sessionId)),
+    const sessionOpt = await runDb(
+      Effect.flatMap(DbAgentSession, (db) => db.getAgentSessionById({ sessionId: body.sessionId })),
     );
 
-    expect(session).toBeDefined();
-    expect(session?.status).toBe("uploading");
+    expect(Option.isSome(sessionOpt)).toBe(true);
+    const session = Option.getOrThrow(sessionOpt);
+    expect(session.status).toBe("uploading");
   });
 
   it("creates document records in the DB", async () => {
@@ -194,7 +199,7 @@ describe("POST /api/sessions/upload-url", () => {
     createdSessionIds.push(body.sessionId);
 
     const docs = await runDb(
-      Effect.flatMap(DatabaseService, (db) => db.getDocumentsBySessionId(body.sessionId)),
+      Effect.flatMap(DbDocument, (db) => db.getDocumentsBySessionId(body.sessionId)),
     );
 
     expect(docs).toHaveLength(2);
@@ -280,7 +285,7 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
     await new Promise((resolve) => setTimeout(resolve, 8000));
 
     const sessionChunks = await runDb(
-      Effect.flatMap(DatabaseService, (db) => db.getChunksBySessionId(sessionId)),
+      Effect.flatMap(DbChunk, (db) => db.getChunksBySessionId(sessionId)),
     );
 
     expect(sessionChunks.length).toBeGreaterThan(0);
@@ -315,7 +320,7 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
     await new Promise((resolve) => setTimeout(resolve, 8000));
 
     const docs = await runDb(
-      Effect.flatMap(DatabaseService, (db) => db.getDocumentsBySessionId(sessionId)),
+      Effect.flatMap(DbDocument, (db) => db.getDocumentsBySessionId(sessionId)),
     );
 
     expect(docs[0]?.tokenCount).toBeGreaterThan(0);

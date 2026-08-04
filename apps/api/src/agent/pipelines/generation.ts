@@ -1,7 +1,9 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { Effect, pipe } from "effect";
+import { Effect, Option, pipe } from "effect";
 import { Spans } from "../../observability/spans.js";
-import { DatabaseService, type ReconstructedSummary } from "../../db/queries.js";
+import { DbSummary, type ReconstructedSummary } from "../../db/services/summary.ts";
+import { DbClarification } from "../../db/services/clarification.ts";
+import { DbOutput } from "../../db/services/output.ts";
 import { StorageAdapter } from "../../storage/index.js";
 import { runBriefWriter } from "../writers/writer-brief.js";
 import { getOrRestoreActor } from "../session-actor.js";
@@ -15,7 +17,9 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
   function* (sessionId: AgentSessionId) {
     yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
 
-    const db = yield* DatabaseService;
+    const summaryDb = yield* DbSummary;
+    const clarificationDb = yield* DbClarification;
+    const outputDb = yield* DbOutput;
     const storage = yield* StorageAdapter;
 
     const processBrief = Effect.fnUntraced(function* (
@@ -34,7 +38,7 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
         Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
       );
 
-      yield* db.createOutput({
+      yield* outputDb.createOutput({
         sessionId,
         type: "project_brief",
         content: briefText,
@@ -61,7 +65,7 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
         Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
       );
 
-      yield* db.createOutput({
+      yield* outputDb.createOutput({
         sessionId,
         type: "implementation_prd",
         content: prdText,
@@ -73,9 +77,9 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
     });
 
     const actor = yield* getOrRestoreActor(sessionId);
-    const summaries = yield* db.getFinalSummariesBySession(sessionId);
-    const allAnswers = yield* db.getAnswersBySessionId(sessionId);
-    const allQuestions = yield* db.getQuestionsBySessionId(sessionId);
+    const summaries = yield* summaryDb.getFinalSummariesBySession(sessionId);
+    const allAnswers = yield* clarificationDb.getAnswersBySessionId(sessionId);
+    const allQuestions = yield* clarificationDb.getQuestionsBySessionId(sessionId);
 
     const answers: MachineContext["answers"] = allAnswers.map((a) => ({
       questionId: a.questionId,
@@ -108,14 +112,15 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
 
     const actor = yield* getOrRestoreActor(sessionId);
     const storage = yield* StorageAdapter;
-    const db = yield* DatabaseService;
+    const summaryDb = yield* DbSummary;
+    const outputDb = yield* DbOutput;
 
-    const summaries = yield* db.getFinalSummariesBySession(sessionId);
-    const existingPrdRow = yield* db.getLatestOutputByType({
+    const summaries = yield* summaryDb.getFinalSummariesBySession(sessionId);
+    const existingPrdRow = yield* outputDb.getLatestOutputByType({
       sessionId,
       type: "implementation_prd",
-    });
-    const existingBriefRow = yield* db.getLatestOutputByType({ sessionId, type: "project_brief" });
+    }).pipe(Effect.map(Option.getOrUndefined));
+    const existingBriefRow = yield* outputDb.getLatestOutputByType({ sessionId, type: "project_brief" }).pipe(Effect.map(Option.getOrUndefined));
 
     const processBrief = Effect.fnUntraced(function* ({
       existingBrief,
@@ -139,7 +144,7 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
         Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
       );
 
-      yield* db.createOutput({
+      yield* outputDb.createOutput({
         sessionId,
         type: "project_brief",
         content: newBriefText,
@@ -172,7 +177,7 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
         Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
       );
 
-      yield* db.createOutput({
+      yield* outputDb.createOutput({
         sessionId,
         type: "implementation_prd",
         content: newPrdText,

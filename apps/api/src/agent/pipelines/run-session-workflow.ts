@@ -1,6 +1,7 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Effect } from "effect";
-import { DatabaseService } from "../../db/queries.js";
+import { DbSummary } from "../../db/services/summary.ts";
+import { DbClarification } from "../../db/services/clarification.ts";
 import { getOrRestoreActor } from "../session-actor.js";
 import { summarizeAllDocuments } from "../writers/summarizer.js";
 import { runChallenger } from "../writers/challenger.js";
@@ -9,12 +10,13 @@ import { AnalysisPipelineError } from "../errors.js";
 
 export const runSessionWorkflow = Effect.fn("agent/runSessionWorkflow")(
   function* (sessionId: AgentSessionId) {
-    const db = yield* DatabaseService;
+    const summaryDb = yield* DbSummary;
+    const clarificationDb = yield* DbClarification;
     const actor = yield* getOrRestoreActor(sessionId);
 
     yield* summarizeAllDocuments(sessionId);
 
-    const documentSummaries = yield* db.getFinalSummariesBySession(sessionId);
+    const documentSummaries = yield* summaryDb.getFinalSummariesBySession(sessionId);
     actor.send({
       type: "SUMMARIZATION_DONE",
       documentSummaries: documentSummaries.map((summary) => ({
@@ -34,7 +36,7 @@ export const runSessionWorkflow = Effect.fn("agent/runSessionWorkflow")(
       gapReport,
       documentSummaries,
     );
-    const dbQuestions = yield* db.createQuestions(
+    const dbQuestions = yield* clarificationDb.createQuestions(
       generatedQuestions.map((q, idx) => ({
         text: q.text,
         rationale: q.rationale,

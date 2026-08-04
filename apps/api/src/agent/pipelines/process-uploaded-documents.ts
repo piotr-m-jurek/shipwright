@@ -2,8 +2,10 @@ import { StorageAdapter } from "../../storage/index.ts";
 import { parseDocument } from "../parsers.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { chunkDocument } from "../lib/chunker.ts";
-import { Effect, Schema, Array, pipe } from "effect";
-import { DatabaseService } from "../../db/queries.ts";
+import { Effect, Option, Schema, Array, pipe } from "effect";
+import { DbAgentSession } from "../../db/services/agent-session.ts";
+import { DbDocument } from "../../db/services/document.ts";
+import { DbChunk } from "../../db/services/chunk.ts";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { EmbeddingService } from "../embedding-service.js";
@@ -33,15 +35,19 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
 }) {
   const storage = yield* StorageAdapter;
   const chunkerton = yield* EmbeddingService;
-  const db = yield* DatabaseService;
+  const agentSessionDb = yield* DbAgentSession;
+  const documentDb = yield* DbDocument;
+  const chunkDb = yield* DbChunk;
   yield* Effect.forEach(
     uploads,
     (upload) =>
       Effect.gen(function* () {
-        const doc = yield* db.getDocumentById(upload.documentId);
+        const doc = yield* documentDb.getDocumentById(upload.documentId).pipe(
+          Effect.map(Option.getOrThrow),
+        );
 
         const processDoc = Effect.gen(function* () {
-          yield* db.updateDocumentStatus(doc.id, "processing");
+          yield* documentDb.updateDocumentStatus(doc.id, "processing");
 
           const rawDocument = yield* storage.download(upload.s3Key);
           const parsed = yield* parseDocument(Buffer.from(rawDocument), doc.filename);
@@ -51,7 +57,7 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
           const embeddings = yield* chunkerton.embedChunks(chunks.map((ch) => ch.content));
           const zipped = Array.zip(chunks, embeddings);
 
-          yield* db.createChunks(
+          yield* chunkDb.createChunks(
             zipped.map(([chunk, embedding], index) => ({
               sessionId,
               documentId: doc.id,
@@ -64,22 +70,22 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
             })),
           );
 
-          yield* db.updateDocument(doc.id, { tokenCount, status: "ready" });
+          yield* documentDb.updateDocument(doc.id, { tokenCount, status: "ready" });
         });
 
         yield* pipe(
           processDoc,
-          Effect.tapError(() => db.updateDocumentStatus(doc.id, "error")),
+          Effect.tapError(() => documentDb.updateDocumentStatus(doc.id, "error")),
         );
       }),
     { concurrency: 2 },
   );
 
-  const docs = yield* pipe(db.getDocumentsBySessionId(sessionId));
+  const docs = yield* documentDb.getDocumentsBySessionId(sessionId);
 
   const allError = docs.every((doc) => doc.status === "error");
   const someError = docs.some((doc) => doc.status === "error");
   const status = allError ? "error" : someError ? "partial_error" : "processing";
 
-  yield* db.updateAgentSession(sessionId, status);
+  yield* agentSessionDb.updateAgentSession(sessionId, status);
 });

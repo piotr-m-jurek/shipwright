@@ -10,7 +10,9 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { StorageAdapter } from "../../storage/index.js";
-import { DatabaseService } from "../../db/queries.js";
+import { DbAgentSession } from "../../db/services/agent-session.ts";
+import { DbDocument } from "../../db/services/document.ts";
+import { DbChunk } from "../../db/services/chunk.ts";
 import { DB, AppDBLiveLayer } from "../../db/index.js";
 import { users } from "../../db/schema.js";
 import { parseDocument } from "../parsers.js";
@@ -24,12 +26,14 @@ const runtime = ManagedRuntime.make(
   Layer.mergeAll(
     StorageAdapter.layer,
     ConfigService.layer,
-    DatabaseService.layer,
+    DbAgentSession.layer,
+    DbDocument.layer,
+    DbChunk.layer,
     AppDBLiveLayer,
-  ) as Layer.Layer<StorageAdapter | ConfigService | DatabaseService | DB, never, never>,
+  ) as Layer.Layer<StorageAdapter | ConfigService | DbAgentSession | DbDocument | DbChunk | DB, never, never>,
 );
 
-const db = (effect: Effect.Effect<any, any, DatabaseService>) => runtime.runPromise(effect);
+const db = (effect: Effect.Effect<any, any, DbAgentSession | DbDocument | DbChunk>) => runtime.runPromise(effect);
 const dbRaw = (effect: Effect.Effect<any, any, DB>) => runtime.runPromise(effect);
 
 const TEST_USER_ID = "test-user-restart";
@@ -74,7 +78,7 @@ async function req(method: string, path: string, body?: unknown) {
 console.log("Creating session + inserting corpus chunks...");
 await insertTestUser();
 const session = await db(
-  Effect.flatMap(DatabaseService, (svc) =>
+  Effect.flatMap(DbAgentSession, (svc) =>
     svc.createAgentSession({ status: "processing", userId: TEST_USER_ID }),
   ),
 );
@@ -84,7 +88,7 @@ for (const { filename } of files) {
   const buf = await readFile(resolve(CORPUS, filename));
   const parsed = await runtime.runPromise(parseDocument(buf, filename));
   const doc = await db(
-    Effect.flatMap(DatabaseService, (svc) =>
+    Effect.flatMap(DbDocument, (svc) =>
       svc.createDocument({
         sessionId,
         filename,
@@ -96,7 +100,7 @@ for (const { filename } of files) {
     ),
   );
   await db(
-    Effect.flatMap(DatabaseService, (svc) =>
+    Effect.flatMap(DbChunk, (svc) =>
       svc.createChunks([
         {
           sessionId,

@@ -33,11 +33,11 @@ interface Interface {
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
 }
 
-export class Document extends Context.Service<Document, Interface>()(
+export class DbDocument extends Context.Service<DbDocument, Interface>()(
   "@shipwright/api/db/services/document",
 ) {
   static readonly layer = Layer.effect(
-    Document,
+    DbDocument,
     Effect.gen(function* () {
       const db = yield* DB;
 

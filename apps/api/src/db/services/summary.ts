@@ -104,11 +104,11 @@ interface Interface {
   ) => Effect.Effect<ReconstructedSummary[], EffectDrizzleQueryError>;
 }
 
-export class Summary extends Context.Service<Summary, Interface>()(
-  "@shipwright/api/db/services/summary/Summary",
+export class DbSummary extends Context.Service<DbSummary, Interface>()(
+  "@shipwright/api/db/services/summary/DbSummary",
 ) {
   static readonly layer = Layer.effect(
-    Summary,
+    DbSummary,
     Effect.gen(function* () {
       const db = yield* DB;
 

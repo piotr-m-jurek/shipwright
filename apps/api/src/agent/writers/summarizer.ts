@@ -1,7 +1,10 @@
 import { Effect, Schema, Option, pipe } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import type { SelectChunk, SummaryItemInsert } from "../../db/types.ts";
-import { DatabaseService } from "../../db/queries.ts";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import { DbDocument } from "../../db/services/document.ts";
+import { DbChunk } from "../../db/services/chunk.ts";
+import { DbSummary } from "../../db/services/summary.ts";
 import { TextGenerationError } from "../errors.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
@@ -27,13 +30,13 @@ class DocumentSummaryReadError extends Schema.TaggedErrorClass<DocumentSummaryRe
 ) {}
 
 export const summarizeAllDocuments = Effect.fn("agent/summarizeAllDocuments")(function* (
-  sessionId: string,
+  sessionId: AgentSessionId,
 ) {
   yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
-  const db = yield* DatabaseService;
+  const documentDb = yield* DbDocument;
 
   return yield* pipe(
-    db.getDocumentsBySessionId(sessionId),
+    documentDb.getDocumentsBySessionId(sessionId),
     Effect.flatMap(
       Effect.forEach((doc) => summarizeDocument(doc.id, sessionId, doc.filename), {
         concurrency: 2,
@@ -45,16 +48,17 @@ export const summarizeAllDocuments = Effect.fn("agent/summarizeAllDocuments")(fu
 
 export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* (
   documentId: string,
-  sessionId: string,
+  sessionId: AgentSessionId,
   filename: string,
 ) {
   yield* Effect.annotateCurrentSpan({
     ...Spans.session(sessionId),
     ...Spans.document({ filename, id: documentId }),
   });
-  const db = yield* DatabaseService;
+  const chunkDb = yield* DbChunk;
+  const summaryDb = yield* DbSummary;
   const chunks = yield* pipe(
-    db.getChunksByDocumentId(documentId),
+    chunkDb.getChunksByDocumentId(documentId),
     Effect.mapError((cause) => new ChunksRetrievalError({ cause })),
   );
 
@@ -63,7 +67,7 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
   }
 
   const currentHighestVersion = yield* pipe(
-    db.getCurrentDocumenSummaryVersion({ documentId, sessionId }),
+    summaryDb.getCurrentDocumentSummaryVersion({ documentId, sessionId }),
     Effect.mapError((cause) => new DocumentSummaryReadError({ cause })),
   );
 
@@ -104,11 +108,11 @@ const persistSummary = Effect.fn("persistSummary")(
     summaryType: "map_intermediate" | "final";
     batchIndex?: number;
     documentId: string;
-    sessionId: string;
+    sessionId: AgentSessionId;
     version: number;
   }) {
-    const db = yield* DatabaseService;
-    const row = yield* db.createDocumentSummary({
+    const summaryDb = yield* DbSummary;
+    const row = yield* summaryDb.createDocumentSummary({
       documentId,
       sessionId,
       sourceDocument: summary.sourceDocument,
@@ -132,7 +136,7 @@ const persistSummary = Effect.fn("persistSummary")(
         orderIndex: i,
       }));
 
-    yield* db.createSummaryItems([
+    yield* summaryDb.createSummaryItems([
       ...toItems(summary.requirements, "requirement"),
       ...toItems(summary.constraints, "constraint"),
       ...toItems(summary.assumptions, "assumption"),

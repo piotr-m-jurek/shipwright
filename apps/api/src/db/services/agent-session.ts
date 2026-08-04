@@ -26,7 +26,7 @@ interface Interface {
     sessionId: AgentSessionId;
   }) => Effect.Effect<Option.Option<SelectAgentSession>, EffectDrizzleQueryError>;
 
-  getAgentSesionByIdForUser: (payload: {
+  getAgentSessionByIdForUser: (payload: {
     sessionId: AgentSessionId;
     userId: string;
   }) => Effect.Effect<Option.Option<SelectAgentSession>, EffectDrizzleQueryError>;
@@ -34,11 +34,11 @@ interface Interface {
   deleteAgentSession: (sessionId: AgentSessionId) => Effect.Effect<void, EffectDrizzleQueryError>;
 }
 
-export class AgentSession extends Context.Service<AgentSession, Interface>()(
+export class DbAgentSession extends Context.Service<DbAgentSession, Interface>()(
   "@shipwright/api/db/services/agent-session/AgentSession",
 ) {
   static readonly layer = Layer.effect(
-    AgentSession,
+    DbAgentSession,
     Effect.gen(function* () {
       const db = yield* DB;
 
@@ -83,7 +83,7 @@ export class AgentSession extends Context.Service<AgentSession, Interface>()(
         return Option.fromIterable(results);
       });
 
-      const getAgentSesionByIdForUser = Effect.fnUntraced(function* (payload: {
+      const getAgentSessionByIdForUser = Effect.fnUntraced(function* (payload: {
         sessionId: AgentSessionId;
         userId: string;
       }) {
@@ -106,7 +106,7 @@ export class AgentSession extends Context.Service<AgentSession, Interface>()(
         updateAgentSession,
         updateAgentSessionSnapshot,
         getAgentSessionById,
-        getAgentSesionByIdForUser,
+        getAgentSessionByIdForUser,
         deleteAgentSession,
       };
     }),

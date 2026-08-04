@@ -16,7 +16,9 @@ import { readFile } from "fs/promises";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { StorageAdapter } from "../../storage/index.js";
 import { DB, AppDBLiveLayer } from "../../db/index.js";
-import { DatabaseService } from "../../db/queries.js";
+import { DbAgentSession } from "../../db/services/agent-session.ts";
+import { DbDocument } from "../../db/services/document.ts";
+import { DbChunk } from "../../db/services/chunk.ts";
 import { agentSessions, outputs, users } from "../../db/schema.js";
 import { eq } from "drizzle-orm";
 import { parseDocument } from "../parsers.js";
@@ -26,12 +28,14 @@ import { ConfigService } from "../../config/config.js";
 const runtime = ManagedRuntime.make(
   Layer.mergeAll(
     StorageAdapter.layer.pipe(Layer.provide(ConfigService.layer)),
-    DatabaseService.layer.pipe(Layer.provide(ConfigService.layer)),
+    DbAgentSession.layer.pipe(Layer.provide(ConfigService.layer)),
+    DbDocument.layer.pipe(Layer.provide(ConfigService.layer)),
+    DbChunk.layer.pipe(Layer.provide(ConfigService.layer)),
     AppDBLiveLayer,
   ),
 );
 
-const runDb = (effect: Effect.Effect<any, any, DatabaseService>) => runtime.runPromise(effect);
+const runDb = (effect: Effect.Effect<any, any, DbAgentSession | DbDocument | DbChunk>) => runtime.runPromise(effect);
 const runRaw = (effect: Effect.Effect<any, any, DB>) => runtime.runPromise(effect);
 
 const TEST_USER_ID = "test-user-phase5b";
@@ -116,7 +120,7 @@ const files = [
 ];
 
 const session = await runDb(
-  Effect.flatMap(DatabaseService, (svc) =>
+  Effect.flatMap(DbAgentSession, (svc) =>
     svc.createAgentSession({ status: "processing", userId: TEST_USER_ID }),
   ),
 );
@@ -126,7 +130,7 @@ for (const { filename } of files) {
   const buf = await readFile(resolve(CORPUS, filename));
   const parsed = await runtime.runPromise(parseDocument(buf, filename));
   const doc = await runDb(
-    Effect.flatMap(DatabaseService, (svc) =>
+    Effect.flatMap(DbDocument, (svc) =>
       svc.createDocument({
         sessionId,
         filename,
@@ -138,7 +142,7 @@ for (const { filename } of files) {
     ),
   );
   await runDb(
-    Effect.flatMap(DatabaseService, (svc) =>
+    Effect.flatMap(DbChunk, (svc) =>
       svc.createChunks([
         {
           sessionId,
@@ -334,6 +338,6 @@ if (outputV2Res.body?.version === 2) {
 // ── Summary ─────────────────────────────────────────────────────────────────
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
 
-await runDb(Effect.flatMap(DatabaseService, (svc) => svc.deleteAgentSession(sessionId)));
+await runDb(Effect.flatMap(DbAgentSession, (svc) => svc.deleteAgentSession(sessionId)));
 console.log("Test session cleaned up.");
 process.exit(failed > 0 ? 1 : 0);

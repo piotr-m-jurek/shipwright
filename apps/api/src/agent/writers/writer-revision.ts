@@ -1,5 +1,6 @@
 import { Effect, Schema, Stream } from "effect";
-import type { ReconstructedSummary } from "../../db/queries.ts";
+import type { ReconstructedSummary } from "../../db/services/summary.ts";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Spans } from "../../observability/spans.ts";
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
@@ -83,7 +84,7 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
     existingBrief: string,
     existingPrd: string,
     feedback: string,
-    sessionId: string,
+    sessionId: AgentSessionId,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-revision-brief"),
@@ -127,7 +128,7 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
     existingBrief: string,
     existingPrd: string,
     feedback: string,
-    sessionId: string,
+    sessionId: AgentSessionId,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-revision-prd"),

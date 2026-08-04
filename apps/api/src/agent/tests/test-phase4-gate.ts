@@ -21,7 +21,9 @@ import {
   users,
 } from "../../db/schema.js";
 import { eq, count } from "drizzle-orm";
-import { DatabaseService } from "../../db/queries.js";
+import { DbAgentSession } from "../../db/services/agent-session.ts";
+import { DbDocument } from "../../db/services/document.ts";
+import { DbChunk } from "../../db/services/chunk.ts";
 import { DB, AppDBLiveLayer } from "../../db/index.js";
 import { parseDocument } from "../parsers.js";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
@@ -31,12 +33,12 @@ import { ConfigService } from "../../config/config.js";
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, DatabaseService.layer, AppDBLiveLayer),
+    Layer.mergeAll(StorageAdapter.layer, DbAgentSession.layer, DbDocument.layer, DbChunk.layer, AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
 );
 
-const runDb = (effect: Effect.Effect<any, any, DatabaseService>) => runtime.runPromise(effect);
+const runDb = (effect: Effect.Effect<any, any, DbAgentSession | DbDocument | DbChunk>) => runtime.runPromise(effect);
 const runRaw = (effect: Effect.Effect<any, any, DB>) => runtime.runPromise(effect);
 
 const TEST_USER_ID = "test-user-phase4";
@@ -127,7 +129,7 @@ const corpusFiles = [
 ];
 
 const session = await runDb(
-  Effect.flatMap(DatabaseService, (svc) =>
+  Effect.flatMap(DbAgentSession, (svc) =>
     svc.createAgentSession({ userId: TEST_USER_ID, status: "processing" }),
   ),
 );
@@ -138,7 +140,7 @@ for (const { filename } of corpusFiles) {
   const parsed = await runtime.runPromise(parseDocument(buffer, filename));
 
   const doc = await runDb(
-    Effect.flatMap(DatabaseService, (svc) =>
+    Effect.flatMap(DbDocument, (svc) =>
       svc.createDocument({
         sessionId,
         filename,
@@ -151,7 +153,7 @@ for (const { filename } of corpusFiles) {
   );
 
   await runDb(
-    Effect.flatMap(DatabaseService, (svc) =>
+    Effect.flatMap(DbChunk, (svc) =>
       svc.createChunks([
         {
           sessionId,
@@ -202,7 +204,7 @@ if (!awaitingSession) {
     "Session never reached awaiting_answers",
     `final status: ${(finalCheck.body as any)?.status}`,
   );
-  await runDb(Effect.flatMap(DatabaseService, (svc) => svc.deleteAgentSession(sessionId)));
+  await runDb(Effect.flatMap(DbAgentSession, (svc) => svc.deleteAgentSession(sessionId)));
   process.exit(1);
 }
 ok("Session reached awaiting_answers");
@@ -339,7 +341,7 @@ if (status2 === "awaiting_answers") {
 // ── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`);
 
-await runDb(Effect.flatMap(DatabaseService, (svc) => svc.deleteAgentSession(sessionId)));
+await runDb(Effect.flatMap(DbAgentSession, (svc) => svc.deleteAgentSession(sessionId)));
 console.log("Test session cleaned up.");
 
 process.exit(failed > 0 ? 1 : 0);

@@ -1,6 +1,7 @@
 import { Effect, Schema, Stream } from "effect";
 import { Spans } from "../../observability/spans.ts";
-import type { ReconstructedSummary } from "../../db/queries.ts";
+import type { ReconstructedSummary } from "../../db/services/summary.ts";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";
@@ -98,7 +99,7 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
     summaries: ReconstructedSummary[],
     answers: MachineContext["answers"],
     questions: MachineContext["questions"],
-    sessionId: string,
+    sessionId: AgentSessionId,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-prd"),

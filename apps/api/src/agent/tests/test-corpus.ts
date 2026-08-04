@@ -32,19 +32,22 @@ import { runChallenger } from "../writers/challenger.ts";
 import { parseDocument } from "../parsers.js";
 import { summarizeAllDocuments } from "../writers/summarizer.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
-import { DatabaseService } from "../../db/queries.js";
+import { DbAgentSession } from "../../db/services/agent-session.ts";
+import { DbDocument } from "../../db/services/document.ts";
+import { DbChunk } from "../../db/services/chunk.ts";
+import { DbSummary } from "../../db/services/summary.ts";
 import { StorageAdapter } from "../../storage/index.js";
 import { ConfigService } from "../../config/config.js";
 import { AnthropicClientLayer } from "../providers.js";
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, DatabaseService.layer, AppDBLiveLayer),
+    Layer.mergeAll(StorageAdapter.layer, DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer, AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
 );
 
-function runDb<A>(effect: Effect.Effect<A, any, DatabaseService>): Promise<A> {
+function runDb<A>(effect: Effect.Effect<A, any, DbAgentSession | DbDocument | DbChunk | DbSummary>): Promise<A> {
   return runtime.runPromise(effect);
 }
 
@@ -88,7 +91,7 @@ async function main() {
   await insertTestUser();
 
   const session = await runDb(
-    Effect.flatMap(DatabaseService, (svc) =>
+    Effect.flatMap(DbAgentSession, (svc) =>
       svc.createAgentSession({ status: "processing", userId: TEST_USER_ID }),
     ),
   );
@@ -102,7 +105,7 @@ async function main() {
       const parsed = await runtime.runPromise(parseDocument(buffer, filename));
 
       const doc = await runDb(
-        Effect.flatMap(DatabaseService, (svc) =>
+        Effect.flatMap(DbDocument, (svc) =>
           svc.createDocument({
             sessionId,
             filename,
@@ -115,7 +118,7 @@ async function main() {
       );
 
       await runDb(
-        Effect.flatMap(DatabaseService, (svc) =>
+        Effect.flatMap(DbChunk, (svc) =>
           svc.createChunks([
             {
               sessionId,
@@ -136,7 +139,7 @@ async function main() {
     await runtime.runPromise(summarizeAllDocuments(sessionId));
 
     const finals = await runDb(
-      Effect.flatMap(DatabaseService, (svc) => svc.getFinalSummariesBySession(sessionId)),
+      Effect.flatMap(DbSummary, (svc) => svc.getFinalSummariesBySession(sessionId)),
     );
 
     console.log("\n── SUMMARIZER OUTPUT ───────────────────────────────────────");
@@ -302,7 +305,7 @@ async function main() {
       });
     }
   } finally {
-    await runDb(Effect.flatMap(DatabaseService, (svc) => svc.deleteAgentSession(sessionId)));
+    await runDb(Effect.flatMap(DbAgentSession, (svc) => svc.deleteAgentSession(sessionId)));
     console.log("\nTest session cleaned up.");
   }
 

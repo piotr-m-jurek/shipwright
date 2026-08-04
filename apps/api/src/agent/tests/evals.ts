@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../../../");
 
-import { Effect, Layer, ManagedRuntime, pipe, Schema, Stream } from "effect";
+import { Effect, Layer, ManagedRuntime, Option, pipe, Schema, Stream } from "effect";
 import { DB, AppDBLiveLayer } from "../../db/index.js";
 import { users } from "../../db/schema.js";
 import { LanguageModel, Prompt, Response } from "effect/unstable/ai";
@@ -41,12 +41,17 @@ import { runChallenger } from "../writers/challenger.ts";
 import { parseDocument } from "../parsers.js";
 import { summarizeAllDocuments } from "../writers/summarizer.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
-import { DatabaseService } from "../../db/queries.js";
+import { DbAgentSession } from "../../db/services/agent-session.ts";
+import { DbDocument } from "../../db/services/document.ts";
+import { DbChunk } from "../../db/services/chunk.ts";
+import { DbSummary } from "../../db/services/summary.ts";
+import { DbOutput } from "../../db/services/output.ts";
 import { StorageAdapter } from "../../storage/index.js";
 import { ConfigService } from "../../config/config.js";
 import { AnthropicClientLayer } from "../providers.js";
 import type { GapReportEffect } from "../schemas.js";
-import type { ReconstructedSummary } from "../../db/queries.js";
+import type { ReconstructedSummary } from "../../db/services/summary.ts";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 import {
   FaithfulnessEvalSchema,
@@ -57,7 +62,7 @@ import {
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, DatabaseService.layer, AppDBLiveLayer),
+    Layer.mergeAll(StorageAdapter.layer, DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer, DbOutput.layer, AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
 );
@@ -105,7 +110,7 @@ function fail(label: string) {
 }
 
 async function runEffect<A>(
-  effect: Effect.Effect<A, any, DatabaseService | StorageAdapter>,
+  effect: Effect.Effect<A, any, DbAgentSession | DbDocument | DbChunk | DbSummary | DbOutput | StorageAdapter>,
 ): Promise<A> {
   return runtime.runPromise(effect);
 }
@@ -200,7 +205,7 @@ async function runPartA(): Promise<boolean> {
   await insertTestUser();
 
   const sessionId = await runEffect(
-    Effect.flatMap(DatabaseService, (db) =>
+    Effect.flatMap(DbAgentSession, (db) =>
       db.createAgentSession({ status: "processing", userId: TEST_USER_ID }),
     ).pipe(Effect.map((s) => s.id)),
   );
@@ -212,7 +217,7 @@ async function runPartA(): Promise<boolean> {
       const parsed = await runtime.runPromise(parseDocument(buffer, filename));
 
       const doc = await runEffect(
-        Effect.flatMap(DatabaseService, (db) =>
+        Effect.flatMap(DbDocument, (db) =>
           db.createDocument({
             sessionId,
             filename,
@@ -225,7 +230,7 @@ async function runPartA(): Promise<boolean> {
       );
 
       await runEffect(
-        Effect.flatMap(DatabaseService, (db) =>
+        Effect.flatMap(DbChunk, (db) =>
           db.createChunks([
             {
               sessionId,
@@ -247,7 +252,7 @@ async function runPartA(): Promise<boolean> {
     );
 
     const summaries = await runEffect(
-      Effect.flatMap(DatabaseService, (db) => db.getFinalSummariesBySession(sessionId)),
+      Effect.flatMap(DbSummary, (db) => db.getFinalSummariesBySession(sessionId)),
     );
 
     if (summaries.length !== CORPUS_FILES.length) {
@@ -274,7 +279,7 @@ async function runPartA(): Promise<boolean> {
     console.log(`\n  Planted issues surfaced: ${count}/5`);
     return allFound;
   } finally {
-    await runEffect(Effect.flatMap(DatabaseService, (db) => db.deleteAgentSession(sessionId)));
+    await runEffect(Effect.flatMap(DbAgentSession, (db) => db.deleteAgentSession(sessionId)));
   }
 }
 
@@ -488,17 +493,17 @@ async function main() {
 
       const [briefRow, prdRow, summaries] = await Promise.all([
         runEffect(
-          Effect.flatMap(DatabaseService, (db) =>
-            db.getLatestOutputByType({ sessionId: existingSessionId, type: "project_brief" }),
-          ),
+          Effect.flatMap(DbOutput, (db) =>
+            db.getLatestOutputByType({ sessionId: existingSessionId as AgentSessionId, type: "project_brief" }),
+          ).pipe(Effect.map(Option.getOrUndefined)),
         ),
         runEffect(
-          Effect.flatMap(DatabaseService, (db) =>
-            db.getLatestOutputByType({ sessionId: existingSessionId, type: "implementation_prd" }),
-          ),
+          Effect.flatMap(DbOutput, (db) =>
+            db.getLatestOutputByType({ sessionId: existingSessionId as AgentSessionId, type: "implementation_prd" }),
+          ).pipe(Effect.map(Option.getOrUndefined)),
         ),
         runEffect(
-          Effect.flatMap(DatabaseService, (db) => db.getFinalSummariesBySession(existingSessionId)),
+          Effect.flatMap(DbSummary, (db) => db.getFinalSummariesBySession(existingSessionId as AgentSessionId)),
         ),
       ]);
 

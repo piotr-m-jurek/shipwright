@@ -1,4 +1,5 @@
-import { DatabaseService } from "../../db/queries.ts";
+import { DbAgentSession } from "../../db/services/agent-session.ts";
+import { DbDocument } from "../../db/services/document.ts";
 import { CreateAgentSessionRequest } from "@shipwright/shared/schemas/api.js";
 import { StorageAdapter } from "../../storage/index.ts";
 import { Effect } from "effect";
@@ -7,9 +8,10 @@ export const createUploadSession = Effect.fn("agent/createUploadSession")(functi
   userId: string;
   files: CreateAgentSessionRequest["files"];
 }) {
-  const dbService = yield* DatabaseService;
+  const agentSessionDb = yield* DbAgentSession;
+  const documentDb = yield* DbDocument;
   const storage = yield* StorageAdapter;
-  const session = yield* dbService.createAgentSession({
+  const session = yield* agentSessionDb.createAgentSession({
     status: "uploading",
     userId: payload.userId,
   });
@@ -18,7 +20,7 @@ export const createUploadSession = Effect.fn("agent/createUploadSession")(functi
     payload.files,
     (file) =>
       Effect.gen(function* () {
-        const doc = yield* dbService.createDocument({
+        const doc = yield* documentDb.createDocument({
           filename: file.filename,
           sessionId: session.id,
           mimeType: file.mimeType,

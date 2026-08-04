@@ -1,4 +1,4 @@
-import { Effect, pipe } from "effect";
+import { Effect, Option, pipe } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import {
   AgentSessionNotFound,
@@ -12,7 +12,8 @@ import {
   ReviseResponse,
 } from "@shipwright/shared/schemas/api.js";
 import { Api } from "@shipwright/shared/api.js";
-import { DatabaseService } from "../../db/queries.js";
+import { DbAgentSession } from "../../db/services/agent-session.ts";
+import { DbOutput } from "../../db/services/output.ts";
 import { CurrentUser } from "@shipwright/shared/middleware.js";
 import { submitAnswers } from "../../agent/pipelines/submit-answers.js";
 import { startRevision } from "../../agent/pipelines/generation.js";
@@ -34,20 +35,19 @@ export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
     )
     .handle("getSessionFinalOutput", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
-        const db = yield* DatabaseService;
+        const agentSessionDb = yield* DbAgentSession;
+        const outputDb = yield* DbOutput;
         const user = yield* CurrentUser;
 
-        const session = yield* pipe(
-          db.getAgentSesionByIdForUser({ sessionId, userId: user.id }),
-          Effect.mapError(() => new AgentSessionNotFound()),
+        yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(
+          Effect.flatMap(Option.match({
+            onNone: () => Effect.fail(new AgentSessionNotFound()),
+            onSome: Effect.succeed,
+          })),
         );
 
-        if (!session) {
-          return yield* new AgentSessionNotFound();
-        }
-
         const allOutputs = yield* pipe(
-          db.getOutputsBySessionId(sessionId),
+          outputDb.getOutputsBySessionId(sessionId),
           Effect.mapError(() => new AgentSessionNotFound()),
         );
 

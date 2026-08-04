@@ -1,7 +1,7 @@
 import { Effect, pipe } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import { TextGenerationError } from "../errors.ts";
-import type { ReconstructedSummary } from "../../db/queries.ts";
+import type { ReconstructedSummary } from "../../db/services/summary.ts";
 import { GapReportEffectSchema } from "../schemas.ts";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { AnthropicLanguageModel } from "@effect/ai-anthropic";

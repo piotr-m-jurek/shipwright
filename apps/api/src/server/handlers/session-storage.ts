@@ -1,4 +1,4 @@
-import { Effect, pipe } from "effect";
+import { Effect, Option, pipe } from "effect";
 import { StorageAdapter } from "../../storage/index.js";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import {
@@ -13,7 +13,8 @@ import {
   OutputDownloadUrlResponse,
 } from "@shipwright/shared/schemas/api.js";
 import { Api } from "@shipwright/shared/api.js";
-import { DatabaseService } from "../../db/queries.js";
+import { DbAgentSession } from "../../db/services/agent-session.ts";
+import { DbOutput } from "../../db/services/output.ts";
 import { CurrentUser } from "@shipwright/shared/middleware.js";
 import { createUploadSession } from "../../agent/pipelines/create-upload-session.js";
 import { confirmUploadResults } from "../../agent/pipelines/confirm-upload-results.js";
@@ -54,25 +55,24 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
     )
     .handle("getOutputDownloadUrl", ({ params: { sessionId, type } }) =>
       Effect.gen(function* () {
-        const db = yield* DatabaseService;
+        const agentSessionDb = yield* DbAgentSession;
+        const outputDb = yield* DbOutput;
         const user = yield* CurrentUser;
 
-        const agentSessionCheck = yield* pipe(
-          db.getAgentSesionByIdForUser({ sessionId, userId: user.id }),
-          Effect.orElseSucceed(() => undefined),
+        yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(
+          Effect.flatMap(Option.match({
+            onNone: () => Effect.fail(new OutputNotFoundError()),
+            onSome: Effect.succeed,
+          })),
         );
-
-        if (agentSessionCheck === undefined) {
-          return yield* new OutputNotFoundError();
-        }
 
         // Validate type param
         if (type !== "project_brief" && type !== "implementation_prd") {
           return yield* new OutputNotFoundError();
         }
 
-        const output = yield* pipe(
-          db.getLatestOutputByType({ sessionId, type }),
+        const output = yield* outputDb.getLatestOutputByType({ sessionId, type }).pipe(
+          Effect.map(Option.getOrUndefined),
           Effect.mapError(() => new OutputNotFoundError()),
         );
 

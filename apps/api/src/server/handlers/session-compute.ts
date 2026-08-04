@@ -7,7 +7,8 @@ import {
   ConfirmAnalysisResponse,
 } from "@shipwright/shared/schemas/api.js";
 import { Api } from "@shipwright/shared/api.js";
-import { DatabaseService } from "../../db/queries.ts";
+import { DbAgentSession } from "../../db/services/agent-session.ts";
+import { DbClarification } from "../../db/services/clarification.ts";
 import { CurrentUser } from "@shipwright/shared/middleware.js";
 import { MessageQueue } from "../../queue/index.ts";
 import { QuestionSelect } from "../../db/types.ts";
@@ -16,16 +17,19 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
   handlers
     .handle("getAgentSessionById", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
-        const db = yield* DatabaseService;
+        const agentSessionDb = yield* DbAgentSession;
+        const clarificationDb = yield* DbClarification;
         const user = yield* CurrentUser;
 
-        const session = yield* db.getAgentSesionByIdForUser({ sessionId, userId: user.id }).pipe(
-          Effect.flatMap(Effect.fromNullishOr),
-          Effect.mapError(() => new AgentSessionNotFound()),
+        const session = yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(
+          Effect.flatMap(Option.match({
+            onNone: () => Effect.fail(new AgentSessionNotFound()),
+            onSome: Effect.succeed,
+          })),
         );
 
         // Include current questions when session is awaiting answers
-        const questions = yield* db.getQuestionsBySessionId(sessionId).pipe(
+        const questions = yield* clarificationDb.getQuestionsBySessionId(sessionId).pipe(
           Effect.when(Effect.succeed(session.status === "awaiting_answers")),
           Effect.mapError(() => new AgentSessionNotFound()),
           Effect.map(Option.getOrElse(() => [] as QuestionSelect[])),

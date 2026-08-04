@@ -32,11 +32,11 @@ interface Interface {
   >;
 }
 
-export class Chunk extends Context.Service<Chunk, Interface>()(
-  "@shipwright/api/db/services/chunk/Chunk",
+export class DbChunk extends Context.Service<DbChunk, Interface>()(
+  "@shipwright/api/db/services/chunk/DbChunk",
 ) {
   static readonly layer = Layer.effect(
-    Chunk,
+    DbChunk,
     Effect.gen(function* () {
       const db = yield* DB;
 
