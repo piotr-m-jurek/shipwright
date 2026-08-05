@@ -32,23 +32,23 @@ import { runChallenger } from "../writers/challenger.ts";
 import { parseDocument } from "../parsers.js";
 import { summarizeAllDocuments } from "../writers/summarizer.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
-import { DbAgentSession } from "../../db/services/agent-session.ts";
-import { DbDocument } from "../../db/services/document.ts";
-import { DbChunk } from "../../db/services/chunk.ts";
-import { DbSummary } from "../../db/services/summary.ts";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
+import { DocumentRepository } from "../../db/repositories/document-repository.ts";
+import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
+import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
 import { StorageAdapter } from "../../storage/index.js";
 import { ConfigService } from "../../config/config.js";
 import { AnthropicClientLayer } from "../providers.js";
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer),
+    Layer.mergeAll(StorageAdapter.layer, AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer),
     Layer.provideMerge(AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
 );
 
-function runDb<A>(effect: Effect.Effect<A, any, DbAgentSession | DbDocument | DbChunk | DbSummary>): Promise<A> {
+function runDb<A>(effect: Effect.Effect<A, any, AgentSessionRepository | DocumentRepository | ChunkRepository | SummaryRepository>): Promise<A> {
   return runtime.runPromise(effect);
 }
 
@@ -92,7 +92,7 @@ async function main() {
   await insertTestUser();
 
   const session = await runDb(
-    Effect.flatMap(DbAgentSession, (svc) =>
+    Effect.flatMap(AgentSessionRepository, (svc) =>
       svc.createAgentSession({ status: "processing", userId: TEST_USER_ID }),
     ),
   );
@@ -106,7 +106,7 @@ async function main() {
       const parsed = await runtime.runPromise(parseDocument(buffer, filename));
 
       const doc = await runDb(
-        Effect.flatMap(DbDocument, (svc) =>
+        Effect.flatMap(DocumentRepository, (svc) =>
           svc.createDocument({
             sessionId,
             filename,
@@ -119,7 +119,7 @@ async function main() {
       );
 
       await runDb(
-        Effect.flatMap(DbChunk, (svc) =>
+        Effect.flatMap(ChunkRepository, (svc) =>
           svc.createChunks([
             {
               sessionId,
@@ -127,7 +127,7 @@ async function main() {
               content: parsed.text,
               chunkIndex: 0,
               charOffset: 0,
-              embedding: Array.from<number>({ length: 1536 }).fill(0),
+              embedding: Array.from<number>({ length: 1024 }).fill(0),
             },
           ]),
         ),
@@ -140,7 +140,7 @@ async function main() {
     await runtime.runPromise(summarizeAllDocuments(sessionId));
 
     const finals = await runDb(
-      Effect.flatMap(DbSummary, (svc) => svc.getFinalSummariesBySession(sessionId)),
+      Effect.flatMap(SummaryRepository, (svc) => svc.getFinalSummariesBySession(sessionId)),
     );
 
     console.log("\n── SUMMARIZER OUTPUT ───────────────────────────────────────");
@@ -306,7 +306,7 @@ async function main() {
       });
     }
   } finally {
-    await runDb(Effect.flatMap(DbAgentSession, (svc) => svc.deleteAgentSession(sessionId)));
+    await runDb(Effect.flatMap(AgentSessionRepository, (svc) => svc.deleteAgentSession(sessionId)));
     console.log("\nTest session cleaned up.");
   }
 

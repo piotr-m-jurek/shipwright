@@ -25,7 +25,7 @@ function reconstructSummaries(
     version: number;
   }[],
   itemRows: SummaryItemSelect[],
-): ReconstructedSummary[] {
+): DocumentSummary[] {
   const itemsBySummaryId = new Map<string, SummaryItemSelect[]>();
   for (const item of itemRows) {
     const list = itemsBySummaryId.get(item.summaryId);
@@ -59,7 +59,7 @@ function reconstructSummaries(
   });
 }
 
-// ── Service ───────────────────────────────────────────────────────────────
+// ── Repository ────────────────────────────────────────────────────────────
 
 interface Interface {
   createDocumentSummary: (
@@ -77,14 +77,14 @@ interface Interface {
 
   getFinalSummariesBySession: (
     sessionId: AgentSessionId,
-  ) => Effect.Effect<ReconstructedSummary[], EffectDrizzleQueryError>;
+  ) => Effect.Effect<DocumentSummary[], EffectDrizzleQueryError>;
 }
 
-export class DbSummary extends Context.Service<DbSummary, Interface>()(
-  "@shipwright/api/db/services/summary/DbSummary",
+export class SummaryRepository extends Context.Service<SummaryRepository, Interface>()(
+  "@shipwright/api/db/repositories/summary/SummaryRepository",
 ) {
   static readonly layer = Layer.effect(
-    DbSummary,
+    SummaryRepository,
     Effect.gen(function* () {
       const db = yield* DB;
 
@@ -141,7 +141,7 @@ export class DbSummary extends Context.Service<DbSummary, Interface>()(
           )
           .orderBy(asc(documentSummaries.documentId), desc(documentSummaries.version));
 
-        if (summaryRows.length === 0) return [] as ReconstructedSummary[];
+        if (summaryRows.length === 0) return [] as DocumentSummary[];
 
         const summaryIds = summaryRows.map((r) => r.id);
 

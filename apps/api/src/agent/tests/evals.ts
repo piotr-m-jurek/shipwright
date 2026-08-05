@@ -41,15 +41,15 @@ import { runChallenger } from "../writers/challenger.ts";
 import { parseDocument } from "../parsers.js";
 import { summarizeAllDocuments } from "../writers/summarizer.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
-import { DbAgentSession } from "../../db/services/agent-session.ts";
-import { DbDocument } from "../../db/services/document.ts";
-import { DbChunk } from "../../db/services/chunk.ts";
-import { DbSummary } from "../../db/services/summary.ts";
-import { DbOutput } from "../../db/services/output.ts";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
+import { DocumentRepository } from "../../db/repositories/document-repository.ts";
+import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
+import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
+import { OutputRepository } from "../../db/repositories/output-repository.ts";
 import { StorageAdapter } from "../../storage/index.js";
 import { ConfigService } from "../../config/config.js";
 import type { GapReportEffect } from "../schemas.js";
-import type { ReconstructedSummary } from "../../db/services/summary.ts";
+import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 import {
@@ -61,7 +61,7 @@ import {
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer, DbOutput.layer),
+    Layer.mergeAll(StorageAdapter.layer, AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, OutputRepository.layer),
     Layer.provideMerge(AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
@@ -110,7 +110,7 @@ function fail(label: string) {
 }
 
 async function runEffect<A>(
-  effect: Effect.Effect<A, any, DbAgentSession | DbDocument | DbChunk | DbSummary | DbOutput | StorageAdapter>,
+  effect: Effect.Effect<A, any, AgentSessionRepository | DocumentRepository | ChunkRepository | SummaryRepository | OutputRepository | StorageAdapter>,
 ): Promise<A> {
   return runtime.runPromise(effect);
 }
@@ -127,7 +127,7 @@ async function runEffect<A>(
  */
 function checkPlantedIssues(
   gapReport: GapReportEffect,
-  summaries: ReconstructedSummary[],
+  summaries: DocumentSummary[],
 ): {
   results: { label: string; found: boolean }[];
   allFound: boolean;
@@ -205,7 +205,7 @@ async function runPartA(): Promise<boolean> {
   await insertTestUser();
 
   const sessionId = await runEffect(
-    Effect.flatMap(DbAgentSession, (db) =>
+    Effect.flatMap(AgentSessionRepository, (db) =>
       db.createAgentSession({ status: "processing", userId: TEST_USER_ID }),
     ).pipe(Effect.map((s) => s.id)),
   );
@@ -217,7 +217,7 @@ async function runPartA(): Promise<boolean> {
       const parsed = await runtime.runPromise(parseDocument(buffer, filename));
 
       const doc = await runEffect(
-        Effect.flatMap(DbDocument, (db) =>
+        Effect.flatMap(DocumentRepository, (db) =>
           db.createDocument({
             sessionId,
             filename,
@@ -230,7 +230,7 @@ async function runPartA(): Promise<boolean> {
       );
 
       await runEffect(
-        Effect.flatMap(DbChunk, (db) =>
+        Effect.flatMap(ChunkRepository, (db) =>
           db.createChunks([
             {
               sessionId,
@@ -238,7 +238,7 @@ async function runPartA(): Promise<boolean> {
               content: parsed.text,
               chunkIndex: 0,
               charOffset: 0,
-              embedding: Array.from<number>({ length: 1536 }).fill(0),
+              embedding: Array.from<number>({ length: 1024 }).fill(0),
             },
           ]),
         ),
@@ -252,7 +252,7 @@ async function runPartA(): Promise<boolean> {
     );
 
     const summaries = await runEffect(
-      Effect.flatMap(DbSummary, (db) => db.getFinalSummariesBySession(sessionId)),
+      Effect.flatMap(SummaryRepository, (db) => db.getFinalSummariesBySession(sessionId)),
     );
 
     if (summaries.length !== CORPUS_FILES.length) {
@@ -279,7 +279,7 @@ async function runPartA(): Promise<boolean> {
     console.log(`\n  Planted issues surfaced: ${count}/5`);
     return allFound;
   } finally {
-    await runEffect(Effect.flatMap(DbAgentSession, (db) => db.deleteAgentSession(sessionId)));
+    await runEffect(Effect.flatMap(AgentSessionRepository, (db) => db.deleteAgentSession(sessionId)));
   }
 }
 
@@ -311,7 +311,7 @@ Respond with JSON matching exactly this structure:
   "result": { "score": 0.0-1.0, "reasoning": "...", "pass": true/false, "citations": [] }
 }`;
 
-async function runPartB(briefText: string, summaries: ReconstructedSummary[]): Promise<boolean> {
+async function runPartB(briefText: string, summaries: DocumentSummary[]): Promise<boolean> {
   console.log("\n── Part B: Faithfulness eval (LLM-as-judge) ───────────────");
 
   const summaryContext = summaries
@@ -399,7 +399,7 @@ Respond with JSON matching exactly this structure:
   "result": { "score": 0.0-1.0, "reasoning": "...", "pass": true/false, "citations": [] }
 }`;
 
-async function runPartC(prdText: string, summaries: ReconstructedSummary[]): Promise<boolean> {
+async function runPartC(prdText: string, summaries: DocumentSummary[]): Promise<boolean> {
   console.log("\n── Part C: Completeness eval (LLM-as-judge) ────────────────");
 
   const summaryContext = summaries
@@ -491,17 +491,17 @@ async function main() {
 
       const [briefRow, prdRow, summaries] = await Promise.all([
         runEffect(
-          Effect.flatMap(DbOutput, (db) =>
+          Effect.flatMap(OutputRepository, (db) =>
             db.getLatestOutputByType({ sessionId: AgentSessionId.make(existingSessionId), type: "project_brief" }),
           ).pipe(Effect.map(Option.getOrUndefined)),
         ),
         runEffect(
-          Effect.flatMap(DbOutput, (db) =>
+          Effect.flatMap(OutputRepository, (db) =>
             db.getLatestOutputByType({ sessionId: AgentSessionId.make(existingSessionId), type: "implementation_prd" }),
           ).pipe(Effect.map(Option.getOrUndefined)),
         ),
         runEffect(
-          Effect.flatMap(DbSummary, (db) => db.getFinalSummariesBySession(AgentSessionId.make(existingSessionId))),
+          Effect.flatMap(SummaryRepository, (db) => db.getFinalSummariesBySession(AgentSessionId.make(existingSessionId))),
         ),
       ]);
 

@@ -34,11 +34,11 @@ interface Interface {
   deleteAgentSession: (sessionId: AgentSessionId) => Effect.Effect<void, EffectDrizzleQueryError>;
 }
 
-export class DbAgentSession extends Context.Service<DbAgentSession, Interface>()(
-  "@shipwright/api/db/services/agent-session/AgentSession",
+export class AgentSessionRepository extends Context.Service<AgentSessionRepository, Interface>()(
+  "@shipwright/api/db/repositories/agent-session/AgentSessionRepository",
 ) {
   static readonly layer = Layer.effect(
-    DbAgentSession,
+    AgentSessionRepository,
     Effect.gen(function* () {
       const db = yield* DB;
 

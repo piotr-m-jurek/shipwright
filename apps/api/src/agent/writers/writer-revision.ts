@@ -1,5 +1,5 @@
 import { Effect, Schema, Stream } from "effect";
-import type { ReconstructedSummary } from "../../db/services/summary.ts";
+import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Spans } from "../../observability/spans.ts";
 import { LanguageModel } from "effect/unstable/ai";
@@ -50,7 +50,7 @@ RULES:
 TOOL USE: You have access to a query_chunks tool. If the feedback references a specific area (e.g. "the auth section needs more detail"), call query_chunks with a targeted query before revising that section. Use it to verify claims against source material before adding them.`;
 
 function formatRevisionInput(
-  summaries: ReconstructedSummary[],
+  summaries: DocumentSummary[],
   existingBrief: string,
   existingPrd: string,
   feedback: string,
@@ -76,7 +76,7 @@ function formatRevisionInput(
 
 export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
   function* (
-    summaries: ReconstructedSummary[],
+    summaries: DocumentSummary[],
     existingBrief: string,
     existingPrd: string,
     feedback: string,
@@ -123,7 +123,7 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
 
 export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
   function* (
-    summaries: ReconstructedSummary[],
+    summaries: DocumentSummary[],
     existingBrief: string,
     existingPrd: string,
     feedback: string,

@@ -3,9 +3,9 @@ import { parseDocument } from "../parsers.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { chunkDocument } from "../lib/chunker.ts";
 import { Effect, Option, Schema, Array, pipe } from "effect";
-import { DbAgentSession } from "../../db/services/agent-session.ts";
-import { DbDocument } from "../../db/services/document.ts";
-import { DbChunk } from "../../db/services/chunk.ts";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
+import { DocumentRepository } from "../../db/repositories/document-repository.ts";
+import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { EmbeddingService } from "../embedding-service.js";
@@ -45,9 +45,9 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
 
   const storage = yield* StorageAdapter;
   const chunkerton = yield* EmbeddingService;
-  const agentSessionDb = yield* DbAgentSession;
-  const documentDb = yield* DbDocument;
-  const chunkDb = yield* DbChunk;
+  const agentSessionDb = yield* AgentSessionRepository;
+  const documentDb = yield* DocumentRepository;
+  const chunkDb = yield* ChunkRepository;
   yield* Effect.forEach(
     uploads,
     (upload) =>

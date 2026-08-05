@@ -2,9 +2,9 @@ import { Effect, Schema, Option, pipe } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import type { Chunk, SummaryItemType } from "@shipwright/shared/domain/types";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
-import { DbDocument } from "../../db/services/document.ts";
-import { DbChunk } from "../../db/services/chunk.ts";
-import { DbSummary } from "../../db/services/summary.ts";
+import { DocumentRepository } from "../../db/repositories/document-repository.ts";
+import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
+import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
 import { TextGenerationError } from "../errors.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
@@ -32,7 +32,7 @@ export const summarizeAllDocuments = Effect.fn("agent/summarizeAllDocuments")(fu
   sessionId: AgentSessionId,
 ) {
   yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
-  const documentDb = yield* DbDocument;
+  const documentDb = yield* DocumentRepository;
 
   return yield* pipe(
     documentDb.getDocumentsBySessionId(sessionId),
@@ -54,8 +54,8 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
     ...Spans.session(sessionId),
     ...Spans.document({ filename, id: documentId }),
   });
-  const chunkDb = yield* DbChunk;
-  const summaryDb = yield* DbSummary;
+  const chunkDb = yield* ChunkRepository;
+  const summaryDb = yield* SummaryRepository;
   const chunks = yield* pipe(
     chunkDb.getChunksByDocumentId(documentId),
     Effect.mapError((cause) => new ChunksRetrievalError({ cause })),
@@ -130,7 +130,7 @@ const persistSummary = Effect.fn("persistSummary")(
       "shipwright.summary.version": version,
       ...(batchIndex !== undefined ? { "shipwright.summary.batch_index": batchIndex } : {}),
     });
-    const summaryDb = yield* DbSummary;
+    const summaryDb = yield* SummaryRepository;
     const row = yield* summaryDb.createDocumentSummary({
       documentId,
       sessionId,

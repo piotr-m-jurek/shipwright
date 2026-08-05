@@ -7,8 +7,8 @@ import {
   ConfirmAnalysisResponse,
 } from "@shipwright/shared/schemas/api.js";
 import { Api } from "@shipwright/shared/api.js";
-import { DbAgentSession } from "../../db/services/agent-session.ts";
-import { DbClarification } from "../../db/services/clarification.ts";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
+import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
 import { CurrentUser } from "@shipwright/shared/middleware.js";
 import type { Question } from "@shipwright/shared/domain/types";
 
@@ -16,8 +16,8 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
   handlers
     .handle("getAgentSessionById", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
-        const agentSessionDb = yield* DbAgentSession;
-        const clarificationDb = yield* DbClarification;
+        const agentSessionDb = yield* AgentSessionRepository;
+        const clarificationDb = yield* ClarificationRepository;
         const user = yield* CurrentUser;
 
         const session = yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(

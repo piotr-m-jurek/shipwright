@@ -9,12 +9,12 @@ import { Api } from "@shipwright/shared/api.js";
 import { SessionCompute } from "./handlers/session-compute.ts";
 import { ConfigService } from "../config/config.js";
 import { OtlpLayer } from "../observability/observability.js";
-import { DbAgentSession } from "../db/services/agent-session.ts";
-import { DbDocument } from "../db/services/document.ts";
-import { DbChunk } from "../db/services/chunk.ts";
-import { DbSummary } from "../db/services/summary.ts";
-import { DbClarification } from "../db/services/clarification.ts";
-import { DbOutput } from "../db/services/output.ts";
+import { AgentSessionRepository } from "../db/repositories/agent-session-repository.ts";
+import { DocumentRepository } from "../db/repositories/document-repository.ts";
+import { ChunkRepository } from "../db/repositories/chunk-repository.ts";
+import { SummaryRepository } from "../db/repositories/summary-repository.ts";
+import { ClarificationRepository } from "../db/repositories/clarification-repository.ts";
+import { OutputRepository } from "../db/repositories/output-repository.ts";
 import { AppDBLiveLayer } from "../db/index.js";
 import { AuthorizationLayer } from "./authorization.js";
 import { EmbeddingService } from "../agent/embedding-service.ts";
@@ -30,7 +30,7 @@ export const ApiLayer = pipe(
   HttpApiBuilder.layer(Api, { openapiPath: "/opencode.json" }),
   Layer.provide([SessionStorage, SessionCompute, SessionResults, PublicApi]),
   Layer.provide(AuthorizationLayer),
-  Layer.provide([DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer, DbClarification.layer, DbOutput.layer]),
+  Layer.provide([AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, ClarificationRepository.layer, OutputRepository.layer]),
   Layer.provide(StorageAdapter.layer),
   Layer.provide(AppDBLiveLayer),
   Layer.provide(ConfigService.layer),
@@ -75,7 +75,7 @@ const EmbeddingServiceLayer = EmbeddingService.layer.pipe(
 const JobHandlersLayer = pipe(
   JobHandlers.layer,
   Layer.provide([
-    DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer, DbClarification.layer, DbOutput.layer,
+    AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, ClarificationRepository.layer, OutputRepository.layer,
     EmbeddingServiceLayer,
     AnthropicClientLayer,
     StorageAdapter.layer,
@@ -87,7 +87,7 @@ const JobHandlersLayer = pipe(
 const ServiceLayer = pipe(
   Layer.mergeAll(OtlpLayerProvided, NodeHttpServer.layer(createServer, { port: 3000 })),
   Layer.provideMerge([
-    DbAgentSession.layer, DbDocument.layer, DbChunk.layer, DbSummary.layer, DbClarification.layer, DbOutput.layer,
+    AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, ClarificationRepository.layer, OutputRepository.layer,
     EmbeddingServiceLayer,
     AnthropicClientLayer,
     StorageAdapter.layer,

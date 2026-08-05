@@ -10,9 +10,9 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { StorageAdapter } from "../../storage/index.js";
-import { DbAgentSession } from "../../db/services/agent-session.ts";
-import { DbDocument } from "../../db/services/document.ts";
-import { DbChunk } from "../../db/services/chunk.ts";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
+import { DocumentRepository } from "../../db/repositories/document-repository.ts";
+import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
 import { DB, AppDBLiveLayer } from "../../db/index.js";
 import { users } from "../../db/schema.js";
 import { parseDocument } from "../parsers.js";
@@ -26,14 +26,14 @@ const runtime = ManagedRuntime.make(
   Layer.mergeAll(
     StorageAdapter.layer,
     ConfigService.layer,
-    DbAgentSession.layer,
-    DbDocument.layer,
-    DbChunk.layer,
+    AgentSessionRepository.layer,
+    DocumentRepository.layer,
+    ChunkRepository.layer,
     AppDBLiveLayer,
-  ) as Layer.Layer<StorageAdapter | ConfigService | DbAgentSession | DbDocument | DbChunk | DB, never, never>,
+  ) as Layer.Layer<StorageAdapter | ConfigService | AgentSessionRepository | DocumentRepository | ChunkRepository | DB, never, never>,
 );
 
-const db = (effect: Effect.Effect<any, any, DbAgentSession | DbDocument | DbChunk>) => runtime.runPromise(effect);
+const db = (effect: Effect.Effect<any, any, AgentSessionRepository | DocumentRepository | ChunkRepository>) => runtime.runPromise(effect);
 const dbRaw = (effect: Effect.Effect<any, any, DB>) => runtime.runPromise(effect);
 
 const TEST_USER_ID = "test-user-restart";
@@ -78,7 +78,7 @@ async function req(method: string, path: string, body?: unknown) {
 console.log("Creating session + inserting corpus chunks...");
 await insertTestUser();
 const session = await db(
-  Effect.flatMap(DbAgentSession, (svc) =>
+  Effect.flatMap(AgentSessionRepository, (svc) =>
     svc.createAgentSession({ status: "processing", userId: TEST_USER_ID }),
   ),
 );
@@ -88,7 +88,7 @@ for (const { filename } of files) {
   const buf = await readFile(resolve(CORPUS, filename));
   const parsed = await runtime.runPromise(parseDocument(buf, filename));
   const doc = await db(
-    Effect.flatMap(DbDocument, (svc) =>
+    Effect.flatMap(DocumentRepository, (svc) =>
       svc.createDocument({
         sessionId,
         filename,
@@ -100,7 +100,7 @@ for (const { filename } of files) {
     ),
   );
   await db(
-    Effect.flatMap(DbChunk, (svc) =>
+    Effect.flatMap(ChunkRepository, (svc) =>
       svc.createChunks([
         {
           sessionId,
@@ -108,7 +108,7 @@ for (const { filename } of files) {
           content: parsed.text,
           chunkIndex: 0,
           charOffset: 0,
-          embedding: Array.from<number>({ length: 1536 }).fill(0),
+          embedding: Array.from<number>({ length: 1024 }).fill(0),
         },
       ]),
     ),

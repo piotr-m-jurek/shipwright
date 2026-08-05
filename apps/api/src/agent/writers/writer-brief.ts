@@ -1,6 +1,6 @@
 import { Effect, Schema, Stream } from "effect";
 import { Spans } from "../../observability/spans.ts";
-import type { ReconstructedSummary } from "../../db/services/summary.ts";
+import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel } from "effect/unstable/ai";
@@ -36,7 +36,7 @@ ANTI-HALLUCINATION RULE: Do not include any requirement, constraint, or decision
 TOOL USE: You have access to a query_chunks tool. Use it when you need more detail on a specific area not covered in the summaries, or to verify a claim against source material before including it.`;
 
 function formatSummariesForBrief(
-  summaries: ReconstructedSummary[],
+  summaries: DocumentSummary[],
   answers: MachineContext["answers"],
   questions: MachineContext["questions"],
 ): string {
@@ -71,7 +71,7 @@ function formatSummariesForBrief(
 
 export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
   function* (
-    summaries: ReconstructedSummary[],
+    summaries: DocumentSummary[],
     answers: MachineContext["answers"],
     questions: MachineContext["questions"],
     sessionId: AgentSessionId,

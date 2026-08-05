@@ -1,9 +1,10 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Effect, Option, pipe } from "effect";
 import { Spans } from "../../observability/spans.js";
-import { DbSummary, type ReconstructedSummary } from "../../db/services/summary.ts";
-import { DbClarification } from "../../db/services/clarification.ts";
-import { DbOutput } from "../../db/services/output.ts";
+import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
+import type { DocumentSummary } from "@shipwright/shared/domain/types";
+import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
+import { OutputRepository } from "../../db/repositories/output-repository.ts";
 import { StorageAdapter } from "../../storage/index.js";
 import { runBriefWriter } from "../writers/writer-brief.js";
 import { getOrRestoreActor } from "../session-actor.js";
@@ -17,13 +18,13 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
   function* (sessionId: AgentSessionId) {
     yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
 
-    const summaryDb = yield* DbSummary;
-    const clarificationDb = yield* DbClarification;
-    const outputDb = yield* DbOutput;
+    const summaryDb = yield* SummaryRepository;
+    const clarificationDb = yield* ClarificationRepository;
+    const outputDb = yield* OutputRepository;
     const storage = yield* StorageAdapter;
 
     const processBrief = Effect.fn("agent/generateBrief")(function* (
-      summaries: ReconstructedSummary[],
+      summaries: DocumentSummary[],
       answers: MachineContext["answers"],
       questions: MachineContext["questions"],
     ) {
@@ -65,7 +66,7 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
     });
 
     const processPrd = Effect.fn("agent/generatePrd")(function* (
-      summaries: ReconstructedSummary[],
+      summaries: DocumentSummary[],
       answers: MachineContext["answers"],
       questions: MachineContext["questions"],
     ) {
@@ -142,8 +143,8 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
 
     const actor = yield* getOrRestoreActor(sessionId);
     const storage = yield* StorageAdapter;
-    const summaryDb = yield* DbSummary;
-    const outputDb = yield* DbOutput;
+    const summaryDb = yield* SummaryRepository;
+    const outputDb = yield* OutputRepository;
 
     const summaries = yield* summaryDb.getFinalSummariesBySession(sessionId);
     const existingPrdRow = yield* outputDb.getLatestOutputByType({

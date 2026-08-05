@@ -1,5 +1,5 @@
-import { DbAgentSession } from "../../db/services/agent-session.ts";
-import { DbDocument } from "../../db/services/document.ts";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
+import { DocumentRepository } from "../../db/repositories/document-repository.ts";
 import { CreateAgentSessionRequest } from "@shipwright/shared/schemas/api.js";
 import type { UserId } from "@shipwright/shared/domain/ids";
 import { StorageAdapter } from "../../storage/index.ts";
@@ -13,8 +13,8 @@ export const createUploadSession = Effect.fn("agent/createUploadSession")(functi
     "shipwright.user.id": payload.userId,
     "shipwright.upload.count": payload.files.length,
   });
-  const agentSessionDb = yield* DbAgentSession;
-  const documentDb = yield* DbDocument;
+  const agentSessionDb = yield* AgentSessionRepository;
+  const documentDb = yield* DocumentRepository;
   const storage = yield* StorageAdapter;
   const session = yield* agentSessionDb.createAgentSession({
     status: "uploading",

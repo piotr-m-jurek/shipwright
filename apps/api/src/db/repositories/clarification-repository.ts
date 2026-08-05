@@ -22,11 +22,11 @@ interface Interface {
   ) => Effect.Effect<AnswerSelect[], EffectDrizzleQueryError>;
 }
 
-export class DbClarification extends Context.Service<DbClarification, Interface>()(
-  "@shipwright/api/db/services/clarification/DbClarification",
+export class ClarificationRepository extends Context.Service<ClarificationRepository, Interface>()(
+  "@shipwright/api/db/repositories/clarification/ClarificationRepository",
 ) {
   static readonly layer = Layer.effect(
-    DbClarification,
+    ClarificationRepository,
     Effect.gen(function* () {
       const db = yield* DB;
 

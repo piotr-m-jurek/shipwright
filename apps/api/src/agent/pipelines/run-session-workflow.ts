@@ -1,22 +1,22 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Effect, Exit } from "effect";
-import { DbSummary } from "../../db/services/summary.ts";
-import { DbClarification } from "../../db/services/clarification.ts";
+import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
+import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
 import { getOrRestoreActor } from "../session-actor.js";
 import { summarizeAllDocuments } from "../writers/summarizer.js";
 import { runChallenger } from "../writers/challenger.js";
 import { runQuestionGenerator } from "../writers/question-generator.js";
 import { AnalysisPipelineError } from "../errors.js";
 import { Spans } from "../../observability/spans.ts";
-import { DbAgentSession } from "../../db/services/agent-session.ts";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
 
 const runSessionWorkflowInner = Effect.fn("agent/runSessionWorkflow")(function* (
   sessionId: AgentSessionId,
 ) {
   yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
 
-  const summaryDb = yield* DbSummary;
-  const clarificationDb = yield* DbClarification;
+  const summaryDb = yield* SummaryRepository;
+  const clarificationDb = yield* ClarificationRepository;
   const actor = yield* getOrRestoreActor(sessionId);
 
   yield* summarizeAllDocuments(sessionId);
@@ -102,7 +102,7 @@ export const runSessionWorkflow = (sessionId: AgentSessionId) =>
           actorResult.value.send({ type: "ERROR", cause });
         } else {
           // Actor unavailable — write error status directly to DB as fallback.
-          const agentSessionDb = yield* DbAgentSession;
+          const agentSessionDb = yield* AgentSessionRepository;
           yield* agentSessionDb.updateAgentSession(sessionId, "error");
         }
       }),

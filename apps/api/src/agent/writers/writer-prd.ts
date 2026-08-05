@@ -1,6 +1,6 @@
 import { Effect, Schema, Stream } from "effect";
 import { Spans } from "../../observability/spans.ts";
-import type { ReconstructedSummary } from "../../db/services/summary.ts";
+import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel } from "effect/unstable/ai";
@@ -56,7 +56,7 @@ ANTI-HALLUCINATION RULE: Every requirement in the Acceptance Criteria must be tr
 TOOL USE: You have access to a query_chunks tool. Use it when you need more detail on a specific area not covered in the summaries, or to verify that a requirement is grounded in the source material before adding it to the Acceptance Criteria.`;
 
 function formatSummariesForPrd(
-  summaries: ReconstructedSummary[],
+  summaries: DocumentSummary[],
   answers: MachineContext["answers"],
   questions: MachineContext["questions"],
 ): string {
@@ -92,7 +92,7 @@ function formatSummariesForPrd(
 
 export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
   function* (
-    summaries: ReconstructedSummary[],
+    summaries: DocumentSummary[],
     answers: MachineContext["answers"],
     questions: MachineContext["questions"],
     sessionId: AgentSessionId,

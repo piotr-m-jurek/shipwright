@@ -13,8 +13,8 @@ import {
   OutputDownloadUrlResponse,
 } from "@shipwright/shared/schemas/api.js";
 import { Api } from "@shipwright/shared/api.js";
-import { DbAgentSession } from "../../db/services/agent-session.ts";
-import { DbOutput } from "../../db/services/output.ts";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
+import { OutputRepository } from "../../db/repositories/output-repository.ts";
 import { CurrentUser } from "@shipwright/shared/middleware.js";
 import { createUploadSession } from "../../agent/pipelines/create-upload-session.js";
 import { confirmUploadResults } from "../../agent/pipelines/confirm-upload-results.js";
@@ -55,8 +55,8 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
     )
     .handle("getOutputDownloadUrl", ({ params: { sessionId, type } }) =>
       Effect.gen(function* () {
-        const agentSessionDb = yield* DbAgentSession;
-        const outputDb = yield* DbOutput;
+        const agentSessionDb = yield* AgentSessionRepository;
+        const outputDb = yield* OutputRepository;
         const user = yield* CurrentUser;
 
         yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(

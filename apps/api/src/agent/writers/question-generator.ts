@@ -2,7 +2,7 @@ import { Effect, pipe } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import { ClarifyingQuestionsEffectSchema, type GapReportEffect } from "../schemas.ts";
 import { TextGenerationError } from "../errors.ts";
-import type { ReconstructedSummary } from "../../db/services/summary.ts";
+import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers.ts";
 
@@ -24,7 +24,7 @@ RULES:
 7. If fewer than 3 meaningful questions exist, still produce exactly 3 — ask about the most important open decisions.`;
 
 export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(
-  function* (gapReport: GapReportEffect, summaries: ReconstructedSummary[]) {
+  function* (gapReport: GapReportEffect, summaries: DocumentSummary[]) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("question-generator"),
       ...Spans.counts({
@@ -51,7 +51,7 @@ export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(
   Effect.provide(AnthropicClientLayer),
 );
 
-function formatInput(gapReport: GapReportEffect, summaries: ReconstructedSummary[]): string {
+function formatInput(gapReport: GapReportEffect, summaries: DocumentSummary[]): string {
   const summarySection = summaries
     .map((s) => `=== ${s.sourceDocument} ===\n${s.summary}`)
     .join("\n\n");

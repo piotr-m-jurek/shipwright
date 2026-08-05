@@ -6,9 +6,9 @@ import { S3Client, PutObjectCommand, CreateBucketCommand } from "@aws-sdk/client
 import { ConfigService } from "../config/config.js";
 import { StorageAdapter } from "../storage/index.js";
 import { ApiLayer } from "./server.js";
-import { DbAgentSession } from "../db/services/agent-session.ts";
-import { DbDocument } from "../db/services/document.ts";
-import { DbChunk } from "../db/services/chunk.ts";
+import { AgentSessionRepository } from "../db/repositories/agent-session-repository.ts";
+import { DocumentRepository } from "../db/repositories/document-repository.ts";
+import { ChunkRepository } from "../db/repositories/chunk-repository.ts";
 import { AppDBLiveLayer } from "../db/index.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
@@ -19,7 +19,7 @@ import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 vi.mock("../agent/embed-chunks.js", async () => {
   const { Effect } = await import("effect");
   return {
-    embedChunks: (chunks: string[]) => Effect.succeed(chunks.map(() => Array(1536).fill(0.1))),
+    embedChunks: (chunks: string[]) => Effect.succeed(chunks.map(() => Array(1024).fill(0.1))),
   };
 });
 
@@ -28,7 +28,7 @@ vi.mock("../agent/embed-chunks.js", async () => {
 // ---------------------------------------------------------------------------
 
 const DbLayer = pipe(
-  Layer.mergeAll(DbAgentSession.layer, DbDocument.layer, DbChunk.layer),
+  Layer.mergeAll(AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer),
   Layer.provideMerge(AppDBLiveLayer),
   Layer.provide(ConfigService.layer),
 );
@@ -53,7 +53,7 @@ afterAll(() => dispose());
 // Helpers
 // ---------------------------------------------------------------------------
 
-function runDb<A>(effect: Effect.Effect<A, unknown, DbAgentSession | DbDocument | DbChunk>) {
+function runDb<A>(effect: Effect.Effect<A, unknown, AgentSessionRepository | DocumentRepository | ChunkRepository>) {
   return Effect.runPromise(Effect.provide(effect, DbLayer));
 }
 
@@ -110,7 +110,7 @@ const createdSessionIds: string[] = [];
 
 afterAll(async () => {
   for (const id of createdSessionIds) {
-    await runDb(Effect.flatMap(DbAgentSession, (db) => db.deleteAgentSession(id as AgentSessionId)));
+    await runDb(Effect.flatMap(AgentSessionRepository, (db) => db.deleteAgentSession(id as AgentSessionId)));
   }
 });
 
@@ -174,7 +174,7 @@ describe("POST /api/sessions/upload-url", () => {
     createdSessionIds.push(body.sessionId);
 
     const sessionOpt = await runDb(
-      Effect.flatMap(DbAgentSession, (db) => db.getAgentSessionById({ sessionId: body.sessionId })),
+      Effect.flatMap(AgentSessionRepository, (db) => db.getAgentSessionById({ sessionId: body.sessionId })),
     );
 
     expect(Option.isSome(sessionOpt)).toBe(true);
@@ -202,7 +202,7 @@ describe("POST /api/sessions/upload-url", () => {
     createdSessionIds.push(body.sessionId);
 
     const docs = await runDb(
-      Effect.flatMap(DbDocument, (db) => db.getDocumentsBySessionId(body.sessionId)),
+      Effect.flatMap(DocumentRepository, (db) => db.getDocumentsBySessionId(body.sessionId)),
     );
 
     expect(docs).toHaveLength(2);
@@ -288,7 +288,7 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
     await new Promise((resolve) => setTimeout(resolve, 8000));
 
     const sessionChunks = await runDb(
-      Effect.flatMap(DbChunk, (db) => db.getChunksBySessionId(sessionId)),
+      Effect.flatMap(ChunkRepository, (db) => db.getChunksBySessionId(sessionId)),
     );
 
     expect(sessionChunks.length).toBeGreaterThan(0);
@@ -323,7 +323,7 @@ describe("POST /api/sessions/:id/confirm-upload", () => {
     await new Promise((resolve) => setTimeout(resolve, 8000));
 
     const docs = await runDb(
-      Effect.flatMap(DbDocument, (db) => db.getDocumentsBySessionId(sessionId)),
+      Effect.flatMap(DocumentRepository, (db) => db.getDocumentsBySessionId(sessionId)),
     );
 
     expect(docs[0]?.tokenCount).toBeGreaterThan(0);

@@ -12,8 +12,8 @@ import {
   ReviseResponse,
 } from "@shipwright/shared/schemas/api.js";
 import { Api } from "@shipwright/shared/api.js";
-import { DbAgentSession } from "../../db/services/agent-session.ts";
-import { DbOutput } from "../../db/services/output.ts";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
+import { OutputRepository } from "../../db/repositories/output-repository.ts";
 import { CurrentUser } from "@shipwright/shared/middleware.js";
 import { submitAnswers } from "../../agent/pipelines/submit-answers.js";
 import { startRevision } from "../../agent/pipelines/generation.js";
@@ -35,8 +35,8 @@ export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
     )
     .handle("getSessionFinalOutput", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
-        const agentSessionDb = yield* DbAgentSession;
-        const outputDb = yield* DbOutput;
+        const agentSessionDb = yield* AgentSessionRepository;
+        const outputDb = yield* OutputRepository;
         const user = yield* CurrentUser;
 
         yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(

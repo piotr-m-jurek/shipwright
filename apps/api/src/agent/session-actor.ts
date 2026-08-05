@@ -1,6 +1,6 @@
 import { Effect, Option, pipe, Schema } from "effect";
 import { createAgentActor, restoreAgentActor, type AgentActor } from "./machine.js";
-import { DbAgentSession } from "../db/services/agent-session.ts";
+import { AgentSessionRepository } from "../db/repositories/agent-session-repository.ts";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 export class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()(
@@ -23,7 +23,7 @@ const ERROR_STATES = new Set([
 export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* (
   sessionId: AgentSessionId,
 ) {
-  const db = yield* DbAgentSession;
+  const db = yield* AgentSessionRepository;
   const existing = registry.get(sessionId);
 
   if (existing) {
@@ -53,7 +53,7 @@ const wireSnapshotPersistence = Effect.fn("agent/wireSnapshotPersistence")(funct
   actor: AgentActor,
   sessionId: AgentSessionId,
 ) {
-  const db = yield* DbAgentSession;
+  const db = yield* AgentSessionRepository;
   const services = yield* Effect.context<never>();
 
   actor.subscribe((snapshot) => {

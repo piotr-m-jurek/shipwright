@@ -1,7 +1,7 @@
 import { Effect, pipe } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import { TextGenerationError } from "../errors.ts";
-import type { ReconstructedSummary } from "../../db/services/summary.ts";
+import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { GapReportEffectSchema } from "../schemas.ts";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { AnthropicHaikuModelLayer } from "../providers.ts";
@@ -28,7 +28,7 @@ RULES:
 5. Priority: conflicts are the most critical, then gaps, then ambiguities.`;
 
 export const runChallenger = Effect.fn("agent/run-challenger")(function* (
-  summaries: ReconstructedSummary[],
+  summaries: DocumentSummary[],
 ) {
   yield* Effect.annotateCurrentSpan({
     ...Spans.pass("challenger"),
@@ -48,7 +48,7 @@ export const runChallenger = Effect.fn("agent/run-challenger")(function* (
   return value;
 }, Effect.provide(AnthropicHaikuModelLayer));
 
-function prepareDocument(doc: ReconstructedSummary): string {
+function prepareDocument(doc: DocumentSummary): string {
   return [
     `=== ${doc.sourceDocument} ===\n${doc.summary}`,
     `Requirements:\n ${doc.requirements.map(prepareItem).join("\n")}`,
