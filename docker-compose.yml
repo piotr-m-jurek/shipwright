@@ -21,6 +21,12 @@ services:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
     restart: always
     platform: linux/amd64
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s  # model load takes time
     ports:
       - 127.0.0.1:8080:80
     volumes:
