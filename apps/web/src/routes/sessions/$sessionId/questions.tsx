@@ -37,6 +37,10 @@ const submitAnswersFamily = Atom.family((_nonce: number) =>
   ShipwrightApi.mutation("results", "submitSessionAnswers"),
 );
 
+const retrySessionFamily = Atom.family((_nonce: number) =>
+  ShipwrightApi.mutation("storage", "retrySession"),
+);
+
 // ---------------------------------------------------------------------------
 // Pipeline steps — order matters
 // ---------------------------------------------------------------------------
@@ -158,15 +162,29 @@ function PipelineProgress({ status }: { status: string }) {
 // Error display
 // ---------------------------------------------------------------------------
 
-function PipelineError({ status, errorReason }: { status: string; errorReason: string | null }) {
+function PipelineError({
+  status,
+  errorReason,
+  sessionId,
+}: {
+  status: string;
+  errorReason: string | null;
+  sessionId: AgentSessionId;
+}) {
   const isEmbeddingUnavailable = errorReason === "embedding_unavailable";
   const message = isEmbeddingUnavailable
-    ? "Document processing service is unavailable. Please try again later or start a new session."
+    ? "Document processing service is unavailable."
     : (ERROR_STATUS_LABELS[status] ?? "Something went wrong");
 
-  // Which step failed — derive from the prefix before "_error"
   const failedBase = status.replace(/_error$/, "");
   const failedStep = PIPELINE_STEPS.find((s) => s.status === failedBase);
+
+  const nonce = useMemo(() => Date.now(), []);
+  const retryAtom = useMemo(() => retrySessionFamily(nonce), [nonce]);
+  const retryResult = useAtomValue(retryAtom);
+  const retry = useAtomSet(retryAtom);
+
+  const isRetrying = AsyncResult.isWaiting(retryResult);
 
   return (
     <div className="w-full max-w-sm space-y-4">
@@ -183,7 +201,16 @@ function PipelineError({ status, errorReason }: { status: string; errorReason: s
           )}
         </AlertDescription>
       </Alert>
-      <a href="/" className="text-xs text-muted-foreground underline underline-offset-2">
+      {isEmbeddingUnavailable && (
+        <Button
+          onClick={() => retry({ params: { sessionId }, reactivityKeys: ["session", sessionId] })}
+          disabled={isRetrying}
+          className="w-full gap-2"
+        >
+          {isRetrying ? <><Spinner />Retrying…</> : "Retry"}
+        </Button>
+      )}
+      <a href="/" className="block text-center text-xs text-muted-foreground underline underline-offset-2">
         Start a new session
       </a>
     </div>
@@ -237,7 +264,7 @@ function QuestionsPage({ sessionId }: { sessionId: AgentSessionId }) {
         return (
           <div className="flex min-h-svh flex-col items-center justify-center gap-6">
             <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
-            <PipelineError status={session.status} errorReason={session.errorReason} />
+            <PipelineError status={session.status} errorReason={session.errorReason} sessionId={sessionId} />
           </div>
         );
       }

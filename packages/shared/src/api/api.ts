@@ -14,6 +14,7 @@ import {
   ReviseRequest,
   ReviseResponse,
   GetHealthResponse,
+  RetrySessionResponse,
 } from "../schemas/api.js";
 import {
   CreateAgentSessionError,
@@ -26,6 +27,7 @@ import {
   OutputNotFoundError,
   RevisionError,
   ServiceUnavailableError,
+  RetrySessionError,
 } from "../domain/errors.js";
 import { Authorization } from "./middleware.js";
 import { AgentSessionId } from "../domain/ids.ts";
@@ -55,6 +57,11 @@ export class SessionStorageApi extends HttpApiGroup.make("storage")
       params: { sessionId: AgentSessionId, type: Schema.String },
       success: OutputDownloadUrlResponse,
       error: OutputNotFoundError,
+    }),
+    HttpApiEndpoint.post("retrySession", "/sessions/:sessionId/retry", {
+      params: { sessionId: AgentSessionId },
+      success: RetrySessionResponse,
+      error: [AgentSessionNotFound, RetrySessionError],
     }),
   )
   .middleware(Authorization) {}

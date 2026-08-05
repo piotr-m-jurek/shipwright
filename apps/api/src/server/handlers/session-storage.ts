@@ -2,15 +2,18 @@ import { Effect, Option, pipe } from "effect";
 import { StorageAdapter } from "../../storage/index.js";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import {
+  AgentSessionNotFound,
   ConfirmUploadError,
   CreateAgentSessionError,
   MissingUploads,
   OutputNotFoundError,
+  RetrySessionError as RetrySessionHttpError,
 } from "@shipwright/shared/domain/errors.js";
 import {
   CreateAgentSessionResponse,
   ConfirmUploadResponse,
   OutputDownloadUrlResponse,
+  RetrySessionResponse,
 } from "@shipwright/shared/schemas/api.js";
 import { Api } from "@shipwright/shared/api.js";
 import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
@@ -18,6 +21,7 @@ import { OutputRepository } from "../../db/repositories/output-repository.ts";
 import { CurrentUser } from "@shipwright/shared/middleware.js";
 import { createUploadSession } from "../../agent/pipelines/create-upload-session.js";
 import { confirmUploadResults } from "../../agent/pipelines/confirm-upload-results.js";
+import { retrySession } from "../../agent/pipelines/retry-session.ts";
 import { MessageQueue } from "../../queue/index.ts";
 
 export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
@@ -51,6 +55,20 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
 
         yield* mq.publish("documents.process", { sessionId, uploads });
         return new ConfirmUploadResponse({ valid: true });
+      }),
+    )
+    .handle("retrySession", ({ params: { sessionId } }) =>
+      Effect.gen(function* () {
+        const user = yield* CurrentUser;
+        yield* retrySession(sessionId, user.id).pipe(
+          Effect.catchReason(
+            "shipwright/agent/RetrySessionError",
+            "SessionNotFoundReason",
+            () => new AgentSessionNotFound(),
+          ),
+          Effect.mapError((e) => new RetrySessionHttpError({ cause: e })),
+        );
+        return new RetrySessionResponse({ queued: true });
       }),
     )
     .handle("getOutputDownloadUrl", ({ params: { sessionId, type } }) =>

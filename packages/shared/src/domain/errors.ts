@@ -49,3 +49,8 @@ export class ServiceUnavailableError extends Schema.TaggedErrorClass<
   ServiceUnavailableError,
   { readonly brand: unique symbol }
 >()("ServiceUnavailableError", { message: Schema.String }, { httpApiStatus: 503 }) {}
+
+export class RetrySessionError extends Schema.TaggedErrorClass<
+  RetrySessionError,
+  { readonly brand: unique symbol }
+>()("RetrySessionError", { cause: Schema.optional(Schema.Defect()) }, { httpApiStatus: 500 }) {}

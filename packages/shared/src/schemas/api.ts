@@ -109,3 +109,8 @@ export class ConfirmUploadResponse extends Schema.Class<
   ConfirmUploadResponse,
   { readonly brand: unique symbol }
 >("ConfirmUploadResponse")({ valid: Schema.Boolean }) {}
+
+export class RetrySessionResponse extends Schema.Class<
+  RetrySessionResponse,
+  { readonly brand: unique symbol }
+>("RetrySessionResponse")({ queued: Schema.Boolean }) {}
