@@ -1,9 +1,11 @@
-import { fileTypeFromBuffer } from "file-type";
+import { fileTypeFromStream } from "file-type";
+import { Readable } from "node:stream";
 import { extractText, getDocumentProxy } from "unpdf";
 import { extractRawText } from "mammoth";
 import path from "node:path";
 import { PDF_PAGES_SEPARATOR } from "./index.js";
 import { Effect, Match, pipe, Schema } from "effect";
+import { StorageAdapter } from "../storage/index.js";
 
 export type ParsedFileType = "markdown" | "pdf" | "plain-text" | "docx";
 
@@ -29,6 +31,69 @@ class UnsupportedFileTypeError extends Schema.TaggedErrorClass<UnsupportedFileTy
   "UnsupportedFileTypeError",
   { filetype: Schema.optional(Schema.String) },
 ) {}
+
+export class MimeVerificationError extends Schema.TaggedErrorClass<MimeVerificationError>()(
+  "MimeVerificationError",
+  {
+    filename: Schema.String,
+    claimedExt: Schema.String,
+    detectedExt: Schema.optional(Schema.String),
+  },
+) {}
+
+/** Expected content-based extension for each supported file extension. */
+const EXPECTED_CONTENT_EXT: Record<string, string | null> = {
+  ".pdf": "pdf",
+  ".docx": "docx",
+  // plain text and markdown have no magic bytes — file-type returns undefined
+  ".txt": null,
+  ".md": null,
+};
+
+/**
+ * Downloads the first N bytes of `s3Key` and uses `fileTypeFromStream` to
+ * verify the actual MIME type matches the claimed file extension.
+ * Fails with `MimeVerificationError` when they don't match.
+ */
+export const verifyFileMimeType = Effect.fn("agent/verify-file-mime-type")(function* (
+  s3Key: string,
+  filename: string,
+) {
+  const storage = yield* StorageAdapter;
+  const filenameExt = path.extname(filename).toLowerCase();
+  const expectedContentExt = EXPECTED_CONTENT_EXT[filenameExt];
+
+  // For plain text / markdown, no magic bytes exist — skip content check.
+  if (expectedContentExt === null) {
+    return;
+  }
+
+  // 4100 bytes is the recommended sample size for file-type detection
+  const bytes = yield* storage.downloadPartialObject(s3Key, 4100);
+  const stream = Readable.from(
+    (async function* () {
+      yield bytes;
+    })(),
+  );
+
+  const detected = yield* Effect.tryPromise({
+    try: () => fileTypeFromStream(stream as unknown as ReadableStream<Uint8Array>),
+    catch: (cause) =>
+      new MimeVerificationError({
+        filename,
+        claimedExt: filenameExt,
+        detectedExt: String(cause),
+      }),
+  });
+
+  if (detected?.ext !== expectedContentExt) {
+    return yield* new MimeVerificationError({
+      filename,
+      claimedExt: filenameExt,
+      detectedExt: detected?.ext,
+    });
+  }
+});
 
 const getExtension = (filename: string) =>
   pipe(
@@ -90,30 +155,16 @@ export const parseDocument = Effect.fn("agent/parse-document")(function* (
   UnknownFileExtension | PdfParseError | DocParseError | UnsupportedFileTypeError
 > {
   const filenameExt = yield* getExtension(filename);
-  const fileType = yield* Effect.tryPromise({
-    try: () => fileTypeFromBuffer(buffer),
-    catch: (cause) =>
-      new UnknownFileExtension({
-        cause,
-        message: `Could not read fileType from buffer ${buffer}`,
-      }),
-  });
 
-  return yield* Match.value({ filenameExt, fileTypeExt: fileType?.ext }).pipe(
-    Match.when({ filenameExt: ".md" }, () =>
+  return yield* Match.value(filenameExt).pipe(
+    Match.when(".md", () =>
       Effect.succeed({ type: "markdown" as const, text: buffer.toString("utf-8"), filename }),
     ),
-    Match.when({ filenameExt: ".txt" }, () =>
+    Match.when(".txt", () =>
       Effect.succeed({ type: "plain-text" as const, text: buffer.toString("utf-8"), filename }),
     ),
-    Match.when({ filenameExt: ".pdf", fileTypeExt: "pdf" }, () =>
-      getPdfParseResult(buffer, filename),
-    ),
-    Match.when({ filenameExt: ".docx", fileTypeExt: "docx" }, () =>
-      getDocParseResult(buffer, filename),
-    ),
-    Match.orElse(({ fileTypeExt }) =>
-      Effect.fail(new UnsupportedFileTypeError({ filetype: fileTypeExt })),
-    ),
+    Match.when(".pdf", () => getPdfParseResult(buffer, filename)),
+    Match.when(".docx", () => getDocParseResult(buffer, filename)),
+    Match.orElse((ext) => Effect.fail(new UnsupportedFileTypeError({ filetype: ext }))),
   );
 });

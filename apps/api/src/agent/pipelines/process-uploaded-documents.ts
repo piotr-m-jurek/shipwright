@@ -1,5 +1,5 @@
 import { StorageAdapter } from "../../storage/index.ts";
-import { parseDocument } from "../parsers.ts";
+import { parseDocument, verifyFileMimeType } from "../parsers.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { chunkDocument } from "../lib/chunker.ts";
 import { Effect, Metric, Option, Schema, Array, pipe } from "effect";
@@ -62,6 +62,7 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
         const processDoc = Effect.gen(function* () {
           yield* documentDb.updateDocumentStatus(doc.id, "processing");
 
+          yield* verifyFileMimeType(upload.s3Key, doc.filename);
           const rawDocument = yield* storage.download(upload.s3Key);
           const parsed = yield* parseDocument(Buffer.from(rawDocument), doc.filename);
           const chunks = chunkDocument(parsed);
