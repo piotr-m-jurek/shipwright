@@ -72,19 +72,23 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
           return yield* new OutputNotFoundError();
         }
 
-        const output = yield* outputDb.getLatestOutputByType({ sessionId, type }).pipe(
+        const s3Key = yield* outputDb.getLatestOutputByType({ sessionId, type }).pipe(
           Effect.mapError(() => new OutputNotFoundError()),
-          Effect.map(Option.getOrUndefined),
+          Effect.flatMap((opt) =>
+            Option.match(
+              pipe(opt, Option.flatMap((r) => Option.fromNullishOr(r.s3Key))),
+              {
+                onNone: () => Effect.fail(new OutputNotFoundError()),
+                onSome: Effect.succeed,
+              },
+            )
+          ),
         );
-
-        if (!output?.s3Key) {
-          return yield* new OutputNotFoundError();
-        }
 
         const storage = yield* StorageAdapter;
         // Generate presigned GET URL with 15-minute TTL (not a PUT URL)
         const url = yield* pipe(
-          storage.generatePresignedGetUrl(output.s3Key, 15),
+          storage.generatePresignedGetUrl(s3Key, 15),
           Effect.mapError(() => new OutputNotFoundError()),
         );
 

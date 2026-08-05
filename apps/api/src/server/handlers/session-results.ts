@@ -51,13 +51,13 @@ export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
           Effect.mapError(() => new AgentSessionNotFound()),
         );
 
-        const brief = allOutputs.find((o) => o.type === "project_brief");
-        const prd = allOutputs.find((o) => o.type === "implementation_prd");
+        const brief = Option.fromNullishOr(allOutputs.find((o) => o.type === "project_brief"));
+        const prd = Option.fromNullishOr(allOutputs.find((o) => o.type === "implementation_prd"));
 
         return new GetAgentSessionFinalOutputResponse({
-          projectBrief: brief?.content ?? null,
-          implementationPrd: prd?.content ?? null,
-          version: brief?.version ?? null,
+          projectBrief: Option.match(brief, { onNone: () => null, onSome: (r) => r.content ?? null }),
+          implementationPrd: Option.match(prd, { onNone: () => null, onSome: (r) => r.content ?? null }),
+          version: Option.match(brief, { onNone: () => null, onSome: (r) => r.version ?? null }),
         });
       }),
     )
