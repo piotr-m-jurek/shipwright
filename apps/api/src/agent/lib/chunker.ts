@@ -1,4 +1,4 @@
-import { Match, pipe } from "effect";
+import { Match, Option, pipe } from "effect";
 import { PDF_PAGES_SEPARATOR } from "../index.ts";
 import type { ParseResult } from "../parsers.ts";
 
@@ -26,8 +26,8 @@ const TEXT_CONFIG: ChunkConfig = {
 export type ChunkResult = {
   content: string;
   charOffset: number;
-  pageNumber?: number;
-  headingPath?: string[];
+  pageNumber: Option.Option<number>;
+  headingPath: Option.Option<string[]>;
 };
 
 export function chunkDocument(file: ParseResult, config?: Partial<ChunkConfig>): ChunkResult[] {
@@ -104,19 +104,22 @@ function addOffsets(
     const { results } = chunks.reduce<{ results: ChunkResult[]; searchFrom: number }>(
       (acc, content) => {
         const charOffset = originalText.indexOf(content, acc.searchFrom);
-        const pageNumber = extras?.pageBoundaries
-          ? extras.pageBoundaries.findLastIndex((b) => b <= charOffset) + 1
-          : undefined;
+        const pageNumber = pipe(
+          Option.fromNullishOr(extras?.pageBoundaries),
+          Option.map((boundaries) => boundaries.findLastIndex((b) => b <= charOffset) + 1),
+        );
 
-        const headingPath = extras?.headingIndex
-          ? extras.headingIndex.findLast((h) => h.offset <= charOffset)?.path
-          : undefined;
+        const headingPath = pipe(
+          Option.fromNullishOr(extras?.headingIndex),
+          Option.flatMap((index) => Option.fromNullishOr(index.findLast((h) => h.offset <= charOffset))),
+          Option.map((entry) => entry.path),
+        );
 
         const results = acc.results.concat({
           content,
           charOffset,
-          pageNumber: pageNumber ?? 0,
-          headingPath: headingPath ?? [],
+          pageNumber,
+          headingPath,
         });
         const searchFrom = charOffset + content.length - overlap;
 

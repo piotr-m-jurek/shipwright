@@ -94,8 +94,8 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
                   chunkIndex: ChunkIndex.make(index),
                   content: chunk?.content ?? "",
                   charOffset: chunk?.charOffset,
-                  pageNumber: chunk?.pageNumber,
-                  headingPath: chunk?.headingPath,
+                  pageNumber: Option.getOrNull(chunk.pageNumber),
+                  headingPath: Option.getOrNull(chunk.headingPath),
                 })),
               );
               yield* documentDb.updateDocument(doc.id, { tokenCount, status: "ready" });

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { Option } from "effect";
 import { chunkDocument, type ChunkResult } from "../lib/chunker.ts";
 
 // minChunkSize: 0 disables the merge guard — tests that explicitly test merging
@@ -115,19 +116,19 @@ describe("chunkDocument", () => {
       expect(result[0].charOffset).toBe(0);
     });
 
-    test("pageNumber is undefined for plain-text chunks", () => {
+    test("pageNumber is none for plain-text chunks", () => {
       const text = "a".repeat(200);
       const result = chunkDocument({ text: text, type: "plain-text", filename: "" }, SMALL_CONFIG);
       result.forEach((chunk) => {
-        expect(chunk.pageNumber).toBeUndefined();
+        expect(Option.isNone(chunk.pageNumber)).toBe(true);
       });
     });
 
-    test("headingPath is undefined for plain-text chunks", () => {
+    test("headingPath is none for plain-text chunks", () => {
       const text = "a".repeat(200);
       const result = chunkDocument({ text: text, type: "plain-text", filename: "" }, SMALL_CONFIG);
       result.forEach((chunk) => {
-        expect(chunk.headingPath).toBeUndefined();
+        expect(Option.isNone(chunk.headingPath)).toBe(true);
       });
     });
 
@@ -135,7 +136,7 @@ describe("chunkDocument", () => {
       const text =
         "## Introduction\n\n" + "a".repeat(30) + "\n\n## Conclusion\n\n" + "b".repeat(30);
       const result = chunkDocument({ text: text, type: "markdown", filename: "" }, SMALL_CONFIG);
-      const chunksWithHeadings = result.filter((c) => c.headingPath !== undefined);
+      const chunksWithHeadings = result.filter((c) => Option.isSome(c.headingPath));
       expect(chunksWithHeadings.length).toBeGreaterThan(0);
     });
   });
