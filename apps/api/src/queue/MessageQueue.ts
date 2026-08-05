@@ -27,10 +27,29 @@
  * Postgres errors are unexpected infrastructure failures and are treated as
  * defects (Effect.orDie). Only `DeliveryTagNotFoundError` is a typed error.
  */
-import { Context, Effect, Fiber, FiberSet, Layer, Metric, Option, Queue, Schema, pipe } from "effect";
+import { Context, Duration, Effect, Fiber, FiberSet, Layer, Metric, Option, Queue, Schema, pipe } from "effect";
 import { and, eq, isNull, lte, or } from "drizzle-orm";
 import { DB } from "../db/index.js";
 import { queueMessages } from "./schema.js";
+
+// ─── Backoff ─────────────────────────────────────────────────────────────────
+
+/**
+ * Exponential backoff delay for nack retries.
+ *
+ * attempt 1 → 0 ms  (immediate — first try, no delay)
+ * attempt 2 → 5 s   (base)
+ * attempt 3 → 10 s  (base × 2)
+ * attempt 4 → 20 s  (base × 4)
+ * …
+ *
+ * Uses the same formula as `Schedule.exponential(base, factor)`:
+ *   delay = base × factor^(attempt - 2)
+ */
+const nackDelayMs = (attempt: number): number =>
+  attempt <= 1
+    ? 0
+    : Duration.toMillis(Duration.times(Duration.seconds(5), Math.pow(2, attempt - 2)));
 
 // ─── Metrics ─────────────────────────────────────────────────────────────────
 
@@ -352,7 +371,12 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
               Effect.catchCause((cause) =>
                 Effect.logError("MessageQueue: handler failed, nacking").pipe(
                   Effect.andThen(Effect.logError(cause)),
-                  Effect.andThen(delivery.nack({ requeue: true })),
+                  Effect.andThen(
+                    delivery.nack({
+                      requeue: true,
+                      delayMs: nackDelayMs(envelope.attempts),
+                    }),
+                  ),
                 ),
               ),
             );
