@@ -24,6 +24,8 @@
     "./domain/errors": "./src/domain/errors.ts",
     "./domain/errors.js": "./src/domain/errors.ts",
     "./domain/ids": "./src/domain/ids.ts",
-    "./domain/ids.js": "./src/domain/ids.ts"
+    "./domain/ids.js": "./src/domain/ids.ts",
+    "./domain/types": "./src/domain/types.ts",
+    "./domain/types.js": "./src/domain/types.ts"
   }
 }

@@ -24,9 +24,24 @@ import type {
   SummaryId,
   SummaryItemId,
 } from "@shipwright/shared/domain/ids";
+import {
+  CONFIDENCE_LEVEL_VALUES,
+  DOCUMENT_STATUS_VALUES,
+  INPUT_MODE_VALUES,
+  MESSAGE_ROLE_VALUES,
+  OUTPUT_TYPE_VALUES,
+  SESSION_STATUS_VALUES,
+  SUMMARY_ITEM_TYPE_VALUES,
+  SUMMARY_TYPE_VALUES,
+} from "@shipwright/shared/domain/types";
 
 import { queueMessages } from "../queue/schema.ts";
 export { queueMessages, queueMessageStatusEnum } from "../queue/schema.ts";
+
+// NOTE: pgEnum requires a non-empty tuple [string, ...string[]]. The *_VALUES
+// arrays imported from @shipwright/shared/domain/types are `as const` readonly
+// tuples — Drizzle accepts these. If you ever add a new enum, ensure the array
+// has at least one element; an empty array will fail at runtime, not compile time.
 
 // ── Better Auth tables ────────────────────────────────────────────────────
 
@@ -102,22 +117,9 @@ export const verifications = pgTable(
   (table) => [index("verifications_identifier_idx").on(table.identifier)],
 );
 
-export const sessionStatusEnum = pgEnum("session_status", [
-  "idle",
-  "uploading",
-  "summarizing",
-  "processing",
-  "analyzing",
-  "awaiting_answers",
-  "re_evaluating",
-  "generating",
-  "complete",
-  "revising",
-  "error",
-  "partial_error",
-]);
+export const sessionStatusEnum = pgEnum("session_status", SESSION_STATUS_VALUES);
 
-export const inputModeEnum = pgEnum("input_mode", ["context", "retrieval"]);
+export const inputModeEnum = pgEnum("input_mode", INPUT_MODE_VALUES);
 
 export const agentSessions = pgTable("agent_sessions", {
   id: uuid("id").primaryKey().defaultRandom().notNull().$type<AgentSessionId>(),
@@ -135,13 +137,7 @@ export const agentSessions = pgTable("agent_sessions", {
   xstateSnapshot: jsonb("xstate_snapshot").$type<MachineContext>(),
 });
 
-export const documentStatusEnum = pgEnum("document_status", [
-  "pending",
-  "uploaded",
-  "processing",
-  "ready",
-  "error",
-]);
+export const documentStatusEnum = pgEnum("document_status", DOCUMENT_STATUS_VALUES);
 
 export const documents = pgTable("documents", {
   id: uuid("id").primaryKey().defaultRandom().notNull().$type<DocumentId>(),
@@ -186,15 +182,11 @@ export const chunks = pgTable("chunks", {
   pageNumber: integer("page_number"),
 });
 
-export const summaryTypeEnum = pgEnum("summary_type", ["map_intermediate", "final"]);
+export const summaryTypeEnum = pgEnum("summary_type", SUMMARY_TYPE_VALUES);
 
-export const confidenceLevelEnum = pgEnum("confidence_level", ["high", "medium", "low"]);
+export const confidenceLevelEnum = pgEnum("confidence_level", CONFIDENCE_LEVEL_VALUES);
 
-export const summaryItemTypeEnum = pgEnum("summary_item_type", [
-  "requirement",
-  "constraint",
-  "assumption",
-]);
+export const summaryItemTypeEnum = pgEnum("summary_item_type", SUMMARY_ITEM_TYPE_VALUES);
 
 export const documentSummaries = pgTable("document_summaries", {
   id: uuid("id").primaryKey().defaultRandom().notNull().$type<SummaryId>(),
@@ -232,7 +224,7 @@ export const summaryItems = pgTable("summary_items", {
   orderIndex: integer("order_index").notNull(),
 });
 
-export const messageRoleEnum = pgEnum("role", ["user", "assistant", "system"]);
+export const messageRoleEnum = pgEnum("role", MESSAGE_ROLE_VALUES);
 
 export const messages = pgTable("messages", {
   id: uuid("id").primaryKey().defaultRandom().notNull().$type<MessageId>(),
@@ -286,7 +278,7 @@ export const answers = pgTable("answers", {
   round: integer("round").notNull(),
 });
 
-export const outputTypeEnum = pgEnum("output_type", ["project_brief", "implementation_prd"]);
+export const outputTypeEnum = pgEnum("output_type", OUTPUT_TYPE_VALUES);
 
 export const outputs = pgTable("outputs", {
   id: uuid("id").primaryKey().defaultRandom().notNull().$type<OutputId>(),
