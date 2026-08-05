@@ -29,7 +29,7 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
 
         const { uploads, sessionId } = yield* pipe(
           createUploadSession({ files: p.payload.files, userId: user.id }),
-          Effect.mapError(() => new CreateAgentSessionError()),
+          Effect.mapError((cause) => new CreateAgentSessionError({ cause })),
         );
         return new CreateAgentSessionResponse({ uploads, sessionId });
       }),

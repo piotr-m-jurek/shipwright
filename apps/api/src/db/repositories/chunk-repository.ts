@@ -45,15 +45,19 @@ export class ChunkRepository extends Context.Service<ChunkRepository, Interface>
       });
 
       const getChunksByDocumentId = Effect.fn("db/getChunksByDocumentId")(function* (documentId: DocumentId) {
-        return yield* db
+        const rows = yield* db
           .select()
           .from(chunks)
           .where(eq(chunks.documentId, documentId))
           .orderBy(asc(chunks.chunkIndex));
+        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        return rows;
       });
 
       const getChunksBySessionId = Effect.fn("db/getChunksBySessionId")(function* (sessionId: AgentSessionId) {
-        return yield* db.select().from(chunks).where(eq(chunks.sessionId, sessionId));
+        const rows = yield* db.select().from(chunks).where(eq(chunks.sessionId, sessionId));
+        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        return rows;
       });
 
       const getChunksBySimilarity = Effect.fn("db/getChunksBySimilarity")(function* ({
@@ -66,7 +70,7 @@ export class ChunkRepository extends Context.Service<ChunkRepository, Interface>
         limit: number;
       }) {
         const similarity = sql<number>`1 - (${cosineDistance(chunks.embedding, [...embedding])})`;
-        return yield* db
+        const rows = yield* db
           .select({
             similarity,
             content: chunks.content,
@@ -77,6 +81,8 @@ export class ChunkRepository extends Context.Service<ChunkRepository, Interface>
           .where(and(gt(similarity, 0.5), eq(chunks.sessionId, sessionId)))
           .orderBy((t) => desc(t.similarity))
           .limit(limit);
+        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        return rows;
       });
 
       return {

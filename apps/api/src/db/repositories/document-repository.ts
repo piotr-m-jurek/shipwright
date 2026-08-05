@@ -53,7 +53,9 @@ export class DocumentRepository extends Context.Service<DocumentRepository, Inte
       });
 
       const getDocumentsBySessionId = Effect.fn("db/getDocumentsBySessionId")(function* (sessionId: AgentSessionId) {
-        return yield* db.select().from(documents).where(eq(documents.sessionId, sessionId));
+        const rows = yield* db.select().from(documents).where(eq(documents.sessionId, sessionId));
+        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        return rows;
       });
 
       const updateDocument = Effect.fn("db/updateDocument")(function* (

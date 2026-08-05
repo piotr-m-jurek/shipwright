@@ -1,11 +1,10 @@
-import { Array, Effect, Filter, Option, pipe, Schema, Stream } from "effect";
+import { Array, Effect, Filter, Option, pipe, Ref, Schema, Stream } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
-import { makeQueryChunksLayer, QueryChunksToolkit } from "../tools/query-chunks.ts";
 
 export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()(
   "shipwright/agent/PrdWriterError",
@@ -51,9 +50,7 @@ Technology choices already decided. The coding agent should use these unless the
 ## Open Questions
 Any ambiguities that remain after the clarifying session. The coding agent must surface these before implementing the affected feature, not make silent assumptions.
 
-ANTI-HALLUCINATION RULE: Every requirement in the Acceptance Criteria must be traceable to the provided document summaries or clarification answers. Do not invent scope. If a section cannot be filled from the available information, say so explicitly.
-
-TOOL USE: You have access to a query_chunks tool. Use it when you need more detail on a specific area not covered in the summaries, or to verify that a requirement is grounded in the source material before adding it to the Acceptance Criteria.`;
+ANTI-HALLUCINATION RULE: Every requirement in the Acceptance Criteria must be traceable to the provided document summaries or clarification answers. Do not invent scope. If a section cannot be filled from the available information, say so explicitly.`;
 
 function formatSummariesForPrd(
   summaries: DocumentSummary[],
@@ -95,16 +92,16 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
     summaries: DocumentSummary[],
     answers: MachineContext["answers"],
     questions: MachineContext["questions"],
-    sessionId: AgentSessionId,
+    _sessionId: AgentSessionId,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-prd"),
       ...Spans.counts({ documents: summaries.length, answers: answers.length }),
     });
     const userContent = formatSummariesForPrd(summaries, answers, questions);
+    const finishRef = yield* Ref.make<{ modelId: string | undefined; inputTokens: number | undefined; outputTokens: number | undefined; cacheReadTokens: number | undefined } | undefined>(undefined);
 
     return yield* LanguageModel.streamText({
-      toolkit: QueryChunksToolkit,
       prompt: [
         { role: "system", content: PrdSystemPrompt },
         {
@@ -120,7 +117,22 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
         },
       ],
     }).pipe(
-      Stream.provide(makeQueryChunksLayer(sessionId)),
+      Stream.tap((part) => {
+        if (part.type === "finish") {
+          return Ref.set(finishRef, {
+            modelId: undefined,
+            inputTokens: part.usage.inputTokens.total,
+            outputTokens: part.usage.outputTokens.total,
+            cacheReadTokens: part.usage.inputTokens.cacheRead,
+          });
+        }
+        if (part.type === "response-metadata") {
+          return Ref.update(finishRef, (prev) =>
+            prev ? { ...prev, modelId: part.modelId } : { modelId: part.modelId, inputTokens: undefined, outputTokens: undefined, cacheReadTokens: undefined },
+          );
+        }
+        return Effect.void;
+      }),
       Stream.filter((part) => part.type === "text-delta"),
       Stream.map((part) => part.delta),
       Stream.runFold(
@@ -129,6 +141,20 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
       ),
       Effect.tap((text) =>
         Effect.annotateCurrentSpan({ "shipwright.output.chars": text.length }),
+      ),
+      Effect.tap(() =>
+        Effect.flatMap(Ref.get(finishRef), (finish) =>
+          finish
+            ? Effect.annotateCurrentSpan(
+                Spans.llm({
+                  model: finish.modelId,
+                  inputTokens: finish.inputTokens,
+                  outputTokens: finish.outputTokens,
+                  cacheReadTokens: finish.cacheReadTokens,
+                }),
+              )
+            : Effect.void,
+        ),
       ),
       Effect.mapError((cause) => new PrdWriterError({ cause })),
     );

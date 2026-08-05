@@ -118,6 +118,13 @@ Machine context: `sessionId`, `documents[]`, `documentSummaries[]`, `questions[]
 
 Schema: `packages/shared/src/schemas/machine.ts`
 
+## Local services
+
+| Service | URL | Credentials |
+|---|---|---|
+| API | http://localhost:3000 | — |
+| Langfuse | http://localhost:3001 | `dev@shipwright.local` / `shipwright` |
+
 ## API
 
 OpenAPI schema: `GET http://localhost:3000/openapi.json`  

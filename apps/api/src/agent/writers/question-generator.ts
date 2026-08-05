@@ -34,7 +34,7 @@ export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(
         ambiguities: gapReport.ambiguities.length,
       }),
     });
-    const { value } = yield* pipe(
+    const response = yield* pipe(
       LanguageModel.generateObject({
         schema: ClarifyingQuestionsEffectSchema,
         prompt: Prompt.make([
@@ -45,7 +45,17 @@ export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(
       Effect.mapError((cause) => new TextGenerationError({ cause })),
     );
 
-    return value;
+    const modelId = response.content.find((p) => p.type === "response-metadata")?.modelId;
+    yield* Effect.annotateCurrentSpan(
+      Spans.llm({
+        model: modelId,
+        inputTokens: response.usage.inputTokens.total,
+        outputTokens: response.usage.outputTokens.total,
+        cacheReadTokens: response.usage.inputTokens.cacheRead,
+      }),
+    );
+
+    return response.value;
   },
   Effect.provide(AnthropicHaikuModelLayer),
   Effect.provide(AnthropicClientLayer),

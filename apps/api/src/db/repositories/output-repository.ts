@@ -33,11 +33,13 @@ export class OutputRepository extends Context.Service<OutputRepository, Interfac
       });
 
       const getOutputsBySessionId = Effect.fn("db/getOutputsBySessionId")(function* (sessionId: AgentSessionId) {
-        return yield* db
+        const rows = yield* db
           .select()
           .from(outputs)
           .where(eq(outputs.sessionId, sessionId))
           .orderBy(desc(outputs.version));
+        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        return rows;
       });
 
       const getLatestOutputByType = Effect.fn("db/getLatestOutputByType")(function* (payload: {

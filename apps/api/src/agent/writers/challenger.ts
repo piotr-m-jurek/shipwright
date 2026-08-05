@@ -34,7 +34,7 @@ export const runChallenger = Effect.fn("agent/run-challenger")(function* (
     ...Spans.pass("challenger"),
     ...Spans.counts({ documents: summaries.length }),
   });
-  const { value } = yield* pipe(
+  const response = yield* pipe(
     LanguageModel.generateObject({
       schema: GapReportEffectSchema,
       prompt: Prompt.make([
@@ -45,7 +45,17 @@ export const runChallenger = Effect.fn("agent/run-challenger")(function* (
     Effect.mapError((cause) => new TextGenerationError({ cause })),
   );
 
-  return value;
+  const modelId = response.content.find((p) => p.type === "response-metadata")?.modelId;
+  yield* Effect.annotateCurrentSpan(
+    Spans.llm({
+      model: modelId,
+      inputTokens: response.usage.inputTokens.total,
+      outputTokens: response.usage.outputTokens.total,
+      cacheReadTokens: response.usage.inputTokens.cacheRead,
+    }),
+  );
+
+  return response.value;
 }, Effect.provide(AnthropicHaikuModelLayer));
 
 function prepareDocument(doc: DocumentSummary): string {

@@ -54,7 +54,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
       Effect.gen(function* () {
         const actor = yield* pipe(
           getOrRestoreActor(sessionId),
-          Effect.mapError(() => new ConfirmAnalysisError()),
+          Effect.mapError((cause) => new ConfirmAnalysisError({ cause })),
         );
 
         const state = actor.getSnapshot();

@@ -25,12 +25,16 @@ import {
   ConfirmAnalysisError,
   OutputNotFoundError,
   RevisionError,
+  ServiceUnavailableError,
 } from "../domain/errors.js";
 import { Authorization } from "./middleware.js";
 import { AgentSessionId } from "../domain/ids.ts";
 
 export class PublicApiGroup extends HttpApiGroup.make("public").add(
-  HttpApiEndpoint.get("health", "/health", { success: GetHealthResponse }),
+  HttpApiEndpoint.get("health", "/health", {
+    success: GetHealthResponse,
+    error: ServiceUnavailableError,
+  }),
 ) {}
 
 export class SessionStorageApi extends HttpApiGroup.make("storage")

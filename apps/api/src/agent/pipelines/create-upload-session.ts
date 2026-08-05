@@ -3,7 +3,8 @@ import { DocumentRepository } from "../../db/repositories/document-repository.ts
 import { CreateAgentSessionRequest } from "@shipwright/shared/schemas/api.js";
 import type { UserId } from "@shipwright/shared/domain/ids";
 import { StorageAdapter } from "../../storage/index.ts";
-import { Effect } from "effect";
+import { Effect, Metric } from "effect";
+import { sessionCreatedCounter } from "../../observability/metrics.ts";
 
 export const createUploadSession = Effect.fn("agent/createUploadSession")(function* (payload: {
   userId: UserId;
@@ -39,5 +40,6 @@ export const createUploadSession = Effect.fn("agent/createUploadSession")(functi
     { concurrency: "unbounded" },
   );
 
+  yield* Metric.update(sessionCreatedCounter, 1);
   return { sessionId: session.id, uploads };
 });

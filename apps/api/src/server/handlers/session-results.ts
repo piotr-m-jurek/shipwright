@@ -25,7 +25,7 @@ export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
       Effect.gen(function* () {
         const result = yield* pipe(
           submitAnswers(sessionId, [...answers]),
-          Effect.mapError(() => new AnalysisPipelineError()),
+          Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
         );
         return new PostAgentSessionAnswersResponse({
           sufficient: result.sufficient,

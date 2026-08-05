@@ -27,10 +27,16 @@
  * Postgres errors are unexpected infrastructure failures and are treated as
  * defects (Effect.orDie). Only `DeliveryTagNotFoundError` is a typed error.
  */
-import { Context, Effect, Fiber, FiberSet, Layer, Option, Queue, Schema, pipe } from "effect";
+import { Context, Effect, Fiber, FiberSet, Layer, Metric, Option, Queue, Schema, pipe } from "effect";
 import { and, eq, isNull, lte, or } from "drizzle-orm";
 import { DB } from "../db/index.js";
 import { queueMessages } from "./schema.js";
+
+// ─── Metrics ─────────────────────────────────────────────────────────────────
+
+export const deadLetteredCounter = Metric.counter("shipwright.queue.dead_lettered", {
+  description: "Number of queue messages dead-lettered after exhausting retries",
+});
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
@@ -273,6 +279,15 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
         const nextAttempts = msg.attempts + 1;
         const shouldRequeue = (opts.requeue ?? true) && nextAttempts < msg.maxAttempts;
         if (!shouldRequeue) {
+          yield* Effect.logError("queue: message dead-lettered").pipe(
+            Effect.annotateLogs({
+              messageId: messageId.value,
+              queue: msg.queue,
+              routingKey: msg.routingKey ?? undefined,
+              attempts: nextAttempts,
+            }),
+          );
+          yield* Metric.update(deadLetteredCounter, 1);
           yield* db
             .update(queueMessages)
             // deliveryTag: undefined is Drizzle's convention for "set column to NULL"

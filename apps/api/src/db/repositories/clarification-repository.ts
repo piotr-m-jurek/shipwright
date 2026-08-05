@@ -36,11 +36,13 @@ export class ClarificationRepository extends Context.Service<ClarificationReposi
       });
 
       const getQuestionsBySessionId = Effect.fn("db/getQuestionsBySessionId")(function* (sessionId: AgentSessionId) {
-        return yield* db
+        const rows = yield* db
           .select()
           .from(questions)
           .where(eq(questions.sessionId, sessionId))
           .orderBy(asc(questions.orderIndex));
+        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        return rows;
       });
 
       const createAnswers = Effect.fn("db/createAnswers")(function* (data: AnswerInsert[]) {
@@ -49,7 +51,9 @@ export class ClarificationRepository extends Context.Service<ClarificationReposi
       });
 
       const getAnswersBySessionId = Effect.fn("db/getAnswersBySessionId")(function* (sessionId: AgentSessionId) {
-        return yield* db.select().from(answers).where(eq(answers.sessionId, sessionId));
+        const rows = yield* db.select().from(answers).where(eq(answers.sessionId, sessionId));
+        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        return rows;
       });
 
       return {

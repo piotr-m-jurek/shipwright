@@ -8,7 +8,7 @@ export class AgentSessionNotFound extends Schema.TaggedErrorClass<
 export class CreateAgentSessionError extends Schema.TaggedErrorClass<
   CreateAgentSessionError,
   { readonly brand: unique symbol }
->()("CreateAgentSessionError", {}, { httpApiStatus: 500 }) {}
+>()("CreateAgentSessionError", { cause: Schema.optional(Schema.Defect()) }, { httpApiStatus: 500 }) {}
 
 export class MissingUploads extends Schema.TaggedErrorClass<
   MissingUploads,
@@ -28,12 +28,12 @@ export class SessionStateError extends Schema.TaggedErrorClass<
 export class AnalysisPipelineError extends Schema.TaggedErrorClass<
   AnalysisPipelineError,
   { readonly brand: unique symbol }
->()("AnalysisPipelineError", {}, { httpApiStatus: 500 }) {}
+>()("AnalysisPipelineError", { cause: Schema.optional(Schema.Defect()) }, { httpApiStatus: 500 }) {}
 
 export class ConfirmAnalysisError extends Schema.TaggedErrorClass<
   ConfirmAnalysisError,
   { readonly brand: unique symbol }
->()("ConfirmAnalysisError", {}, { httpApiStatus: 500 }) {}
+>()("ConfirmAnalysisError", { cause: Schema.optional(Schema.Defect()) }, { httpApiStatus: 500 }) {}
 
 export class OutputNotFoundError extends Schema.TaggedErrorClass<
   OutputNotFoundError,
@@ -44,3 +44,8 @@ export class RevisionError extends Schema.TaggedErrorClass<
   RevisionError,
   { readonly brand: unique symbol }
 >()("RevisionError", {}, { httpApiStatus: 500 }) {}
+
+export class ServiceUnavailableError extends Schema.TaggedErrorClass<
+  ServiceUnavailableError,
+  { readonly brand: unique symbol }
+>()("ServiceUnavailableError", { message: Schema.String }, { httpApiStatus: 503 }) {}

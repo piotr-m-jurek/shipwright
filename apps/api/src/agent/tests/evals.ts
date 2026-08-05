@@ -31,11 +31,11 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../../../");
 
-import { Effect, Layer, ManagedRuntime, Option, pipe, Schema, Stream } from "effect";
+import { Effect, Layer, ManagedRuntime, Option, pipe, Schema } from "effect";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { DB, AppDBLiveLayer } from "../../db/index.js";
 import { users } from "../../db/schema.js";
-import { LanguageModel, Prompt, Response } from "effect/unstable/ai";
+import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
 
 import { runChallenger } from "../writers/challenger.ts";
@@ -47,10 +47,12 @@ import { DocumentRepository } from "../../db/repositories/document-repository.ts
 import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
 import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
 import { OutputRepository } from "../../db/repositories/output-repository.ts";
+import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
 import { StorageAdapter } from "../../storage/index.js";
 import { ConfigService } from "../../config/config.js";
 import type { GapReportEffect } from "../schemas.js";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
+import type { QuestionSelect, AnswerSelect } from "../../db/types.ts";
 import { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 import {
@@ -62,7 +64,7 @@ import {
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, OutputRepository.layer),
+    Layer.mergeAll(StorageAdapter.layer, AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, OutputRepository.layer, ClarificationRepository.layer),
     Layer.provideMerge(AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
@@ -111,7 +113,7 @@ function fail(label: string) {
 }
 
 async function runEffect<A>(
-  effect: Effect.Effect<A, any, AgentSessionRepository | DocumentRepository | ChunkRepository | SummaryRepository | OutputRepository | StorageAdapter>,
+  effect: Effect.Effect<A, any, AgentSessionRepository | DocumentRepository | ChunkRepository | SummaryRepository | OutputRepository | StorageAdapter | ClarificationRepository>,
 ): Promise<A> {
   return runtime.runPromise(effect);
 }
@@ -291,28 +293,24 @@ const FaithfulnessJudgeSystemPrompt = `You are an independent requirements audit
 You will receive:
 1. A Project Brief produced by an AI agent
 2. The source document summaries the Brief was generated from
+3. The clarifying questions asked during the session and the user's answers
 
-Your job: identify any requirements, constraints, decisions, or claims in the Brief that are NOT traceable to the source summaries. These are hallucinations.
+Your job: identify any requirements, constraints, decisions, or claims in the Brief that are NOT traceable to either the source summaries OR the clarifying Q&A answers.
 
 A claim is faithful if:
 - It appears in at least one source summary's requirements, constraints, assumptions, or prose
-- It is a reasonable synthesis of multiple source claims (cite both)
+- It is a reasonable synthesis of multiple source claims
 - It explicitly says something is unclear or unknown
+- It reflects a decision made explicitly in the clarifying Q&A answers — user answers are authoritative and may override or resolve conflicts between source documents
 
 A claim is hallucinated if:
-- It is specific (a number, a technology, a deadline, a policy) but not present in any source
-- It contradicts source material
+- It is specific (a number, a technology, a deadline, a policy) but not present in any source OR in any clarifying answer
+- It contradicts source material AND was not resolved by a clarifying answer
 
 Score 0.0–1.0 where 1.0 = completely faithful, 0.0 = heavily hallucinated.
-Pass threshold: score >= 0.9
+Pass threshold: score >= 0.9`;
 
-Respond with JSON matching exactly this structure:
-{
-  "hallucinatedRequirements": [{ "text": "...", "reason": "..." }],
-  "result": { "score": 0.0-1.0, "reasoning": "...", "pass": true/false, "citations": [] }
-}`;
-
-async function runPartB(briefText: string, summaries: DocumentSummary[]): Promise<boolean> {
+async function runPartB(briefText: string, summaries: DocumentSummary[], questions: QuestionSelect[], answers: AnswerSelect[]): Promise<boolean> {
   console.log("\n── Part B: Faithfulness eval (LLM-as-judge) ───────────────");
 
   const summaryContext = summaries
@@ -326,34 +324,28 @@ async function runPartB(briefText: string, summaries: DocumentSummary[]): Promis
     })
     .join("\n\n");
 
-  const userContent = `## Source Document Summaries\n\n${summaryContext}\n\n## Project Brief to Evaluate\n\n${briefText}`;
+  const qaContext = questions.length > 0
+    ? questions.map((q) => {
+        const answer = answers.find((a) => a.questionId === q.id);
+        return `Q: ${q.text}\nA: ${answer?.text ?? "(no answer provided)"}`;
+      }).join("\n\n")
+    : "(no clarifying questions were asked in this session)";
 
-  const judgeEffect = LanguageModel.streamText({
+  const userContent = `## Source Document Summaries\n\n${summaryContext}\n\n## Clarifying Q&A\n\n${qaContext}\n\n## Project Brief to Evaluate\n\n${briefText}`;
+
+  const judgeEffect = LanguageModel.generateObject({
+    schema: FaithfulnessEvalSchema,
     prompt: Prompt.make([
       { role: "system", content: FaithfulnessJudgeSystemPrompt },
       { role: "user", content: userContent },
     ]),
-  }).pipe(
-    Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
-    Stream.map((part) => part.delta),
-    Stream.runFold(
-      () => "",
-      (acc, delta) => acc + delta,
-    ),
-  );
+  });
 
-  const rawJson = await runtime.runPromise(
+  const response = await runtime.runPromise(
     judgeEffect.pipe(Effect.provide(AnthropicSonnetModelLayer), Effect.provide(AnthropicClientLayer)),
   );
 
-  // Strip markdown code fences if present
-  const json = rawJson
-    .replace(/^```(?:json)?\n?/, "")
-    .replace(/\n?```$/, "")
-    .trim();
-
-  const decode = Schema.decodeUnknownSync(FaithfulnessEvalSchema);
-  const parsed = decode(JSON.parse(json));
+  const parsed = response.value;
 
   if (parsed.hallucinatedRequirements.length > 0) {
     console.log("  Hallucinations found:");
@@ -378,6 +370,7 @@ const CompletenessJudgeSystemPrompt = `You are an independent requirements audit
 You will receive:
 1. An Implementation PRD produced by an AI agent (written for a coding agent, not a human)
 2. The source document summaries the PRD was generated from
+3. The clarifying questions asked during the session and the user's answers
 
 Your job: identify important requirements, constraints, or assumptions from the source summaries that are NOT reflected anywhere in the PRD.
 
@@ -389,6 +382,7 @@ An item is "dropped" if:
 Do NOT flag:
 - Items that are explicitly listed as out of scope
 - Items that are synthesised into more general PRD requirements
+- Items explicitly deferred or resolved differently by the clarifying Q&A answers — user answers are authoritative
 - Style or formatting differences
 
 Score 0.0–1.0 where 1.0 = fully complete, 0.0 = critical items missing.
@@ -400,7 +394,7 @@ Respond with JSON matching exactly this structure:
   "result": { "score": 0.0-1.0, "reasoning": "...", "pass": true/false, "citations": [] }
 }`;
 
-async function runPartC(prdText: string, summaries: DocumentSummary[]): Promise<boolean> {
+async function runPartC(prdText: string, summaries: DocumentSummary[], questions: QuestionSelect[], answers: AnswerSelect[]): Promise<boolean> {
   console.log("\n── Part C: Completeness eval (LLM-as-judge) ────────────────");
 
   const summaryContext = summaries
@@ -414,32 +408,28 @@ async function runPartC(prdText: string, summaries: DocumentSummary[]): Promise<
     })
     .join("\n\n");
 
-  const userContent = `## Source Document Summaries\n\n${summaryContext}\n\n## Implementation PRD to Evaluate\n\n${prdText}`;
+  const qaContext = questions.length > 0
+    ? questions.map((q) => {
+        const answer = answers.find((a) => a.questionId === q.id);
+        return `Q: ${q.text}\nA: ${answer?.text ?? "(no answer provided)"}`;
+      }).join("\n\n")
+    : "(no clarifying questions were asked in this session)";
 
-  const judgeEffect = LanguageModel.streamText({
+  const userContent = `## Source Document Summaries\n\n${summaryContext}\n\n## Clarifying Q&A\n\n${qaContext}\n\n## Implementation PRD to Evaluate\n\n${prdText}`;
+
+  const judgeEffect = LanguageModel.generateObject({
+    schema: CompletenessEvalSchema,
     prompt: Prompt.make([
       { role: "system", content: CompletenessJudgeSystemPrompt },
       { role: "user", content: userContent },
     ]),
-  }).pipe(
-    Stream.filter((part): part is Response.TextDeltaPart => part.type === "text-delta"),
-    Stream.map((part) => part.delta),
-    Stream.runFold(
-      () => "",
-      (acc, delta) => acc + delta,
-    ),
-  );
+  });
 
-  const rawJson = await runtime.runPromise(
+  const response = await runtime.runPromise(
     judgeEffect.pipe(Effect.provide(AnthropicSonnetModelLayer), Effect.provide(AnthropicClientLayer)),
   );
 
-  const json = rawJson
-    .replace(/^```(?:json)?\n?/, "")
-    .replace(/\n?```$/, "")
-    .trim();
-  const decode = Schema.decodeUnknownSync(CompletenessEvalSchema);
-  const parsed = decode(JSON.parse(json));
+  const parsed = response.value;
 
   if (parsed.droppedItems.length > 0) {
     console.log("  Dropped items:");
@@ -490,27 +480,36 @@ async function main() {
     } else {
       console.log(`  Using session: ${existingSessionId}`);
 
-      const [briefRow, prdRow, summaries] = await Promise.all([
+      const sessionId = AgentSessionId.make(existingSessionId);
+      const [briefRow, prdRow, summaries, sessionQuestions, sessionAnswers] = await Promise.all([
         runEffect(
           Effect.flatMap(OutputRepository, (db) =>
-            db.getLatestOutputByType({ sessionId: AgentSessionId.make(existingSessionId), type: "project_brief" }),
+            db.getLatestOutputByType({ sessionId, type: "project_brief" }),
           ).pipe(Effect.map(Option.getOrUndefined)),
         ),
         runEffect(
           Effect.flatMap(OutputRepository, (db) =>
-            db.getLatestOutputByType({ sessionId: AgentSessionId.make(existingSessionId), type: "implementation_prd" }),
+            db.getLatestOutputByType({ sessionId, type: "implementation_prd" }),
           ).pipe(Effect.map(Option.getOrUndefined)),
         ),
         runEffect(
-          Effect.flatMap(SummaryRepository, (db) => db.getFinalSummariesBySession(AgentSessionId.make(existingSessionId))),
+          Effect.flatMap(SummaryRepository, (db) => db.getFinalSummariesBySession(sessionId)),
+        ),
+        runEffect(
+          Effect.flatMap(ClarificationRepository, (db) => db.getQuestionsBySessionId(sessionId)),
+        ),
+        runEffect(
+          Effect.flatMap(ClarificationRepository, (db) => db.getAnswersBySessionId(sessionId)),
         ),
       ]);
+
+      console.log(`  Found ${sessionQuestions.length} questions, ${sessionAnswers.length} answers`);
 
       if (!briefRow?.content) {
         fail("No project_brief output found for this session");
         results.push({ part: "B — faithfulness", passed: false });
       } else {
-        const partBPassed = await runPartB(briefRow.content, summaries);
+        const partBPassed = await runPartB(briefRow.content, summaries, sessionQuestions, sessionAnswers);
         results.push({ part: "B — faithfulness", passed: partBPassed });
       }
 
@@ -518,7 +517,7 @@ async function main() {
         fail("No implementation_prd output found for this session");
         results.push({ part: "C — completeness", passed: false });
       } else {
-        const partCPassed = await runPartC(prdRow.content, summaries);
+        const partCPassed = await runPartC(prdRow.content, summaries, sessionQuestions, sessionAnswers);
         results.push({ part: "C — completeness", passed: partCPassed });
       }
     }

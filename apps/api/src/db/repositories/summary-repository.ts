@@ -156,7 +156,9 @@ export class SummaryRepository extends Context.Service<SummaryRepository, Interf
           )
           .orderBy(asc(summaryItems.summaryId), asc(summaryItems.orderIndex));
 
-        return reconstructSummaries(summaryRows, itemRows);
+        const result = reconstructSummaries(summaryRows, itemRows);
+        yield* Effect.annotateCurrentSpan({ "db.row_count": result.length });
+        return result;
       });
 
       return {

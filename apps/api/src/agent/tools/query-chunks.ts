@@ -60,6 +60,11 @@ export const makeQueryChunksLayer = (sessionId: AgentSessionId) =>
             const limit = rawLimit ?? 5;
           const embedding = yield* pipe(
             chunkster.embedText(query),
+            Effect.tapError((cause) =>
+              Effect.logError("query-chunks: embedding failed, falling back to empty results").pipe(
+                Effect.annotateLogs({ sessionId, query, cause: String(cause) }),
+              ),
+            ),
             Effect.catch(() => Effect.succeed([])),
           );
 

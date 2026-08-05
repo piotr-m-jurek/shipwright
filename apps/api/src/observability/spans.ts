@@ -14,6 +14,18 @@ export const Spans = {
     "shipwright.session.id": sessionId,
   }),
 
+  llm: (opts: {
+    model: string | undefined;
+    inputTokens: number | undefined;
+    outputTokens: number | undefined;
+    cacheReadTokens?: number | undefined;
+  }) => ({
+    ...optionalAttr("llm.model", opts.model),
+    ...optionalAttr("llm.input_tokens", opts.inputTokens),
+    ...optionalAttr("llm.output_tokens", opts.outputTokens),
+    ...optionalAttr("llm.cache_read_tokens", opts.cacheReadTokens),
+  }),
+
   document: (opts: { filename: string; id?: DocumentId }) => ({
     "shipwright.document.filename": opts.filename,
     ...optionalAttr("shipwright.document.id", opts.id),

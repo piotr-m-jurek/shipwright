@@ -1,10 +1,16 @@
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Ref, Schema, Stream } from "effect";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Spans } from "../../observability/spans.ts";
+
+type LlmFinishCapture = {
+  modelId: string | undefined;
+  inputTokens: number | undefined;
+  outputTokens: number | undefined;
+  cacheReadTokens: number | undefined;
+};
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
-import { makeQueryChunksLayer, QueryChunksToolkit } from "../tools/query-chunks.ts";
 
 export class RevisionWriterError extends Schema.TaggedErrorClass<RevisionWriterError>()(
   "shipwright/agent/RevisionWriterError",
@@ -28,7 +34,7 @@ RULES:
 4. Cite sources for any new claims you add
 5. Maintain the same Markdown section structure as the original
 
-TOOL USE: You have access to a query_chunks tool. If the feedback references a specific area (e.g. "the auth section needs more detail"), call query_chunks with a targeted query before revising that section. Use it to verify claims against source material before adding them.`;
+`;
 
 const RevisionPrdSystemPrompt = `You are revising an existing Implementation PRD based on user feedback.
 
@@ -47,7 +53,7 @@ RULES:
 4. Maintain the same Markdown section structure as the original
 5. Update acceptance criteria to reflect any changed scope
 
-TOOL USE: You have access to a query_chunks tool. If the feedback references a specific area (e.g. "the auth section needs more detail"), call query_chunks with a targeted query before revising that section. Use it to verify claims against source material before adding them.`;
+`;
 
 function formatRevisionInput(
   summaries: DocumentSummary[],
@@ -80,16 +86,16 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
     existingBrief: string,
     existingPrd: string,
     feedback: string,
-    sessionId: AgentSessionId,
+    _sessionId: AgentSessionId,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-revision-brief"),
       ...Spans.counts({ documents: summaries.length, feedbackLength: feedback.length }),
     });
     const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
+    const finishRef = yield* Ref.make<LlmFinishCapture | undefined>(undefined);
 
     return yield* LanguageModel.streamText({
-      toolkit: QueryChunksToolkit,
       prompt: [
         { role: "system", content: RevisionBriefSystemPrompt },
         {
@@ -104,7 +110,22 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
         },
       ],
     }).pipe(
-      Stream.provide(makeQueryChunksLayer(sessionId)),
+      Stream.tap((part) => {
+        if (part.type === "finish") {
+          return Ref.set(finishRef, {
+            modelId: undefined,
+            inputTokens: part.usage.inputTokens.total,
+            outputTokens: part.usage.outputTokens.total,
+            cacheReadTokens: part.usage.inputTokens.cacheRead,
+          });
+        }
+        if (part.type === "response-metadata") {
+          return Ref.update(finishRef, (prev) =>
+            prev ? { ...prev, modelId: part.modelId } : { modelId: part.modelId, inputTokens: undefined, outputTokens: undefined, cacheReadTokens: undefined },
+          );
+        }
+        return Effect.void;
+      }),
       Stream.filter((part) => part.type === "text-delta"),
       Stream.map((part) => part.delta),
       Stream.runFold(
@@ -113,6 +134,20 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
       ),
       Effect.tap((text) =>
         Effect.annotateCurrentSpan({ "shipwright.output.chars": text.length }),
+      ),
+      Effect.tap(() =>
+        Effect.flatMap(Ref.get(finishRef), (finish) =>
+          finish
+            ? Effect.annotateCurrentSpan(
+                Spans.llm({
+                  model: finish.modelId,
+                  inputTokens: finish.inputTokens,
+                  outputTokens: finish.outputTokens,
+                  cacheReadTokens: finish.cacheReadTokens,
+                }),
+              )
+            : Effect.void,
+        ),
       ),
       Effect.mapError((cause) => new RevisionWriterError({ cause })),
     );
@@ -127,16 +162,16 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
     existingBrief: string,
     existingPrd: string,
     feedback: string,
-    sessionId: AgentSessionId,
+    _sessionId: AgentSessionId,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-revision-prd"),
       ...Spans.counts({ documents: summaries.length, feedbackLength: feedback.length }),
     });
     const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
+    const finishRef = yield* Ref.make<LlmFinishCapture | undefined>(undefined);
 
     return yield* LanguageModel.streamText({
-      toolkit: QueryChunksToolkit,
       prompt: [
         { role: "system", content: RevisionPrdSystemPrompt },
         {
@@ -151,7 +186,22 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
         },
       ],
     }).pipe(
-      Stream.provide(makeQueryChunksLayer(sessionId)),
+      Stream.tap((part) => {
+        if (part.type === "finish") {
+          return Ref.set(finishRef, {
+            modelId: undefined,
+            inputTokens: part.usage.inputTokens.total,
+            outputTokens: part.usage.outputTokens.total,
+            cacheReadTokens: part.usage.inputTokens.cacheRead,
+          });
+        }
+        if (part.type === "response-metadata") {
+          return Ref.update(finishRef, (prev) =>
+            prev ? { ...prev, modelId: part.modelId } : { modelId: part.modelId, inputTokens: undefined, outputTokens: undefined, cacheReadTokens: undefined },
+          );
+        }
+        return Effect.void;
+      }),
       Stream.filter((part) => part.type === "text-delta"),
       Stream.map((part) => part.delta),
       Stream.runFold(
@@ -160,6 +210,20 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
       ),
       Effect.tap((text) =>
         Effect.annotateCurrentSpan({ "shipwright.output.chars": text.length }),
+      ),
+      Effect.tap(() =>
+        Effect.flatMap(Ref.get(finishRef), (finish) =>
+          finish
+            ? Effect.annotateCurrentSpan(
+                Spans.llm({
+                  model: finish.modelId,
+                  inputTokens: finish.inputTokens,
+                  outputTokens: finish.outputTokens,
+                  cacheReadTokens: finish.cacheReadTokens,
+                }),
+              )
+            : Effect.void,
+        ),
       ),
       Effect.mapError((cause) => new RevisionWriterError({ cause })),
     );

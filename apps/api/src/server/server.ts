@@ -25,6 +25,7 @@ import { SessionResults } from "./handlers/session-results.ts";
 import { PublicApi } from "./handlers/public.ts";
 import { MessageQueue } from "../queue/index.ts";
 import { JobHandlers } from "../queue/job-handlers.ts";
+import { RequestLoggingMiddlewareLayer } from "../observability/http-middleware.ts";
 
 export const ApiLayer = pipe(
   HttpApiBuilder.layer(Api, { openapiPath: "/opencode.json" }),
@@ -60,6 +61,7 @@ const AllRoutesLayer = Layer.mergeAll(
   DocsLayer,
   StaticFilesLayer,
   CorsLayer,
+  RequestLoggingMiddlewareLayer,
 );
 
 const OtlpLayerProvided = pipe(
@@ -97,8 +99,19 @@ const ServiceLayer = pipe(
   Layer.provideMerge(AppDBLiveLayer),
 );
 
+const StartupLayer = Layer.effectDiscard(
+  Effect.gen(function* () {
+    yield* Effect.logInfo("Server starting").pipe(
+      Effect.annotateLogs({ port: 3000, env: process.env.NODE_ENV ?? "development" }),
+    );
+    yield* Effect.addFinalizer(() =>
+      Effect.logInfo("Server shutting down"),
+    );
+  }),
+);
+
 pipe(
-  HttpRouter.serve(AllRoutesLayer),
+  HttpRouter.serve(Layer.merge(AllRoutesLayer, StartupLayer)),
   Layer.provideMerge(ServiceLayer),
   Layer.launch,
   NodeRuntime.runMain,

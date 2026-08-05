@@ -1,5 +1,6 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { Effect, Exit, Option } from "effect";
+import { Clock, Effect, Exit, Metric, Option } from "effect";
+import { sessionErrorCounter, pipelineDurationHistogram } from "../../observability/metrics.ts";
 import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
 import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
 import { getOrRestoreActor } from "../session-actor.js";
@@ -86,9 +87,16 @@ const runSessionWorkflowInner = Effect.fn("agent/runSessionWorkflow")(function* 
 });
 
 export const runSessionWorkflow = (sessionId: AgentSessionId) =>
-  runSessionWorkflowInner(sessionId).pipe(
-    Effect.tapCause((cause) =>
-      Effect.gen(function* () {
+  Effect.gen(function* () {
+    const startMs = yield* Clock.currentTimeMillis;
+    const result = yield* Effect.exit(runSessionWorkflowInner(sessionId));
+    const durationMs = (yield* Clock.currentTimeMillis) - startMs;
+    yield* Metric.update(pipelineDurationHistogram, durationMs);
+
+    if (Exit.isFailure(result)) {
+      yield* Metric.update(sessionErrorCounter, 1);
+      yield* Effect.gen(function* () {
+        const cause = result.cause;
         yield* Effect.logError("[runSessionWorkflow] analysis pipeline failed").pipe(
           Effect.annotateLogs({ sessionId }),
           Effect.andThen(Effect.logError(cause)),
@@ -105,7 +113,8 @@ export const runSessionWorkflow = (sessionId: AgentSessionId) =>
           const agentSessionDb = yield* AgentSessionRepository;
           yield* agentSessionDb.updateAgentSession(sessionId, "error");
         }
-      }),
-    ),
-    Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
-  );
+      });
+      return yield* result;
+    }
+    return result.value;
+  }).pipe(Effect.mapError((cause) => new AnalysisPipelineError({ cause })));

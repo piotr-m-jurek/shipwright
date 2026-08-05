@@ -2,7 +2,8 @@ import { StorageAdapter } from "../../storage/index.ts";
 import { parseDocument } from "../parsers.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { chunkDocument } from "../lib/chunker.ts";
-import { Effect, Option, Schema, Array, pipe } from "effect";
+import { Effect, Metric, Option, Schema, Array, pipe } from "effect";
+import { documentParseErrorCounter } from "../../observability/metrics.ts";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
 import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
 import { DocumentRepository } from "../../db/repositories/document-repository.ts";
@@ -112,7 +113,12 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
               Effect.andThen(Effect.logError(cause)),
             ),
           ),
-          Effect.tapError(() => documentDb.updateDocumentStatus(doc.id, "error")),
+          Effect.tapError(() =>
+            Effect.all([
+              documentDb.updateDocumentStatus(doc.id, "error"),
+              Metric.update(documentParseErrorCounter, 1),
+            ]),
+          ),
           Effect.withSpan("agent/process-document", {
             attributes: {
               "shipwright.document.id": doc.id,

@@ -1,11 +1,10 @@
-import { Array, Effect, Filter, Option, pipe, Schema, Stream } from "effect";
+import { Array, Effect, Filter, Option, pipe, Ref, Schema, Stream } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
-import { makeQueryChunksLayer, QueryChunksToolkit } from "../tools/query-chunks.ts";
 
 export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(
   "shipwright/agent/BriefWriterError",
@@ -31,9 +30,7 @@ Structure (use these Markdown headings):
 ## Resolved Decisions
 ## Next Steps
 
-ANTI-HALLUCINATION RULE: Do not include any requirement, constraint, or decision not present in the provided summaries or answers. If something is unclear, say it is unclear — do not invent clarity.
-
-TOOL USE: You have access to a query_chunks tool. Use it when you need more detail on a specific area not covered in the summaries, or to verify a claim against source material before including it.`;
+ANTI-HALLUCINATION RULE: Do not include any requirement, constraint, or decision not present in the provided summaries or answers. If something is unclear, say it is unclear — do not invent clarity.`;
 
 function formatSummariesForBrief(
   summaries: DocumentSummary[],
@@ -76,7 +73,7 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
     summaries: DocumentSummary[],
     answers: MachineContext["answers"],
     questions: MachineContext["questions"],
-    sessionId: AgentSessionId,
+    _sessionId: AgentSessionId,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-brief"),
@@ -85,8 +82,9 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
 
     const userContent = formatSummariesForBrief(summaries, answers, questions);
 
+    const finishRef = yield* Ref.make<{ modelId: string | undefined; inputTokens: number | undefined; outputTokens: number | undefined; cacheReadTokens: number | undefined } | undefined>(undefined);
+
     return yield* LanguageModel.streamText({
-      toolkit: QueryChunksToolkit,
       prompt: [
         { role: "system", content: BriefSystemPrompt },
         {
@@ -102,7 +100,22 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
         },
       ],
     }).pipe(
-      Stream.provide(makeQueryChunksLayer(sessionId)),
+      Stream.tap((part) => {
+        if (part.type === "finish") {
+          return Ref.set(finishRef, {
+            modelId: undefined,
+            inputTokens: part.usage.inputTokens.total,
+            outputTokens: part.usage.outputTokens.total,
+            cacheReadTokens: part.usage.inputTokens.cacheRead,
+          });
+        }
+        if (part.type === "response-metadata") {
+          return Ref.update(finishRef, (prev) =>
+            prev ? { ...prev, modelId: part.modelId } : { modelId: part.modelId, inputTokens: undefined, outputTokens: undefined, cacheReadTokens: undefined },
+          );
+        }
+        return Effect.void;
+      }),
       Stream.filter((part) => part.type === "text-delta"),
       Stream.map((part) => part.delta),
       Stream.runFold(
@@ -111,6 +124,20 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
       ),
       Effect.tap((text) =>
         Effect.annotateCurrentSpan({ "shipwright.output.chars": text.length }),
+      ),
+      Effect.tap(() =>
+        Effect.flatMap(Ref.get(finishRef), (finish) =>
+          finish
+            ? Effect.annotateCurrentSpan(
+                Spans.llm({
+                  model: finish.modelId,
+                  inputTokens: finish.inputTokens,
+                  outputTokens: finish.outputTokens,
+                  cacheReadTokens: finish.cacheReadTokens,
+                }),
+              )
+            : Effect.void,
+        ),
       ),
       Effect.mapError((cause) => new BriefWriterError({ cause })),
     );

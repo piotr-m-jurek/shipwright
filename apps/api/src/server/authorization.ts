@@ -21,7 +21,9 @@ export const AuthorizationLayer = Layer.succeed(
         if (!session) {
           return yield* new Unauthorized({ message: "Invalid or missing session" });
         }
-        yield* Effect.logInfo("auth: providing CurrentUser");
+        yield* Effect.logDebug("auth: providing CurrentUser").pipe(
+          Effect.annotateLogs({ userId: session.user.id }),
+        );
 
         return yield* Effect.provideService(httpEffect, CurrentUser, {
           id: UserId.make(session.user.id),

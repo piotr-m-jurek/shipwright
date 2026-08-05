@@ -211,7 +211,7 @@ export const runReducePass = Effect.fn("agent/runReducePass")(
     });
     const userContent = formatChunk(current, chunk, sourceDocument);
 
-    const { value } = yield* pipe(
+    const response = yield* pipe(
       LanguageModel.generateObject({
         schema: DocumentSummaryEffectSchema,
         prompt: Prompt.make([
@@ -222,7 +222,17 @@ export const runReducePass = Effect.fn("agent/runReducePass")(
       Effect.mapError((cause) => new TextGenerationError({ cause })),
     );
 
-    return value;
+    const modelId = response.content.find((p) => p.type === "response-metadata")?.modelId;
+    yield* Effect.annotateCurrentSpan(
+      Spans.llm({
+        model: modelId,
+        inputTokens: response.usage.inputTokens.total,
+        outputTokens: response.usage.outputTokens.total,
+        cacheReadTokens: response.usage.inputTokens.cacheRead,
+      }),
+    );
+
+    return response.value;
   },
   Effect.provide(AnthropicHaikuModelLayer),
   Effect.provide(AnthropicClientLayer),
