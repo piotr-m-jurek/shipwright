@@ -15,6 +15,7 @@ import {
   ReviseResponse,
   GetHealthResponse,
   RetrySessionResponse,
+  GetSessionDebugResponse,
 } from "../schemas/api.js";
 import {
   CreateAgentSessionError,
@@ -77,6 +78,11 @@ export class SessionComputationApi extends HttpApiGroup.make("compute")
       params: { sessionId: AgentSessionId },
       success: ConfirmAnalysisResponse,
       error: ConfirmAnalysisError,
+    }),
+    HttpApiEndpoint.get("getSessionDebug", "/sessions/:sessionId/debug", {
+      params: { sessionId: AgentSessionId },
+      success: GetSessionDebugResponse,
+      error: AgentSessionNotFound,
     }),
   )
 

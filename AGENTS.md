@@ -209,6 +209,29 @@ what to re-read.
 
 ---
 
+## Debugging a live session
+
+When investigating a stuck or misbehaving session, use the debug endpoint to inspect all internals in one call:
+
+```
+GET http://localhost:3000/api/sessions/:sessionId/debug
+Cookie: better-auth.session_token=<token>
+```
+
+Returns:
+- `session` — DB status, createdAt, updatedAt
+- `xstate` — XState context: current state value, round, inputMode, outputVersion, counts of summaries/questions/answers, revisionFeedback, plus full `raw` snapshot
+- `queue` — all `queue_messages` rows for this session (pending, processing, done, dead) ordered by createdAt
+- `documents` — per-document status, mimeType, sizeBytes, tokenCount
+- `questions` / `answers` — current clarification state
+- `outputs` — type, version, contentLength (not full content)
+
+`xstate.value` should match `session.status` in the normal case. A mismatch is itself a diagnostic signal.
+
+To get a session token for local testing: log in via `http://localhost:3001` (Langfuse), then inspect the `better-auth.session_token` cookie on `localhost:3000` requests in the browser.
+
+---
+
 <!-- effect-solutions:start -->
 ## Effect Best Practices
 
