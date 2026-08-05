@@ -3,6 +3,7 @@ import { parseDocument } from "../parsers.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { chunkDocument } from "../lib/chunker.ts";
 import { Effect, Option, Schema, Array, pipe } from "effect";
+import { SqlClient } from "effect/unstable/sql/SqlClient";
 import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
 import { DocumentRepository } from "../../db/repositories/document-repository.ts";
 import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
@@ -11,7 +12,6 @@ import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { EmbeddingService } from "../embedding-service.js";
 import { MessageQueue } from "../../queue/index.ts";
-
 
 // TODO: actually throw those errors, not DB errors
 export class DocumentNotFoundError extends Schema.TaggedErrorClass<DocumentNotFoundError>()(
@@ -46,6 +46,7 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
 
   const storage = yield* StorageAdapter;
   const chunkerton = yield* EmbeddingService;
+  const sql = yield* SqlClient;
   const agentSessionDb = yield* AgentSessionRepository;
   const documentDb = yield* DocumentRepository;
   const chunkDb = yield* ChunkRepository;
@@ -53,9 +54,9 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
     uploads,
     (upload) =>
       Effect.gen(function* () {
-        const doc = yield* documentDb.getDocumentById(upload.documentId).pipe(
-          Effect.map(Option.getOrThrow),
-        );
+        const doc = yield* documentDb
+          .getDocumentById(upload.documentId)
+          .pipe(Effect.map(Option.getOrThrow));
 
         const processDoc = Effect.gen(function* () {
           yield* documentDb.updateDocumentStatus(doc.id, "processing");
@@ -65,8 +66,15 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
           const chunks = chunkDocument(parsed);
           const tokenCount = estimateTokenCount(parsed.text);
 
-          yield* Effect.logInfo(`[processUploadedDocuments] ${doc.filename}: ${chunks.length} chunks, ${tokenCount} tokens`).pipe(
-            Effect.annotateLogs({ documentId: doc.id, sessionId, chunkCount: chunks.length, tokenCount }),
+          yield* Effect.logInfo(
+            `[processUploadedDocuments] ${doc.filename}: ${chunks.length} chunks, ${tokenCount} tokens`,
+          ).pipe(
+            Effect.annotateLogs({
+              documentId: doc.id,
+              sessionId,
+              chunkCount: chunks.length,
+              tokenCount,
+            }),
           );
           yield* Effect.annotateCurrentSpan({
             "shipwright.chunk.count": chunks.length,
@@ -76,20 +84,24 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
           const embeddings = yield* chunkerton.embedChunks(chunks.map((ch) => ch.content));
           const zipped = Array.zip(chunks, embeddings);
 
-          yield* chunkDb.createChunks(
-            zipped.map(([chunk, embedding], index) => ({
-              sessionId,
-              documentId: doc.id,
-              embedding: [...embedding],
-              chunkIndex: ChunkIndex.make(index),
-              content: chunk?.content ?? "",
-              charOffset: chunk?.charOffset,
-              pageNumber: chunk?.pageNumber,
-              headingPath: chunk?.headingPath,
-            })),
+          yield* pipe(
+            Effect.gen(function* () {
+              yield* chunkDb.createChunks(
+                zipped.map(([chunk, embedding], index) => ({
+                  sessionId,
+                  documentId: doc.id,
+                  embedding: [...embedding],
+                  chunkIndex: ChunkIndex.make(index),
+                  content: chunk?.content ?? "",
+                  charOffset: chunk?.charOffset,
+                  pageNumber: chunk?.pageNumber,
+                  headingPath: chunk?.headingPath,
+                })),
+              );
+              yield* documentDb.updateDocument(doc.id, { tokenCount, status: "ready" });
+            }),
+            sql.withTransaction,
           );
-
-          yield* documentDb.updateDocument(doc.id, { tokenCount, status: "ready" });
         });
 
         yield* pipe(

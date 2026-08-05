@@ -12,6 +12,7 @@
     "test:phase5b": "node --env-file=.env --import tsx/esm src/agent/tests/test-phase5b-gate.ts",
     "test:corpus": "node --env-file=.env --import tsx/esm src/agent/tests/test-corpus.ts",
     "test:evals": "node --env-file=.env --import tsx/esm src/agent/tests/evals.ts",
+    "test:transactions": "vitest run src/agent/tests/transactions.test.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

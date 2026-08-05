@@ -1,4 +1,5 @@
 import { Effect, Schema, Option, pipe } from "effect";
+import { SqlClient } from "effect/unstable/sql/SqlClient";
 import { Spans } from "../../observability/spans.ts";
 import type { Chunk, SummaryItemType } from "@shipwright/shared/domain/types";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
@@ -93,9 +94,9 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
   }
 
   if (Option.isNone(current)) {
-    yield* Effect.logError("[summarizeDocument] no summary produced after processing all chunks").pipe(
-      Effect.annotateLogs({ documentId, sessionId, chunkCount: chunks.length }),
-    );
+    yield* Effect.logError(
+      "[summarizeDocument] no summary produced after processing all chunks",
+    ).pipe(Effect.annotateLogs({ documentId, sessionId, chunkCount: chunks.length }));
   }
   const final = Option.getOrThrow(current);
   return yield* persistSummary({
@@ -107,7 +108,7 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
   });
 });
 
-const persistSummary = Effect.fn("persistSummary")(
+export const persistSummary = Effect.fn("persistSummary")(
   function* ({
     summary,
     summaryType,
@@ -131,35 +132,41 @@ const persistSummary = Effect.fn("persistSummary")(
       ...(batchIndex !== undefined ? { "shipwright.summary.batch_index": batchIndex } : {}),
     });
     const summaryDb = yield* SummaryRepository;
-    const row = yield* summaryDb.createDocumentSummary({
-      documentId,
-      sessionId,
-      sourceDocument: summary.sourceDocument,
-      summaryType,
-      batchIndex: batchIndex ?? null,
-      content: summary.summary,
-      tokenCount: estimateTokenCount(summary.summary),
-      version,
-    });
+    const sql = yield* SqlClient;
 
-    const toItems = (
-      items: DocumentSummaryEffect["requirements"],
-      itemType: SummaryItemType,
-    ) =>
-      items.map((item, i) => ({
-        summaryId: row.id,
-        itemType,
-        text: item.text,
-        sourceDocument: item.sourceDocument,
-        confidence: item.confidence,
-        orderIndex: i,
-      }));
+    const row = yield* pipe(
+      Effect.gen(function* () {
+        const r = yield* summaryDb.createDocumentSummary({
+          documentId,
+          sessionId,
+          sourceDocument: summary.sourceDocument,
+          summaryType,
+          batchIndex: batchIndex ?? null,
+          content: summary.summary,
+          tokenCount: estimateTokenCount(summary.summary),
+          version,
+        });
 
-    yield* summaryDb.createSummaryItems([
-      ...toItems(summary.requirements, "requirement"),
-      ...toItems(summary.constraints, "constraint"),
-      ...toItems(summary.assumptions, "assumption"),
-    ]);
+        const toItems = (items: DocumentSummaryEffect["requirements"], itemType: SummaryItemType) =>
+          items.map((item, i) => ({
+            summaryId: r.id,
+            itemType,
+            text: item.text,
+            sourceDocument: item.sourceDocument,
+            confidence: item.confidence,
+            orderIndex: i,
+          }));
+
+        yield* summaryDb.createSummaryItems([
+          ...toItems(summary.requirements, "requirement"),
+          ...toItems(summary.constraints, "constraint"),
+          ...toItems(summary.assumptions, "assumption"),
+        ]);
+
+        return r;
+      }),
+      sql.withTransaction,
+    );
 
     return row;
   },
@@ -193,11 +200,7 @@ When a running summary is present: the new chunk is additional evidence, not a r
   `;
 
 export const runReducePass = Effect.fn("agent/runReducePass")(
-  function* (
-    current: Option.Option<DocumentSummaryEffect>,
-    chunk: Chunk,
-    sourceDocument: string,
-  ) {
+  function* (current: Option.Option<DocumentSummaryEffect>, chunk: Chunk, sourceDocument: string) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.document({ filename: sourceDocument }),
       ...Spans.chunk(chunk.chunkIndex),

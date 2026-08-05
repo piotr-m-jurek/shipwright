@@ -26,10 +26,13 @@ export const PgClientLive = Layer.unwrap(
   }),
 );
 
-// Composed: consumers only need to provide AppDBLayer
+// Composed: provides DB + PgClient + SqlClient.
+// Layer.provideMerge keeps PgClientLive's outputs (PgClient, SqlClient) visible
+// to consumers so that SqlClient.withTransaction works in any Effect that
+// depends on this layer.
 export const AppDBLayer = pipe(
   Layer.effect(DB, PgDrizzle.makeWithDefaults({ relations })),
-  Layer.provide(PgClientLive),
+  Layer.provideMerge(PgClientLive),
 );
 
 // Fully self-contained layer including ConfigService — for use in scripts/gate tests
