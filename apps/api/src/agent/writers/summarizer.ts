@@ -85,7 +85,7 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
     yield* persistSummary({
       summary,
       summaryType: "map_intermediate",
-      batchIndex: chunk.chunkIndex,
+      batchIndex: Option.some(chunk.chunkIndex),
       documentId,
       sessionId,
       version: currentHighestVersion,
@@ -102,6 +102,7 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
   return yield* persistSummary({
     summary: final,
     summaryType: "final",
+    batchIndex: Option.none(),
     documentId,
     sessionId,
     version: currentHighestVersion + 1,
@@ -119,7 +120,7 @@ export const persistSummary = Effect.fn("persistSummary")(
   }: {
     summary: DocumentSummaryEffect;
     summaryType: "map_intermediate" | "final";
-    batchIndex?: number;
+    batchIndex: Option.Option<number>;
     documentId: DocumentId;
     sessionId: AgentSessionId;
     version: number;
@@ -129,7 +130,10 @@ export const persistSummary = Effect.fn("persistSummary")(
       "shipwright.document.id": documentId,
       "shipwright.summary.type": summaryType,
       "shipwright.summary.version": version,
-      ...(batchIndex !== undefined ? { "shipwright.summary.batch_index": batchIndex } : {}),
+      ...Option.match(batchIndex, {
+        onNone: () => ({}),
+        onSome: (i) => ({ "shipwright.summary.batch_index": i }),
+      }),
     });
     const summaryDb = yield* SummaryRepository;
     const sql = yield* SqlClient;
@@ -141,7 +145,7 @@ export const persistSummary = Effect.fn("persistSummary")(
           sessionId,
           sourceDocument: summary.sourceDocument,
           summaryType,
-          batchIndex: batchIndex ?? null,
+          batchIndex: Option.getOrNull(batchIndex),
           content: summary.summary,
           tokenCount: estimateTokenCount(summary.summary),
           version,

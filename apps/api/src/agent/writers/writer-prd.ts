@@ -1,4 +1,4 @@
-import { Effect, Schema, Stream } from "effect";
+import { Array, Effect, Filter, Option, pipe, Schema, Stream } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
@@ -70,15 +70,15 @@ function formatSummariesForPrd(
     })
     .join("\n\n");
 
-  const answeredQuestions = questions
-    .map((q) => {
-      const answer = answers.find((a) => a.questionId === q.id);
-      return answer
-        ? `DECISION [${q.sourceDocuments.join(", ")}]: ${q.text}\nRESPONSE: ${answer.text}`
-        : null;
-    })
-    .filter(Boolean)
-    .join("\n\n");
+  const answeredQuestions = Array.filterMap(
+    questions,
+    Filter.fromPredicateOption((q) =>
+      pipe(
+        Option.fromNullishOr(answers.find((a) => a.questionId === q.id)),
+        Option.map((answer) => `DECISION [${q.sourceDocuments.join(", ")}]: ${q.text}\nRESPONSE: ${answer.text}`),
+      )
+    ),
+  ).join("\n\n");
 
   return [
     "=== DOCUMENT SUMMARIES ===",

@@ -194,6 +194,7 @@ describe("persistSummary — transaction behaviour", () => {
     const program = persistSummary({
       summary: testSummary,
       summaryType: "final",
+      batchIndex: Option.none(),
       documentId,
       sessionId,
       version: 1,
@@ -225,6 +226,7 @@ describe("persistSummary — transaction behaviour", () => {
     const program = persistSummary({
       summary: testSummary,
       summaryType: "final",
+      batchIndex: Option.none(),
       documentId,
       sessionId,
       version: 1,
