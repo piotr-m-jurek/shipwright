@@ -1,6 +1,6 @@
 import { Effect, Schema, Option, pipe } from "effect";
 import { Spans } from "../../observability/spans.ts";
-import type { SelectChunk, SummaryItemInsert } from "../../db/types.ts";
+import type { Chunk, SummaryItemType } from "@shipwright/shared/domain/types";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { DbDocument } from "../../db/services/document.ts";
 import { DbChunk } from "../../db/services/chunk.ts";
@@ -144,8 +144,8 @@ const persistSummary = Effect.fn("persistSummary")(
 
     const toItems = (
       items: DocumentSummaryEffect["requirements"],
-      itemType: SummaryItemInsert["itemType"],
-    ): SummaryItemInsert[] =>
+      itemType: SummaryItemType,
+    ) =>
       items.map((item, i) => ({
         summaryId: row.id,
         itemType,
@@ -195,7 +195,7 @@ When a running summary is present: the new chunk is additional evidence, not a r
 export const runReducePass = Effect.fn("agent/runReducePass")(
   function* (
     current: Option.Option<DocumentSummaryEffect>,
-    chunk: SelectChunk,
+    chunk: Chunk,
     sourceDocument: string,
   ) {
     yield* Effect.annotateCurrentSpan({
@@ -223,7 +223,7 @@ export const runReducePass = Effect.fn("agent/runReducePass")(
 
 const formatChunk = (
   summary: Option.Option<DocumentSummaryEffect>,
-  chunk: SelectChunk,
+  chunk: Chunk,
   sourceDocument: string,
 ) => {
   const chunkContent = `=== chunk from: ${sourceDocument} ===\n${chunk.content}`;

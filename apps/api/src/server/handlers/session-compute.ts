@@ -10,7 +10,7 @@ import { Api } from "@shipwright/shared/api.js";
 import { DbAgentSession } from "../../db/services/agent-session.ts";
 import { DbClarification } from "../../db/services/clarification.ts";
 import { CurrentUser } from "@shipwright/shared/middleware.js";
-import { QuestionSelect } from "../../db/types.ts";
+import type { Question } from "@shipwright/shared/domain/types";
 
 export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
   handlers
@@ -32,7 +32,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const questions = yield* clarificationDb.getQuestionsBySessionId(sessionId).pipe(
           Effect.mapError(() => new AgentSessionNotFound()),
           Effect.when(Effect.succeed(session.status === "awaiting_answers")),
-          Effect.map(Option.getOrElse(() => [] as QuestionSelect[])),
+          Effect.map(Option.getOrElse(() => [] as Question[])),
         );
 
         return new GetAgentSessionResponse({

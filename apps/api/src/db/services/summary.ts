@@ -6,35 +6,11 @@ import type {
   SummaryItemSelect,
 } from "../types.ts";
 import type { AgentSessionId, DocumentId, SummaryId } from "@shipwright/shared/domain/ids";
+import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { documentSummaries, summaryItems } from "../schema.ts";
 import { DB } from "../index.ts";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
-
-// ── Domain types ──────────────────────────────────────────────────────────
-
-type ItemWithSource = {
-  text: string;
-  sourceDocument: string;
-  confidence: "high" | "medium" | "low";
-};
-
-type DocumentSummary = {
-  sourceDocument: string;
-  summary: string;
-  requirements: readonly ItemWithSource[];
-  constraints: readonly ItemWithSource[];
-  assumptions: readonly ItemWithSource[];
-};
-
-/** Summary row joined with its items, shaped as a rich domain object. */
-export type ReconstructedSummary = DocumentSummary & {
-  id: SummaryId;
-  documentId: DocumentId;
-  sessionId: AgentSessionId;
-  tokenCount: number;
-  version: number;
-};
 
 // ── Helper ────────────────────────────────────────────────────────────────
 
