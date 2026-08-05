@@ -41,9 +41,9 @@ export class MachineContextEffectSchema extends Schema.Class<MachineContextEffec
   ),
   round: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 2 })),
   inputMode: Schema.Literals(["context", "retrieval"]),
-  agentAnalysis: Schema.NullOr(Schema.Unknown),
+  agentAnalysis: Schema.Option(Schema.Unknown),
   // Set when REVISION_REQUESTED is fired; cleared after generating completes.
-  revisionFeedback: Schema.NullOr(Schema.String),
+  revisionFeedback: Schema.Option(Schema.String),
   // Starts at 1, increments on each pass through generating.
   outputVersion: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
   outputs: Schema.Struct({

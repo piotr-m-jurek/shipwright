@@ -1,5 +1,5 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Option } from "effect";
 import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
 import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
 import { getOrRestoreActor } from "../session-actor.js";
@@ -72,7 +72,7 @@ const runSessionWorkflowInner = Effect.fn("agent/runSessionWorkflow")(function* 
 
   actor.send({
     type: "ANALYSIS_DONE",
-    gapReport,
+    gapReport: Option.some(gapReport),
     questions: dbQuestions.map((q) => ({
       id: q.id,
       rationale: q.rationale,

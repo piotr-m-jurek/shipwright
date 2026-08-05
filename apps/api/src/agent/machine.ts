@@ -1,5 +1,5 @@
 import { assign, createActor, setup } from "xstate";
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { MachineContextEffectSchema, type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
@@ -18,8 +18,8 @@ export const initialContext: MachineContext = {
   answers: [],
   round: 0,
   inputMode: "context",
-  agentAnalysis: null,
-  revisionFeedback: null,
+  agentAnalysis: Option.none(),
+  revisionFeedback: Option.none(),
   outputVersion: 1,
   outputs: {},
 };
@@ -69,7 +69,7 @@ export const agentMachine = setup({
   actions: {
     assignGapReport: assign({
       agentAnalysis: ({ event }) => {
-        if (event.type !== "ANALYSIS_DONE") return null;
+        if (event.type !== "ANALYSIS_DONE") return Option.none();
         return event.gapReport;
       },
       questions: ({ event }) => {
@@ -110,12 +110,12 @@ export const agentMachine = setup({
     }),
     assignRevisionFeedback: assign({
       revisionFeedback: ({ event }) => {
-        if (event.type !== "REVISION_REQUESTED") return null;
-        return event.feedback;
+        if (event.type !== "REVISION_REQUESTED") return Option.none();
+        return Option.some(event.feedback);
       },
       outputVersion: ({ context }) => context.outputVersion + 1,
     }),
-    clearRevisionFeedback: assign({ revisionFeedback: null }),
+    clearRevisionFeedback: assign({ revisionFeedback: Option.none() }),
   },
 }).createMachine({
   id: "agent",
