@@ -5,6 +5,7 @@ import { DB } from "../index.ts";
 import { documents } from "../schema.ts";
 import { eq } from "drizzle-orm";
 import { type AgentSessionId, type DocumentId } from "@shipwright/shared/domain/ids";
+import type { TokenCount } from "@shipwright/shared/domain/value-objects";
 
 interface Interface {
   createDocument: (data: InsertDocument) => Effect.Effect<SelectDocument, EffectDrizzleQueryError>;
@@ -29,7 +30,7 @@ interface Interface {
 
   updateDocumentTokenCount: (
     documentId: DocumentId,
-    tokenCount: number,
+    tokenCount: TokenCount,
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
 }
 
@@ -71,7 +72,7 @@ export class DocumentRepository extends Context.Service<DocumentRepository, Inte
 
       const updateDocumentTokenCount = Effect.fn("db/updateDocumentTokenCount")(function* (
         documentId: DocumentId,
-        tokenCount: number,
+        tokenCount: TokenCount,
       ) {
         yield* db.update(documents).set({ tokenCount }).where(eq(documents.id, documentId));
       });

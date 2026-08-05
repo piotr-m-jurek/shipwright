@@ -21,6 +21,7 @@ import type {
   QuestionId,
   SummaryId,
 } from "./ids.ts";
+import type { ChunkIndex, TokenCount } from "./value-objects.ts";
 
 // ── Enums ─────────────────────────────────────────────────────────────────
 
@@ -89,7 +90,7 @@ export type Document = {
   rawText: string | null;
   status: DocumentStatus;
   storagePath: string | null;
-  tokenCount: number | null;
+  tokenCount: TokenCount | null;
 };
 
 export type Chunk = {
@@ -99,7 +100,7 @@ export type Chunk = {
   sessionId: AgentSessionId;
   documentId: DocumentId;
   charOffset: number | null;
-  chunkIndex: number;
+  chunkIndex: ChunkIndex;
   content: string;
   embedding: number[];
   headingPath: string[] | null;
@@ -158,7 +159,7 @@ export type DocumentSummary = {
   sessionId: AgentSessionId;
   sourceDocument: string;
   summary: string;
-  tokenCount: number;
+  tokenCount: TokenCount;
   version: number;
   requirements: readonly SummaryItem[];
   constraints: readonly SummaryItem[];

@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { AgentSessionId, DocumentId, QuestionId, SummaryId } from "../domain/ids.ts";
+import { TokenCount } from "../domain/value-objects.ts";
 
 export class MachineContextEffectSchema extends Schema.Class<MachineContextEffectSchema>(
   "MachineContextEffectSchema",
@@ -9,7 +10,7 @@ export class MachineContextEffectSchema extends Schema.Class<MachineContextEffec
     Schema.Struct({
       id: DocumentId,
       filename: Schema.String,
-      tokenCount: Schema.Int.check(Schema.isGreaterThan(0)),
+      tokenCount: TokenCount,
     }),
   ),
   // Latest final summary per document, loaded before the analyzing state.
@@ -20,7 +21,7 @@ export class MachineContextEffectSchema extends Schema.Class<MachineContextEffec
       documentId: DocumentId,
       sourceDocument: Schema.String, // documents.filename
       content: Schema.String, // final summary content
-      tokenCount: Schema.Int.check(Schema.isGreaterThan(0)),
+      tokenCount: TokenCount,
     }),
   ),
   questions: Schema.Array(

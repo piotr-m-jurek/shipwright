@@ -34,6 +34,7 @@ import {
   SUMMARY_ITEM_TYPE_VALUES,
   SUMMARY_TYPE_VALUES,
 } from "@shipwright/shared/domain/types";
+import type { ChunkIndex, TokenCount } from "@shipwright/shared/domain/value-objects";
 
 import { queueMessages } from "../queue/schema.ts";
 export { queueMessages, queueMessageStatusEnum } from "../queue/schema.ts";
@@ -156,7 +157,7 @@ export const documents = pgTable("documents", {
   rawText: text("raw_text"),
   status: documentStatusEnum("document_status").notNull().default("pending"),
   storagePath: text("storage_path"),
-  tokenCount: integer("token_count"),
+  tokenCount: integer("token_count").$type<TokenCount>(),
 });
 
 export const chunks = pgTable("chunks", {
@@ -175,7 +176,7 @@ export const chunks = pgTable("chunks", {
     .notNull()
     .$type<DocumentId>(),
   charOffset: integer("char_offset"),
-  chunkIndex: integer("chunk_index").notNull(),
+  chunkIndex: integer("chunk_index").notNull().$type<ChunkIndex>(),
   content: text("content").notNull(),
   embedding: vector("embedding", { dimensions: 1024 }).notNull(),
   headingPath: text("heading_path").array(),
@@ -208,7 +209,7 @@ export const documentSummaries = pgTable("document_summaries", {
   // prose summary of the document content
   content: text("content").notNull(),
   // token count of content — used by XState tokensBelowThreshold guard
-  tokenCount: integer("token_count").notNull(),
+  tokenCount: integer("token_count").notNull().$type<TokenCount>(),
 });
 
 export const summaryItems = pgTable("summary_items", {

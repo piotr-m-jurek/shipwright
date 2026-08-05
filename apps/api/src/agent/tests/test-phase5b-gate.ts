@@ -14,6 +14,7 @@ const REPO_ROOT = resolve(__dirname, "../../../../../");
 
 import { readFile } from "fs/promises";
 import { Effect, Layer, ManagedRuntime } from "effect";
+import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { StorageAdapter } from "../../storage/index.js";
 import { DB, AppDBLiveLayer } from "../../db/index.js";
 import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
@@ -149,7 +150,7 @@ for (const { filename } of files) {
           sessionId,
           documentId: doc.id,
           content: parsed.text,
-          chunkIndex: 0,
+          chunkIndex: ChunkIndex.make(0),
           charOffset: 0,
           embedding: Array.from({ length: 1024 }, () => 0),
         },

@@ -7,8 +7,12 @@ import { Schema } from "effect";
  * Pattern: Schema with brand + optional refinement, type alias derived from it.
  */
 
-export const TokenCount = Schema.Int.pipe(
-  Schema.greaterThanOrEqualTo(0),
+export const TokenCount = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pipe(
   Schema.brand("TokenCount"),
 );
 export type TokenCount = typeof TokenCount.Type;
+
+export const ChunkIndex = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pipe(
+  Schema.brand("ChunkIndex"),
+);
+export type ChunkIndex = typeof ChunkIndex.Type;

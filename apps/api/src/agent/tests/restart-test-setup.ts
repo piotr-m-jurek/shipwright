@@ -9,6 +9,7 @@ import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect, Layer, ManagedRuntime } from "effect";
+import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { StorageAdapter } from "../../storage/index.js";
 import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
 import { DocumentRepository } from "../../db/repositories/document-repository.ts";
@@ -106,7 +107,7 @@ for (const { filename } of files) {
           sessionId,
           documentId: doc.id,
           content: parsed.text,
-          chunkIndex: 0,
+          chunkIndex: ChunkIndex.make(0),
           charOffset: 0,
           embedding: Array.from<number>({ length: 1024 }).fill(0),
         },

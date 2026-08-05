@@ -28,6 +28,7 @@ import { DB, AppDBLiveLayer } from "../../db/index.js";
 import { parseDocument } from "../parsers.js";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { Effect, Layer, ManagedRuntime, pipe } from "effect";
+import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { StorageAdapter } from "../../storage/index.js";
 import { ConfigService } from "../../config/config.js";
 
@@ -160,7 +161,7 @@ for (const { filename } of corpusFiles) {
           sessionId,
           documentId: doc.id,
           content: parsed.text,
-          chunkIndex: 0,
+          chunkIndex: ChunkIndex.make(0),
           charOffset: 0,
           embedding: Array.from({ length: 1024 }, () => 0),
         },

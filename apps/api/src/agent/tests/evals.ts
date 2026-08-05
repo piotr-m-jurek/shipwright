@@ -32,6 +32,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../../../");
 
 import { Effect, Layer, ManagedRuntime, Option, pipe, Schema, Stream } from "effect";
+import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { DB, AppDBLiveLayer } from "../../db/index.js";
 import { users } from "../../db/schema.js";
 import { LanguageModel, Prompt, Response } from "effect/unstable/ai";
@@ -236,7 +237,7 @@ async function runPartA(): Promise<boolean> {
               sessionId,
               documentId: doc.id,
               content: parsed.text,
-              chunkIndex: 0,
+              chunkIndex: ChunkIndex.make(0),
               charOffset: 0,
               embedding: Array.from<number>({ length: 1024 }).fill(0),
             },

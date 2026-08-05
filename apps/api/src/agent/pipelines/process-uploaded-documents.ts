@@ -8,6 +8,7 @@ import { DocumentRepository } from "../../db/repositories/document-repository.ts
 import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { EmbeddingService } from "../embedding-service.js";
 import { MessageQueue } from "../../queue/index.ts";
 
@@ -80,7 +81,7 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
               sessionId,
               documentId: doc.id,
               embedding: [...embedding],
-              chunkIndex: index,
+              chunkIndex: ChunkIndex.make(index),
               content: chunk?.content ?? "",
               charOffset: chunk?.charOffset,
               pageNumber: chunk?.pageNumber,

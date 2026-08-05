@@ -7,6 +7,7 @@ import type {
 } from "../types.ts";
 import type { AgentSessionId, DocumentId, SummaryId } from "@shipwright/shared/domain/ids";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
+import type { TokenCount } from "@shipwright/shared/domain/value-objects";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { documentSummaries, summaryItems } from "../schema.ts";
 import { DB } from "../index.ts";
@@ -21,7 +22,7 @@ function reconstructSummaries(
     sessionId: AgentSessionId;
     sourceDocument: string;
     summary: string;
-    tokenCount: number;
+    tokenCount: TokenCount;
     version: number;
   }[],
   itemRows: SummaryItemSelect[],
