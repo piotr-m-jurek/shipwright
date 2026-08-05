@@ -147,11 +147,21 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
     const outputDb = yield* OutputRepository;
 
     const summaries = yield* summaryDb.getFinalSummariesBySession(sessionId);
-    const existingPrdRow = yield* outputDb.getLatestOutputByType({
-      sessionId,
-      type: "implementation_prd",
-    }).pipe(Effect.map(Option.getOrUndefined));
-    const existingBriefRow = yield* outputDb.getLatestOutputByType({ sessionId, type: "project_brief" }).pipe(Effect.map(Option.getOrUndefined));
+    const existingPrdContent = yield* outputDb
+      .getLatestOutputByType({ sessionId, type: "implementation_prd" })
+      .pipe(
+        Effect.map(Option.flatMapNullishOr((r) => r.content)),
+        Effect.map(Option.getOrElse(() => "")),
+      );
+    const existingBriefContent = yield* outputDb
+      .getLatestOutputByType({
+        sessionId,
+        type: "project_brief",
+      })
+      .pipe(
+        Effect.map(Option.flatMapNullishOr((r) => r.content)),
+        Effect.map(Option.getOrElse(() => "")),
+      );
 
     const processBrief = Effect.fn("agent/reviseBrief")(function* ({
       existingBrief,
@@ -161,7 +171,7 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
       existingPrd: string;
     }) {
       return yield* Effect.gen(function* () {
-        const feedback = actor.getSnapshot().context.revisionFeedback ?? "";
+        const feedback = Option.getOrElse(actor.getSnapshot().context.revisionFeedback, () => "");
         const outputVersion = actor.getSnapshot().context.outputVersion;
 
         const newBriefText = yield* pipe(
@@ -208,7 +218,7 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
       existingPrd: string;
     }) {
       return yield* Effect.gen(function* () {
-        const feedback = actor.getSnapshot().context.revisionFeedback ?? "";
+        const feedback = Option.getOrElse(actor.getSnapshot().context.revisionFeedback, () => "");
         const outputVersion = actor.getSnapshot().context.outputVersion;
 
         const newPrdText = yield* pipe(
@@ -249,13 +259,13 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
 
     const [projectBrief, implementationPrd] = yield* Effect.all([
       processBrief({
-        existingBrief: existingBriefRow?.content ?? "",
-        existingPrd: existingPrdRow?.content ?? "",
+        existingBrief: existingBriefContent,
+        existingPrd: existingPrdContent,
       }),
 
       processPrd({
-        existingBrief: existingBriefRow?.content ?? "",
-        existingPrd: existingPrdRow?.content ?? "",
+        existingBrief: existingBriefContent,
+        existingPrd: existingPrdContent,
       }),
     ]);
 
