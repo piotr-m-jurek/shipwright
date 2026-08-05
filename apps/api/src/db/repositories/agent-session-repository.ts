@@ -14,6 +14,7 @@ interface Interface {
   updateAgentSession: (
     sessionId: AgentSessionId,
     status: SelectAgentSession["status"],
+    errorReason?: string | null,
   ) => Effect.Effect<SelectAgentSession, EffectDrizzleQueryError>;
 
   updateAgentSessionSnapshot: (
@@ -51,10 +52,11 @@ export class AgentSessionRepository extends Context.Service<AgentSessionReposito
       const updateAgentSession = Effect.fn("db/updateAgentSession")(function* (
         sessionId: AgentSessionId,
         status: SelectAgentSession["status"],
+        errorReason?: string | null,
       ) {
         const [result] = yield* db
           .update(agentSessions)
-          .set({ status })
+          .set({ status, ...(errorReason !== undefined ? { errorReason } : {}) })
           .where(eq(agentSessions.id, sessionId))
           .returning();
 

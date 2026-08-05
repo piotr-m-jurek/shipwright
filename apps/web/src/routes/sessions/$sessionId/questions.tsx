@@ -158,8 +158,12 @@ function PipelineProgress({ status }: { status: string }) {
 // Error display
 // ---------------------------------------------------------------------------
 
-function PipelineError({ status }: { status: string }) {
-  const message = ERROR_STATUS_LABELS[status] ?? "Something went wrong";
+function PipelineError({ status, errorReason }: { status: string; errorReason: string | null }) {
+  const isEmbeddingUnavailable = errorReason === "embedding_unavailable";
+  const message = isEmbeddingUnavailable
+    ? "Document processing service is unavailable. Please try again later or start a new session."
+    : (ERROR_STATUS_LABELS[status] ?? "Something went wrong");
+
   // Which step failed — derive from the prefix before "_error"
   const failedBase = status.replace(/_error$/, "");
   const failedStep = PIPELINE_STEPS.find((s) => s.status === failedBase);
@@ -169,14 +173,19 @@ function PipelineError({ status }: { status: string }) {
       <Alert variant="destructive">
         <AlertDescription className="space-y-1">
           <p className="font-medium">{message}</p>
-          {failedStep && (
+          {!isEmbeddingUnavailable && failedStep && (
             <p className="text-xs opacity-80">Failed during: {failedStep.label}</p>
           )}
-          <p className="text-xs opacity-70 pt-1">
-            Check server logs or contact support if this persists.
-          </p>
+          {!isEmbeddingUnavailable && (
+            <p className="text-xs opacity-70 pt-1">
+              Check server logs or contact support if this persists.
+            </p>
+          )}
         </AlertDescription>
       </Alert>
+      <a href="/" className="text-xs text-muted-foreground underline underline-offset-2">
+        Start a new session
+      </a>
     </div>
   );
 }
@@ -228,7 +237,7 @@ function QuestionsPage({ sessionId }: { sessionId: AgentSessionId }) {
         return (
           <div className="flex min-h-svh flex-col items-center justify-center gap-6">
             <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
-            <PipelineError status={session.status} />
+            <PipelineError status={session.status} errorReason={session.errorReason} />
           </div>
         );
       }

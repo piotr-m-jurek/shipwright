@@ -2,8 +2,7 @@ import { StorageAdapter } from "../../storage/index.ts";
 import { parseDocument, verifyFileMimeType } from "../parsers.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { chunkDocument } from "../lib/chunker.ts";
-import { Effect, Metric, Option, Schema, Array, pipe } from "effect";
-import { documentParseErrorCounter } from "../../observability/metrics.ts";
+import { Effect, Exit, Metric, Option, Schema, Array, pipe } from "effect";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
 import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
 import { DocumentRepository } from "../../db/repositories/document-repository.ts";
@@ -11,8 +10,9 @@ import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
-import { EmbeddingService } from "../embedding-service.js";
+import { EmbeddingService, EmbeddingError } from "../embedding-service.js";
 import { MessageQueue } from "../../queue/index.ts";
+import { documentParseErrorCounter } from "../../observability/metrics.ts";
 
 // TODO: actually throw those errors, not DB errors
 export class DocumentNotFoundError extends Schema.TaggedErrorClass<DocumentNotFoundError>()(
@@ -51,6 +51,20 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
   const agentSessionDb = yield* AgentSessionRepository;
   const documentDb = yield* DocumentRepository;
   const chunkDb = yield* ChunkRepository;
+
+  // ── Embedding service health probe ──────────────────────────────────────
+  // A trivial embed call before touching any documents. If TEI is down we
+  // set the session to error immediately and ack the message (no retry) so
+  // we don't burn all attempts in milliseconds and dead-letter silently.
+  const probeResult = yield* Effect.exit(chunkerton.embedText("health"));
+  if (Exit.isFailure(probeResult)) {
+    yield* Effect.logError("[processUploadedDocuments] embedding service unavailable — aborting").pipe(
+      Effect.annotateLogs({ sessionId }),
+    );
+    yield* agentSessionDb.updateAgentSession(sessionId, "error", "embedding_unavailable");
+    return;
+  }
+
   yield* Effect.forEach(
     uploads,
     (upload) =>
@@ -114,10 +128,14 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
               Effect.andThen(Effect.logError(cause)),
             ),
           ),
-          Effect.tapError(() =>
+          Effect.tapError((e) =>
             Effect.all([
               documentDb.updateDocumentStatus(doc.id, "error"),
               Metric.update(documentParseErrorCounter, 1),
+              // If embedding failed mid-document, record the reason on the session
+              e instanceof EmbeddingError
+                ? agentSessionDb.updateAgentSession(sessionId, "error", "embedding_unavailable")
+                : Effect.void,
             ]),
           ),
           Effect.withSpan("agent/process-document", {

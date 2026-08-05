@@ -17,6 +17,7 @@ export class GetAgentSessionResponse extends Schema.Class<
   createdAt: Schema.DateFromString,
   status: Schema.String,
   inputMode: Schema.Literals(["context", "retrieval"]),
+  errorReason: Schema.NullOr(Schema.String),
   questions: Schema.Array(
     Schema.Struct({
       id: QuestionId,

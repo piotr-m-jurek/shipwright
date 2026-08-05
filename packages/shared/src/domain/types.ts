@@ -77,6 +77,7 @@ export type AgentSession = {
   userId: string;
   status: SessionStatus;
   inputMode: InputMode;
+  errorReason: string | null;
 };
 
 export type Document = {

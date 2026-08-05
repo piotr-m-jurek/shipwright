@@ -40,6 +40,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
           createdAt: session.createdAt,
           status: session.status,
           inputMode: session.inputMode,
+          errorReason: session.errorReason ?? null,
           questions: questions.map((q) => ({
             id: q.id,
             text: q.text,

@@ -136,6 +136,7 @@ export const agentSessions = pgTable("agent_sessions", {
   status: sessionStatusEnum("status").notNull().default("idle"),
   inputMode: inputModeEnum("input_mode").notNull().default("context"),
   xstateSnapshot: jsonb("xstate_snapshot").$type<MachineContext>(),
+  errorReason: text("error_reason"),
 });
 
 export const documentStatusEnum = pgEnum("document_status", DOCUMENT_STATUS_VALUES);

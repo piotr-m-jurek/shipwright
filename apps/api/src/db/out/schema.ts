@@ -139,4 +139,5 @@ export const sessions = pgTable("sessions", {
   status: sessionStatus().default("idle").notNull(),
   inputMode: inputMode("input_mode").default("context").notNull(),
   xstateSnapshot: jsonb("xstate_snapshot"),
+  errorReason: text("error_reason"),
 });
