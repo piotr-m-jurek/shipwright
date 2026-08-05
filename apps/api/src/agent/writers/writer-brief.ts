@@ -5,6 +5,7 @@ import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
+import { makeWriterToolkitLayer, WriterToolkit } from "../tools/writer-toolkit.ts";
 
 export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(
   "shipwright/agent/BriefWriterError",
@@ -30,7 +31,12 @@ Structure (use these Markdown headings):
 ## Resolved Decisions
 ## Next Steps
 
-ANTI-HALLUCINATION RULE: Do not include any requirement, constraint, or decision not present in the provided summaries or answers. If something is unclear, say it is unclear — do not invent clarity.`;
+ANTI-HALLUCINATION RULE: Do not include any requirement, constraint, or decision not present in the provided summaries or answers. If something is unclear, say it is unclear — do not invent clarity.
+
+TOOL USE: You have three tools available:
+- query_chunks: semantic search over document chunks — use for targeted retrieval
+- get_document: full text of a source document by filename — use when you need complete context
+- get_document_summary: structured summary with requirements/constraints/assumptions — use to re-read the analysis for a specific document`;
 
 function formatSummariesForBrief(
   summaries: DocumentSummary[],
@@ -73,7 +79,7 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
     summaries: DocumentSummary[],
     answers: MachineContext["answers"],
     questions: MachineContext["questions"],
-    _sessionId: AgentSessionId,
+    sessionId: AgentSessionId,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-brief"),
@@ -85,6 +91,7 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
     const finishRef = yield* Ref.make<{ modelId: string | undefined; inputTokens: number | undefined; outputTokens: number | undefined; cacheReadTokens: number | undefined } | undefined>(undefined);
 
     return yield* LanguageModel.streamText({
+      toolkit: WriterToolkit,
       prompt: [
         { role: "system", content: BriefSystemPrompt },
         {
@@ -100,6 +107,7 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
         },
       ],
     }).pipe(
+      Stream.provide(makeWriterToolkitLayer(sessionId)),
       Stream.tap((part) => {
         if (part.type === "finish") {
           return Ref.set(finishRef, {

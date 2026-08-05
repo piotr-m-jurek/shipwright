@@ -11,6 +11,7 @@ type LlmFinishCapture = {
 };
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
+import { makeWriterToolkitLayer, WriterToolkit } from "../tools/writer-toolkit.ts";
 
 export class RevisionWriterError extends Schema.TaggedErrorClass<RevisionWriterError>()(
   "shipwright/agent/RevisionWriterError",
@@ -34,7 +35,10 @@ RULES:
 4. Cite sources for any new claims you add
 5. Maintain the same Markdown section structure as the original
 
-`;
+TOOL USE: You have three tools available:
+- query_chunks: semantic search over document chunks
+- get_document: full text of a source document by filename
+- get_document_summary: structured summary for a specific document`;
 
 const RevisionPrdSystemPrompt = `You are revising an existing Implementation PRD based on user feedback.
 
@@ -53,7 +57,10 @@ RULES:
 4. Maintain the same Markdown section structure as the original
 5. Update acceptance criteria to reflect any changed scope
 
-`;
+TOOL USE: You have three tools available:
+- query_chunks: semantic search over document chunks
+- get_document: full text of a source document by filename
+- get_document_summary: structured summary for a specific document`;
 
 function formatRevisionInput(
   summaries: DocumentSummary[],
@@ -86,7 +93,7 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
     existingBrief: string,
     existingPrd: string,
     feedback: string,
-    _sessionId: AgentSessionId,
+    sessionId: AgentSessionId,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-revision-brief"),
@@ -96,6 +103,7 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
     const finishRef = yield* Ref.make<LlmFinishCapture | undefined>(undefined);
 
     return yield* LanguageModel.streamText({
+      toolkit: WriterToolkit,
       prompt: [
         { role: "system", content: RevisionBriefSystemPrompt },
         {
@@ -110,6 +118,7 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
         },
       ],
     }).pipe(
+      Stream.provide(makeWriterToolkitLayer(sessionId)),
       Stream.tap((part) => {
         if (part.type === "finish") {
           return Ref.set(finishRef, {
@@ -162,7 +171,7 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
     existingBrief: string,
     existingPrd: string,
     feedback: string,
-    _sessionId: AgentSessionId,
+    sessionId: AgentSessionId,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-revision-prd"),
@@ -172,6 +181,7 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
     const finishRef = yield* Ref.make<LlmFinishCapture | undefined>(undefined);
 
     return yield* LanguageModel.streamText({
+      toolkit: WriterToolkit,
       prompt: [
         { role: "system", content: RevisionPrdSystemPrompt },
         {
@@ -186,6 +196,7 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
         },
       ],
     }).pipe(
+      Stream.provide(makeWriterToolkitLayer(sessionId)),
       Stream.tap((part) => {
         if (part.type === "finish") {
           return Ref.set(finishRef, {

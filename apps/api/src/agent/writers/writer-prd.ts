@@ -5,6 +5,7 @@ import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
+import { makeWriterToolkitLayer, WriterToolkit } from "../tools/writer-toolkit.ts";
 
 export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()(
   "shipwright/agent/PrdWriterError",
@@ -50,7 +51,12 @@ Technology choices already decided. The coding agent should use these unless the
 ## Open Questions
 Any ambiguities that remain after the clarifying session. The coding agent must surface these before implementing the affected feature, not make silent assumptions.
 
-ANTI-HALLUCINATION RULE: Every requirement in the Acceptance Criteria must be traceable to the provided document summaries or clarification answers. Do not invent scope. If a section cannot be filled from the available information, say so explicitly.`;
+ANTI-HALLUCINATION RULE: Every requirement in the Acceptance Criteria must be traceable to the provided document summaries or clarification answers. Do not invent scope. If a section cannot be filled from the available information, say so explicitly.
+
+TOOL USE: You have three tools available:
+- query_chunks: semantic search over document chunks — use for targeted retrieval
+- get_document: full text of a source document by filename — use when you need complete context
+- get_document_summary: structured summary with requirements/constraints/assumptions — use to re-read the analysis for a specific document`;
 
 function formatSummariesForPrd(
   summaries: DocumentSummary[],
@@ -92,7 +98,7 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
     summaries: DocumentSummary[],
     answers: MachineContext["answers"],
     questions: MachineContext["questions"],
-    _sessionId: AgentSessionId,
+    sessionId: AgentSessionId,
   ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.pass("writer-prd"),
@@ -102,6 +108,7 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
     const finishRef = yield* Ref.make<{ modelId: string | undefined; inputTokens: number | undefined; outputTokens: number | undefined; cacheReadTokens: number | undefined } | undefined>(undefined);
 
     return yield* LanguageModel.streamText({
+      toolkit: WriterToolkit,
       prompt: [
         { role: "system", content: PrdSystemPrompt },
         {
@@ -117,6 +124,7 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
         },
       ],
     }).pipe(
+      Stream.provide(makeWriterToolkitLayer(sessionId)),
       Stream.tap((part) => {
         if (part.type === "finish") {
           return Ref.set(finishRef, {
