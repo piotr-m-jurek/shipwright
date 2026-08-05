@@ -31,16 +31,24 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
   }
 
   const session = yield* db.getAgentSessionById({ sessionId }).pipe(
-    Effect.flatMap(Option.match({
-      onNone: () => Effect.fail(new SessionNotFoundError()),
-      onSome: Effect.succeed,
-    })),
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.fail(new SessionNotFoundError()),
+        onSome: Effect.succeed,
+      }),
+    ),
   );
 
   const actor: AgentActor = yield* pipe(
     Effect.fromNullishOr(session.xstateSnapshot),
-    Effect.as(restoreAgentActor(session.xstateSnapshot)),
-    Effect.catchTag("NoSuchElementError", () => Effect.succeed(createAgentActor({ sessionId }))),
+    Effect.flatMap((snapshot) => restoreAgentActor(snapshot)),
+    Effect.tapErrorTag("SnapshotValidationError", (err) =>
+      Effect.logWarning(
+        `[session-actor] Snapshot validation failed for ${sessionId} — falling back to fresh actor`,
+        err.cause,
+      ),
+    ),
+    Effect.orElseSucceed(() => createAgentActor({ sessionId })),
   );
 
   yield* wireSnapshotPersistence(actor, sessionId);

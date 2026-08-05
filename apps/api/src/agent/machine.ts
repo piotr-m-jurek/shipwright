@@ -1,6 +1,12 @@
 import { assign, createActor, setup } from "xstate";
-import type { MachineContext } from "@shipwright/shared/schemas/machine.js";
+import { Effect, Schema } from "effect";
+import { MachineContextEffectSchema, type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+
+export class SnapshotValidationError extends Schema.TaggedErrorClass<SnapshotValidationError>()(
+  "SnapshotValidationError",
+  { cause: Schema.Defect() },
+) {}
 
 // ── Initial context ────────────────────────────────────────────────────────
 
@@ -271,13 +277,25 @@ export function createAgentActor(contextOverride?: Partial<MachineContext>) {
 
 /**
  * Restore an agent actor from a serialised XState snapshot (from xstate_snapshot in DB).
- * Validates the snapshot is parseable before restoring — corrupt snapshots throw.
+ * Validates snapshot.context against MachineContextEffectSchema before restoring.
+ * Fails with SnapshotValidationError on schema mismatch — callers should fall back
+ * to createAgentActor to avoid serving a corrupt session.
  */
-export function restoreAgentActor(snapshot: unknown) {
-  // input is required by the type when `input` is declared on the machine,
-  // but XState ignores it when a snapshot is provided — the snapshot's context wins.
-  return createActor(agentMachine, { snapshot: snapshot as any, input: {} });
-}
+export const restoreAgentActor = Effect.fn("agent/restoreAgentActor")(function* (snapshot: unknown) {
+  const raw = snapshot as { context?: unknown } | null | undefined;
+
+  // Validate the context shape before handing to XState.
+  // XState's createActor throws synchronously on malformed snapshots,
+  // so we validate first and surface a typed error instead.
+  yield* Schema.decodeUnknownEffect(MachineContextEffectSchema)(raw?.context).pipe(
+    Effect.mapError((cause) => new SnapshotValidationError({ cause })),
+  );
+
+  return yield* Effect.try({
+    try: () => createActor(agentMachine, { snapshot: snapshot as any, input: {} }),
+    catch: (cause) => new SnapshotValidationError({ cause }),
+  });
+});
 
 export type AgentMachine = typeof agentMachine;
 export type AgentActor = ReturnType<typeof createAgentActor>;
