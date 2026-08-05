@@ -1,26 +1,35 @@
 services:
   postgres:
     image: pgvector/pgvector:pg17
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
     ports:
-      - 5433:5432
+      - 127.0.0.1:5433:5432
     volumes:
-      - db_data:/etc/pg/data
+      - db_data:/var/lib/postgresql/data
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
   tei:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+    restart: always
     platform: linux/amd64
     ports:
-      - 8080:80
+      - 127.0.0.1:8080:80
     volumes:
       - tei_model_cache:/data
     command: --model-id mixedbread-ai/mxbai-embed-large-v1
 
   rustfs:
-    image: rustfs/rustfs
+    image: rustfs/rustfs:1.0.0-beta.12
+    restart: always
     entrypoint: sh
     command: -c 'mkdir -p /data/langfuse && rustfs server --address ":9000" --console-address ":9001" /data'
     healthcheck:
@@ -40,7 +49,7 @@ services:
       - rustfs_data:/data
 
   langfuse-web:
-    image: docker.io/langfuse/langfuse:3
+    image: docker.io/langfuse/langfuse:3.225.1
     restart: always
     depends_on:
       langfuse-postgres:
@@ -91,7 +100,7 @@ services:
       LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD}
 
   langfuse-worker:
-    image: docker.io/langfuse/langfuse-worker:3
+    image: docker.io/langfuse/langfuse-worker:3.225.1
     restart: always
     depends_on:
       langfuse-postgres:
