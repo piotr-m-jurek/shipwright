@@ -11,7 +11,6 @@ import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { EmbeddingService, EmbeddingError } from "../embedding-service.js";
-import { MessageQueue } from "../../queue/index.ts";
 import { documentParseErrorCounter } from "../../observability/metrics.ts";
 
 // TODO: actually throw those errors, not DB errors
@@ -145,6 +144,9 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
               "shipwright.session.id": sessionId,
             },
           }),
+          // Swallow per-document errors so forEach continues with remaining
+          // documents. The error is already recorded on the document row above.
+          Effect.ignore,
         );
       }),
     { concurrency: 2 },
@@ -162,13 +164,8 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
   yield* Effect.annotateCurrentSpan({ "shipwright.session.final_status": status });
   yield* agentSessionDb.updateAgentSession(sessionId, status);
 
-  // Only kick off the workflow if at least some documents processed successfully.
-  // If all failed, there are no chunks to summarise — the session stays in error.
-  if (!allError) {
-    const mq = yield* MessageQueue;
-    yield* mq.publish("session.workflow", { sessionId }, { maxAttempts: 5 });
-    yield* Effect.logInfo("[processUploadedDocuments] published session.workflow").pipe(
-      Effect.annotateLogs({ sessionId }),
-    );
-  }
+  // session.workflow is published by confirmAnalysis (after the user clicks
+  // "Start analysing"), not here. This ensures the workflow job only runs
+  // after the XState machine has transitioned to "summarizing", so
+  // EXTRACTION_STARTED and DOCUMENT_EXTRACTED events land in the correct state.
 });

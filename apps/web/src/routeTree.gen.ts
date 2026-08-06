@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SessionsSessionIdQuestionsRouteImport } from './routes/sessions/$sessionId/questions'
 import { Route as SessionsSessionIdOutputRouteImport } from './routes/sessions/$sessionId/output'
+import { Route as SessionsSessionIdDebugRouteImport } from './routes/sessions/$sessionId/debug'
 import { Route as SessionsSessionIdConfirmRouteImport } from './routes/sessions/$sessionId/confirm'
 
 const LoginRoute = LoginRouteImport.update({
@@ -36,6 +37,11 @@ const SessionsSessionIdOutputRoute = SessionsSessionIdOutputRouteImport.update({
   path: '/sessions/$sessionId/output',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SessionsSessionIdDebugRoute = SessionsSessionIdDebugRouteImport.update({
+  id: '/sessions/$sessionId/debug',
+  path: '/sessions/$sessionId/debug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SessionsSessionIdConfirmRoute =
   SessionsSessionIdConfirmRouteImport.update({
     id: '/sessions/$sessionId/confirm',
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/sessions/$sessionId/confirm': typeof SessionsSessionIdConfirmRoute
+  '/sessions/$sessionId/debug': typeof SessionsSessionIdDebugRoute
   '/sessions/$sessionId/output': typeof SessionsSessionIdOutputRoute
   '/sessions/$sessionId/questions': typeof SessionsSessionIdQuestionsRoute
 }
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/sessions/$sessionId/confirm': typeof SessionsSessionIdConfirmRoute
+  '/sessions/$sessionId/debug': typeof SessionsSessionIdDebugRoute
   '/sessions/$sessionId/output': typeof SessionsSessionIdOutputRoute
   '/sessions/$sessionId/questions': typeof SessionsSessionIdQuestionsRoute
 }
@@ -62,6 +70,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/sessions/$sessionId/confirm': typeof SessionsSessionIdConfirmRoute
+  '/sessions/$sessionId/debug': typeof SessionsSessionIdDebugRoute
   '/sessions/$sessionId/output': typeof SessionsSessionIdOutputRoute
   '/sessions/$sessionId/questions': typeof SessionsSessionIdQuestionsRoute
 }
@@ -71,6 +80,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/sessions/$sessionId/confirm'
+    | '/sessions/$sessionId/debug'
     | '/sessions/$sessionId/output'
     | '/sessions/$sessionId/questions'
   fileRoutesByTo: FileRoutesByTo
@@ -78,6 +88,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/sessions/$sessionId/confirm'
+    | '/sessions/$sessionId/debug'
     | '/sessions/$sessionId/output'
     | '/sessions/$sessionId/questions'
   id:
@@ -85,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/sessions/$sessionId/confirm'
+    | '/sessions/$sessionId/debug'
     | '/sessions/$sessionId/output'
     | '/sessions/$sessionId/questions'
   fileRoutesById: FileRoutesById
@@ -93,6 +105,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   SessionsSessionIdConfirmRoute: typeof SessionsSessionIdConfirmRoute
+  SessionsSessionIdDebugRoute: typeof SessionsSessionIdDebugRoute
   SessionsSessionIdOutputRoute: typeof SessionsSessionIdOutputRoute
   SessionsSessionIdQuestionsRoute: typeof SessionsSessionIdQuestionsRoute
 }
@@ -127,6 +140,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SessionsSessionIdOutputRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sessions/$sessionId/debug': {
+      id: '/sessions/$sessionId/debug'
+      path: '/sessions/$sessionId/debug'
+      fullPath: '/sessions/$sessionId/debug'
+      preLoaderRoute: typeof SessionsSessionIdDebugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sessions/$sessionId/confirm': {
       id: '/sessions/$sessionId/confirm'
       path: '/sessions/$sessionId/confirm'
@@ -141,6 +161,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   SessionsSessionIdConfirmRoute: SessionsSessionIdConfirmRoute,
+  SessionsSessionIdDebugRoute: SessionsSessionIdDebugRoute,
   SessionsSessionIdOutputRoute: SessionsSessionIdOutputRoute,
   SessionsSessionIdQuestionsRoute: SessionsSessionIdQuestionsRoute,
 }

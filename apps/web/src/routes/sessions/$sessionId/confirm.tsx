@@ -36,6 +36,17 @@ function RouteComponent() {
 }
 
 // ---------------------------------------------------------------------------
+// Query atoms
+// ---------------------------------------------------------------------------
+
+const sessionDocumentsFamily = Atom.family((sessionId: AgentSessionId) =>
+  ShipwrightApi.query("compute", "getSessionDocuments", {
+    params: { sessionId },
+    reactivityKeys: ["session-documents", sessionId],
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // Mutation atoms
 // ---------------------------------------------------------------------------
 
@@ -117,6 +128,21 @@ function ConfirmPage({ sessionId }: { sessionId: AgentSessionId }) {
   const navigate = useNavigate();
   const [uploadedFiles, setUploadedFiles] = useAtom(sessionFilesAtomFamily(sessionId));
 
+  // Fetch documents from the API to recover state after a page refresh.
+  const documentsResult = useAtomValue(useMemo(() => sessionDocumentsFamily(sessionId), [sessionId]));
+
+  // Seed the in-memory atom from the API response when it's empty (e.g. after refresh).
+  useEffect(() => {
+    if (uploadedFiles.length === 0 && AsyncResult.isSuccess(documentsResult)) {
+      const fromApi = documentsResult.value.documents.map((d) => ({
+        filename: d.filename,
+        mimeType: d.mimeType,
+        sizeBytes: d.sizeBytes,
+      }));
+      if (fromApi.length > 0) setUploadedFiles(fromApi);
+    }
+  }, [documentsResult, uploadedFiles.length, setUploadedFiles]);
+
   const nonce = useMemo(() => Date.now(), []);
   const confirmAtom = useMemo(() => confirmAnalysisFamily(nonce), [nonce]);
   const confirmResult = useAtomValue(confirmAtom);
@@ -190,7 +216,10 @@ function ConfirmPage({ sessionId }: { sessionId: AgentSessionId }) {
             )}
             <Button
               onClick={handleStartAnalysis}
-              disabled={uploadedFiles.length === 0 || isConfirming}
+              disabled={
+                (uploadedFiles.length === 0 && !AsyncResult.isSuccess(documentsResult)) ||
+                isConfirming
+              }
               className="gap-2"
             >
               {isConfirming ? (

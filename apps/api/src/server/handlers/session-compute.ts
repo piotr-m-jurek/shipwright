@@ -1,11 +1,13 @@
 import { Effect, Option, pipe } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { AgentSessionNotFound, ConfirmAnalysisError } from "@shipwright/shared/domain/errors.js";
+import { MessageQueue } from "../../queue/index.ts";
 import { getOrRestoreActor } from "../../agent/session-actor.ts";
 import {
   GetAgentSessionResponse,
   ConfirmAnalysisResponse,
   GetSessionDebugResponse,
+  GetSessionDocumentsResponse,
 } from "@shipwright/shared/schemas/api.js";
 import { Api } from "@shipwright/shared/api.js";
 import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
@@ -57,6 +59,34 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         });
       }),
     )
+    .handle("getSessionDocuments", ({ params: { sessionId } }) =>
+      Effect.gen(function* () {
+        const agentSessionDb = yield* AgentSessionRepository;
+        const documentDb = yield* DocumentRepository;
+        const user = yield* CurrentUser;
+
+        // Ownership check — 404 for unknown or other user's session
+        yield* agentSessionDb
+          .getAgentSessionByIdForUser({ sessionId, userId: user.id })
+          .pipe(
+            Effect.orDie,
+            Effect.flatMap(Effect.fromOption),
+            Effect.catchTag("NoSuchElementError", () => new AgentSessionNotFound()),
+          );
+
+        const documents = yield* documentDb.getDocumentsBySessionId(sessionId).pipe(Effect.orDie);
+
+        return new GetSessionDocumentsResponse({
+          documents: documents.map((d) => ({
+            id: d.id,
+            filename: d.filename,
+            mimeType: d.mimeType,
+            sizeBytes: d.sizeBytes,
+            status: d.status,
+          })),
+        });
+      }),
+    )
     .handle("getSessionDebug", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
         const agentSessionDb = yield* AgentSessionRepository;
@@ -99,13 +129,13 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
           onNone: () => null,
           onSome: (snap) => ({
             value: String(session.status),
-            round: snap.round,
-            inputMode: snap.inputMode,
-            outputVersion: snap.outputVersion,
-            documentSummaryCount: snap.documentSummaries.length,
-            questionCount: snap.questions.length,
-            answerCount: snap.answers.length,
-            revisionFeedback: Option.getOrNull(snap.revisionFeedback),
+            round: snap.round ?? 0,
+            inputMode: snap.inputMode ?? "context",
+            outputVersion: snap.outputVersion ?? 1,
+            documentSummaryCount: snap.documentSummaries?.length ?? 0,
+            questionCount: snap.questions?.length ?? 0,
+            answerCount: snap.answers?.length ?? 0,
+            revisionFeedback: snap.revisionFeedback ? Option.getOrNull(snap.revisionFeedback) : null,
             raw: snap as unknown,
           }),
         });
@@ -160,11 +190,19 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         }
 
         // Advance the actor: idle → uploading → summarizing.
-        // The actual session.workflow job is published by the documents.process
-        // consumer after chunks are written, ensuring no race between chunking
-        // and summarisation.
         actor.send({ type: "UPLOAD_COMPLETE" });
         actor.send({ type: "USER_CONFIRM" });
+
+        // Publish session.workflow NOW — after the machine is in summarizing,
+        // so EXTRACTION_STARTED lands in the correct state.
+        // documents.process no longer publishes this to avoid the race where
+        // the workflow job starts before the user confirms.
+        const mq = yield* MessageQueue.pipe(
+          Effect.mapError((cause) => new ConfirmAnalysisError({ cause })),
+        );
+        yield* mq.publish("session.workflow", { sessionId }, { maxAttempts: 5 }).pipe(
+          Effect.mapError((cause) => new ConfirmAnalysisError({ cause })),
+        );
 
         return new ConfirmAnalysisResponse({ started: true });
       }),

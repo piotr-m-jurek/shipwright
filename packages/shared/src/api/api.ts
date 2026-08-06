@@ -6,6 +6,7 @@ import {
   ConfirmUploadRequest,
   ConfirmUploadResponse,
   GetAgentSessionResponse,
+  GetSessionDocumentsResponse,
   PostAgentSessionAnswersRequest,
   PostAgentSessionAnswersResponse,
   GetAgentSessionFinalOutputResponse,
@@ -72,6 +73,11 @@ export class SessionComputationApi extends HttpApiGroup.make("compute")
     HttpApiEndpoint.get("getAgentSessionById", "/sessions/:sessionId", {
       params: { sessionId: AgentSessionId },
       success: GetAgentSessionResponse,
+      error: AgentSessionNotFound,
+    }),
+    HttpApiEndpoint.get("getSessionDocuments", "/sessions/:sessionId/documents", {
+      params: { sessionId: AgentSessionId },
+      success: GetSessionDocumentsResponse,
       error: AgentSessionNotFound,
     }),
     HttpApiEndpoint.post("confirmAnalysis", "/sessions/:sessionId/confirm", {

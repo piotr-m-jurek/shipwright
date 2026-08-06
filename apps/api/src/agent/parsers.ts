@@ -1,5 +1,4 @@
-import { fileTypeFromStream } from "file-type";
-import { Readable } from "node:stream";
+import { fileTypeFromBuffer } from "file-type";
 import { extractText, getDocumentProxy } from "unpdf";
 import { extractRawText } from "mammoth";
 import path from "node:path";
@@ -70,14 +69,9 @@ export const verifyFileMimeType = Effect.fn("agent/verify-file-mime-type")(funct
 
   // 4100 bytes is the recommended sample size for file-type detection
   const bytes = yield* storage.downloadPartialObject(s3Key, 4100);
-  const stream = Readable.from(
-    (async function* () {
-      yield bytes;
-    })(),
-  );
 
   const detected = yield* Effect.tryPromise({
-    try: () => fileTypeFromStream(stream as unknown as ReadableStream<Uint8Array>),
+    try: () => fileTypeFromBuffer(bytes),
     catch: (cause) =>
       new MimeVerificationError({
         filename,

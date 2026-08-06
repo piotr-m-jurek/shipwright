@@ -28,6 +28,8 @@
     "./domain/types": "./src/domain/types.ts",
     "./domain/types.js": "./src/domain/types.ts",
     "./domain/value-objects": "./src/domain/value-objects.ts",
-    "./domain/value-objects.js": "./src/domain/value-objects.ts"
+    "./domain/value-objects.js": "./src/domain/value-objects.ts",
+    "./schemas/debug": "./src/schemas/debug.ts",
+    "./schemas/debug.js": "./src/schemas/debug.ts"
   }
 }

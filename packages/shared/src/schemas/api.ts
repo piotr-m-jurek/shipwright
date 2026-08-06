@@ -115,6 +115,21 @@ export class RetrySessionResponse extends Schema.Class<
   { readonly brand: unique symbol }
 >("RetrySessionResponse")({ queued: Schema.Boolean }) {}
 
+export class GetSessionDocumentsResponse extends Schema.Class<
+  GetSessionDocumentsResponse,
+  { readonly brand: unique symbol }
+>("GetSessionDocumentsResponse")({
+  documents: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      filename: Schema.String,
+      mimeType: Schema.String,
+      sizeBytes: Schema.Int,
+      status: Schema.String,
+    }),
+  ),
+}) {}
+
 export class GetSessionDebugResponse extends Schema.Class<
   GetSessionDebugResponse,
   { readonly brand: unique symbol }
