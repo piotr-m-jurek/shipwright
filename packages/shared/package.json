@@ -30,6 +30,8 @@
     "./domain/value-objects": "./src/domain/value-objects.ts",
     "./domain/value-objects.js": "./src/domain/value-objects.ts",
     "./schemas/debug": "./src/schemas/debug.ts",
-    "./schemas/debug.js": "./src/schemas/debug.ts"
+    "./schemas/debug.js": "./src/schemas/debug.ts",
+    "./schemas/questions": "./src/schemas/questions.ts",
+    "./schemas/questions.js": "./src/schemas/questions.ts"
   }
 }

@@ -1,11 +1,11 @@
-import { Array, Effect, Filter, Option, pipe, Ref, Schema, Stream } from "effect";
+import { Array, Effect, Filter, Option, pipe, Schema } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
-import { LanguageModel } from "effect/unstable/ai";
+import { Chat } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
-import { makeWriterToolkitLayer, WriterToolkit } from "./tools/writer-toolkit.ts";
+import { runAgenticLoop } from "./agentic-loop.ts";
 
 export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(
   "shipwright/agent/BriefWriterError",
@@ -32,6 +32,8 @@ Structure (use these Markdown headings):
 ## Next Steps
 
 ANTI-HALLUCINATION RULE: Do not include any requirement, constraint, or decision not present in the provided summaries or answers. If something is unclear, say it is unclear — do not invent clarity.
+
+OUTPUT RULE: Your response must contain ONLY the Project Brief document. Do not write any preamble, commentary, status updates, or thinking-aloud before, between, or after the sections. Start your response directly with "## Overview". Do not narrate what you are doing. The score-completeness tool calls happen silently — never include their results in the output text.
 
 TOOL USE: You have four tools available:
 - query_chunks: semantic search over document chunks — use for targeted retrieval
@@ -89,11 +91,11 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
 
     const userContent = formatSummariesForBrief(summaries, answers, questions);
 
-    const finishRef = yield* Ref.make<{ modelId: string | undefined; inputTokens: number | undefined; outputTokens: number | undefined; cacheReadTokens: number | undefined } | undefined>(undefined);
+    const chat = yield* Chat.empty;
 
-    return yield* LanguageModel.streamText({
-      toolkit: WriterToolkit,
-      prompt: [
+    const result = yield* runAgenticLoop({
+      chat,
+      firstTurnPrompt: [
         { role: "system", content: BriefSystemPrompt },
         {
           role: "user",
@@ -107,49 +109,20 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
           ],
         },
       ],
-    }).pipe(
-      Stream.provide(makeWriterToolkitLayer(sessionId)),
-      Stream.tap((part) => {
-        if (part.type === "finish") {
-          return Ref.set(finishRef, {
-            modelId: undefined,
-            inputTokens: part.usage.inputTokens.total,
-            outputTokens: part.usage.outputTokens.total,
-            cacheReadTokens: part.usage.inputTokens.cacheRead,
-          });
-        }
-        if (part.type === "response-metadata") {
-          return Ref.update(finishRef, (prev) =>
-            prev ? { ...prev, modelId: part.modelId } : { modelId: part.modelId, inputTokens: undefined, outputTokens: undefined, cacheReadTokens: undefined },
-          );
-        }
-        return Effect.void;
+      sessionId,
+    }).pipe(Effect.mapError((cause) => new BriefWriterError({ cause })));
+
+    yield* Effect.annotateCurrentSpan({ "shipwright.output.chars": result.text.length });
+    yield* Effect.annotateCurrentSpan(
+      Spans.llm({
+        model: result.modelId,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        cacheReadTokens: result.cacheReadTokens,
       }),
-      Stream.filter((part) => part.type === "text-delta"),
-      Stream.map((part) => part.delta),
-      Stream.runFold(
-        () => "",
-        (acc, delta) => acc + delta,
-      ),
-      Effect.tap((text) =>
-        Effect.annotateCurrentSpan({ "shipwright.output.chars": text.length }),
-      ),
-      Effect.tap(() =>
-        Effect.flatMap(Ref.get(finishRef), (finish) =>
-          finish
-            ? Effect.annotateCurrentSpan(
-                Spans.llm({
-                  model: finish.modelId,
-                  inputTokens: finish.inputTokens,
-                  outputTokens: finish.outputTokens,
-                  cacheReadTokens: finish.cacheReadTokens,
-                }),
-              )
-            : Effect.void,
-        ),
-      ),
-      Effect.mapError((cause) => new BriefWriterError({ cause })),
     );
+
+    return result.text;
   },
   Effect.provide(AnthropicSonnetModelLayer),
   Effect.provide(AnthropicClientLayer),

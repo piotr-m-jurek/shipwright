@@ -1,11 +1,11 @@
-import { Array, Effect, Filter, Option, pipe, Ref, Schema, Stream } from "effect";
+import { Array, Effect, Filter, Option, pipe, Schema } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
-import { LanguageModel } from "effect/unstable/ai";
+import { Chat } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
-import { makeWriterToolkitLayer, WriterToolkit } from "./tools/writer-toolkit.ts";
+import { runAgenticLoop } from "./agentic-loop.ts";
 
 export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()(
   "shipwright/agent/PrdWriterError",
@@ -52,6 +52,8 @@ Technology choices already decided. The coding agent should use these unless the
 Any ambiguities that remain after the clarifying session. The coding agent must surface these before implementing the affected feature, not make silent assumptions.
 
 ANTI-HALLUCINATION RULE: Every requirement in the Acceptance Criteria must be traceable to the provided document summaries or clarification answers. Do not invent scope. If a section cannot be filled from the available information, say so explicitly.
+
+OUTPUT RULE: Your response must contain ONLY the Implementation PRD document. Do not write any preamble, commentary, status updates, or thinking-aloud before, between, or after the sections. Start your response directly with "## Project Overview". Do not narrate what you are doing. The score-completeness tool calls happen silently — never include their results in the output text.
 
 TOOL USE: You have four tools available:
 - query_chunks: semantic search over document chunks — use for targeted retrieval
@@ -105,12 +107,13 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
       ...Spans.pass("writer-prd"),
       ...Spans.counts({ documents: summaries.length, answers: answers.length }),
     });
-    const userContent = formatSummariesForPrd(summaries, answers, questions);
-    const finishRef = yield* Ref.make<{ modelId: string | undefined; inputTokens: number | undefined; outputTokens: number | undefined; cacheReadTokens: number | undefined } | undefined>(undefined);
 
-    return yield* LanguageModel.streamText({
-      toolkit: WriterToolkit,
-      prompt: [
+    const userContent = formatSummariesForPrd(summaries, answers, questions);
+    const chat = yield* Chat.empty;
+
+    const result = yield* runAgenticLoop({
+      chat,
+      firstTurnPrompt: [
         { role: "system", content: PrdSystemPrompt },
         {
           role: "user",
@@ -124,49 +127,20 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
           ],
         },
       ],
-    }).pipe(
-      Stream.provide(makeWriterToolkitLayer(sessionId)),
-      Stream.tap((part) => {
-        if (part.type === "finish") {
-          return Ref.set(finishRef, {
-            modelId: undefined,
-            inputTokens: part.usage.inputTokens.total,
-            outputTokens: part.usage.outputTokens.total,
-            cacheReadTokens: part.usage.inputTokens.cacheRead,
-          });
-        }
-        if (part.type === "response-metadata") {
-          return Ref.update(finishRef, (prev) =>
-            prev ? { ...prev, modelId: part.modelId } : { modelId: part.modelId, inputTokens: undefined, outputTokens: undefined, cacheReadTokens: undefined },
-          );
-        }
-        return Effect.void;
+      sessionId,
+    }).pipe(Effect.mapError((cause) => new PrdWriterError({ cause })));
+
+    yield* Effect.annotateCurrentSpan({ "shipwright.output.chars": result.text.length });
+    yield* Effect.annotateCurrentSpan(
+      Spans.llm({
+        model: result.modelId,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        cacheReadTokens: result.cacheReadTokens,
       }),
-      Stream.filter((part) => part.type === "text-delta"),
-      Stream.map((part) => part.delta),
-      Stream.runFold(
-        () => "",
-        (acc, delta) => acc + delta,
-      ),
-      Effect.tap((text) =>
-        Effect.annotateCurrentSpan({ "shipwright.output.chars": text.length }),
-      ),
-      Effect.tap(() =>
-        Effect.flatMap(Ref.get(finishRef), (finish) =>
-          finish
-            ? Effect.annotateCurrentSpan(
-                Spans.llm({
-                  model: finish.modelId,
-                  inputTokens: finish.inputTokens,
-                  outputTokens: finish.outputTokens,
-                  cacheReadTokens: finish.cacheReadTokens,
-                }),
-              )
-            : Effect.void,
-        ),
-      ),
-      Effect.mapError((cause) => new PrdWriterError({ cause })),
     );
+
+    return result.text;
   },
   Effect.provide(AnthropicSonnetModelLayer),
   Effect.provide(AnthropicClientLayer),

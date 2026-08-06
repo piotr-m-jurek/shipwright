@@ -28,6 +28,7 @@ import type { ChunkIndex, TokenCount } from "./value-objects.ts";
 export const SESSION_STATUS_VALUES = [
   "idle",
   "uploading",
+  "waiting_for_documents",
   "summarizing",
   "processing",
   "analyzing",

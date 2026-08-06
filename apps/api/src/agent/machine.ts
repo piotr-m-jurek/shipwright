@@ -104,6 +104,9 @@ export const agentMachine = setup({
       | { type: "DOCUMENT_EXTRACTED"; filename: string; status: "done" | "failed" }
       // Fired once by the workflow to initialise per-doc tracking before fibers start.
       | { type: "EXTRACTION_STARTED"; filenames: string[] }
+      // Fired by processUploadedDocuments when all documents finish processing (ready or error).
+      // May arrive before or after USER_CONFIRM — the machine handles both orderings.
+      | { type: "DOCUMENTS_READY" }
       | { type: "SUMMARIZATION_DONE"; documentSummaries: MachineContext["documentSummaries"] }
       | { type: "OUTPUT_READY"; outputs: MachineContext["outputs"] }
       | { type: "ERROR"; cause: unknown }
@@ -182,14 +185,45 @@ export const agentMachine = setup({
   states: {
     idle: { on: { UPLOAD_COMPLETE: "uploading" } },
 
+    // Compound uploading state — two substates handle the two orderings of
+    // DOCUMENTS_READY and USER_CONFIRM without a boolean flag:
+    //
+    //   uploading_pending_docs  → docs still processing, user hasn't confirmed
+    //     DOCUMENTS_READY       → uploading_docs_ready  (docs done, waiting for user)
+    //     USER_CONFIRM          → waiting_for_documents (user early, waiting for docs)
+    //
+    //   uploading_docs_ready    → docs done, waiting for user to confirm
+    //     USER_CONFIRM          → summarizing           (happy path — docs already ready)
+    //
+    //   waiting_for_documents   → user confirmed early, docs still processing
+    //     DOCUMENTS_READY       → summarizing           (docs caught up)
     uploading: {
-      on: {
-        USER_CONFIRM: "summarizing",
-        ERROR: "uploading_error",
+      initial: "uploading_pending_docs",
+      states: {
+        uploading_pending_docs: {
+          on: {
+            DOCUMENTS_READY: "uploading_docs_ready",
+            USER_CONFIRM: "#agent.waiting_for_documents",
+            ERROR: "#agent.uploading_error",
+          },
+        },
+        uploading_docs_ready: {
+          on: {
+            USER_CONFIRM: "#agent.summarizing",
+            ERROR: "#agent.uploading_error",
+          },
+        },
       },
     },
 
     uploading_error: { type: "final" },
+
+    waiting_for_documents: {
+      on: {
+        DOCUMENTS_READY: "summarizing",
+        ERROR: "uploading_error",
+      },
+    },
 
     processing: {
       on: {

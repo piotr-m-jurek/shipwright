@@ -7,6 +7,8 @@ import { SqlClient } from "effect/unstable/sql/SqlClient";
 import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
 import { DocumentRepository } from "../../db/repositories/document-repository.ts";
 import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
+import { getOrRestoreActor } from "../session-actor.ts";
+import { MessageQueue } from "../../queue/index.ts";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api.js";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
@@ -164,8 +166,32 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
   yield* Effect.annotateCurrentSpan({ "shipwright.session.final_status": status });
   yield* agentSessionDb.updateAgentSession(sessionId, status);
 
-  // session.workflow is published by confirmAnalysis (after the user clicks
-  // "Start analysing"), not here. This ensures the workflow job only runs
-  // after the XState machine has transitioned to "summarizing", so
-  // EXTRACTION_STARTED and DOCUMENT_EXTRACTED events land in the correct state.
+  // Fire DOCUMENTS_READY so the machine can advance regardless of whether
+  // USER_CONFIRM arrived before or after document processing completed.
+  // If USER_CONFIRM already arrived (waiting_for_documents), the machine
+  // transitions to summarizing here and we publish session.workflow.
+  yield* getOrRestoreActor(sessionId).pipe(
+    Effect.flatMap((actor) =>
+      Effect.gen(function* () {
+        actor.send({ type: "DOCUMENTS_READY" });
+
+        // If machine is now in summarizing, USER_CONFIRM arrived early —
+        // publish the workflow job that confirmAnalysis would have published.
+        const afterState = actor.getSnapshot().value;
+        if (afterState === "summarizing") {
+          yield* Effect.logInfo("[processUploadedDocuments] DOCUMENTS_READY → summarizing, publishing session.workflow").pipe(
+            Effect.annotateLogs({ sessionId }),
+          );
+          const mq = yield* MessageQueue;
+          yield* mq.publish("session.workflow", { sessionId }, { maxAttempts: 5 });
+        }
+      }),
+    ),
+    Effect.tapError((err) =>
+      Effect.logWarning("[processUploadedDocuments] could not send DOCUMENTS_READY to actor", err).pipe(
+        Effect.annotateLogs({ sessionId }),
+      ),
+    ),
+    Effect.ignore,
+  );
 });

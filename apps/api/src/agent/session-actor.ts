@@ -1,4 +1,4 @@
-import { Effect, Option, pipe, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { createAgentActor, restoreAgentActor, type AgentActor } from "./machine.js";
 import { AgentSessionRepository } from "../db/repositories/agent-session-repository.ts";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
@@ -21,6 +21,22 @@ const ERROR_STATES = new Set([
   "revising_error",
 ]);
 
+// Resolve XState state value (may be compound object) to a flat DB status string.
+// Compound uploading substates both map to "uploading" in the DB — the substate
+// detail lives in the XState snapshot, not in the status enum.
+function resolveDbStatus(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null) {
+    const keys = Object.keys(value);
+    if (keys.length === 1) {
+      const parent = keys[0];
+      // uploading.uploading_pending_docs and uploading.uploading_docs_ready → "uploading"
+      return parent;
+    }
+  }
+  return "error";
+}
+
 export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* (
   sessionId: AgentSessionId,
 ) {
@@ -40,17 +56,25 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
     ),
   );
 
-  const actor: AgentActor = yield* pipe(
-    Effect.fromNullishOr(session.xstateSnapshot),
-    Effect.flatMap((snapshot) => restoreAgentActor(snapshot)),
-    Effect.tapErrorTag("SnapshotValidationError", (err) =>
-      Effect.logWarning(
-        `[session-actor] Snapshot validation failed for ${sessionId} — falling back to fresh actor`,
-        err.cause,
-      ),
-    ),
-    Effect.orElseSucceed(() => createAgentActor({ sessionId })),
-  );
+  const actor: AgentActor = session.xstateSnapshot == null
+    // No snapshot yet — new session, create a fresh actor.
+    ? createAgentActor({ sessionId })
+    : yield* restoreAgentActor(session.xstateSnapshot).pipe(
+        Effect.tapErrorTag("SnapshotValidationError", (err) =>
+          // Snapshot schema mismatch — typically caused by a breaking change to
+          // MachineContextEffectSchema (e.g. removing a field, changing a type).
+          // Old sessions with the prior shape cannot be rehydrated. Mark them as
+          // error in the DB so the user sees a clear failed state instead of a
+          // silently broken fresh actor with empty context.
+          Effect.logWarning(
+            `[session-actor] Snapshot validation failed for ${sessionId} — marking session as error`,
+            err.cause,
+          ).pipe(
+            Effect.andThen(db.updateAgentSession(sessionId, "error")),
+          ),
+        ),
+        Effect.mapError(() => new SessionNotFoundError()),
+      );
 
   yield* wireSnapshotPersistence(actor, sessionId);
   actor.start();
@@ -66,7 +90,7 @@ const wireSnapshotPersistence = Effect.fn("agent/wireSnapshotPersistence")(funct
   const services = yield* Effect.context<never>();
 
   actor.subscribe((snapshot) => {
-    const xstateState = snapshot.value as string;
+    const xstateState = resolveDbStatus(snapshot.value);
     const dbStatus = ERROR_STATES.has(xstateState) ? "error" : xstateState;
 
     Effect.runForkWith(services)(

@@ -27,6 +27,7 @@ import { MessageQueue } from "../queue/index.ts";
 import { JobHandlers } from "../queue/job-handlers.ts";
 import { RequestLoggingMiddlewareLayer } from "../observability/http-middleware.ts";
 import { SessionDebugSseLayer } from "./handlers/session-debug-sse.ts";
+import { SessionQuestionsSseLayer } from "./handlers/session-questions-sse.ts";
 
 export const ApiLayer = pipe(
   HttpApiBuilder.layer(Api, { openapiPath: "/opencode.json" }),
@@ -59,6 +60,7 @@ const CorsLayer = pipe(
 const AllRoutesLayer = Layer.mergeAll(
   AuthRouteLayer,
   SessionDebugSseLayer,
+  SessionQuestionsSseLayer,
   ApiLayer,
   DocsLayer,
   StaticFilesLayer,

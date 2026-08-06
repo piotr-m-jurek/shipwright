@@ -1,16 +1,17 @@
-import { ShipwrightApi } from "@/store/api";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { ShipwrightApi } from "@/store/api";
 import { useAtomValue, useAtomSet } from "@effect/atom-react";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Match, pipe } from "effect";
 import { PostAgentSessionAnswersRequest } from "@shipwright/shared/schemas/api";
 import { AgentSessionId, type QuestionId } from "@shipwright/shared/domain/ids";
+import type { SessionQuestionsSnapshot } from "@shipwright/shared/schemas/questions";
 
 export const Route = createFileRoute("/sessions/$sessionId/questions")({
   component: RouteComponent,
@@ -22,16 +23,8 @@ function RouteComponent() {
 }
 
 // ---------------------------------------------------------------------------
-// Atoms
+// Atoms — mutations only; session state comes from SSE
 // ---------------------------------------------------------------------------
-
-const sessionQueryFamily = Atom.family((sessionId: AgentSessionId) =>
-  ShipwrightApi.query("compute", "getAgentSessionById", {
-    params: { sessionId },
-    reactivityKeys: ["session", sessionId],
-    timeToLive: "30 seconds",
-  }),
-);
 
 const submitAnswersFamily = Atom.family((_nonce: number) =>
   ShipwrightApi.mutation("results", "submitSessionAnswers"),
@@ -52,8 +45,9 @@ type PipelineStep = {
 };
 
 const PIPELINE_STEPS: PipelineStep[] = [
-  { status: "uploading",        label: "Upload",    description: "Receiving documents" },
-  { status: "summarizing",      label: "Summarise", description: "Reading and summarising content" },
+  { status: "uploading",              label: "Upload",    description: "Receiving documents" },
+  { status: "waiting_for_documents",  label: "Upload",    description: "Processing documents…" },
+  { status: "summarizing",            label: "Summarise", description: "Reading and summarising content" },
   { status: "processing",       label: "Process",   description: "Chunking and indexing" },
   { status: "analyzing",        label: "Analyse",   description: "Finding gaps and contradictions" },
   { status: "awaiting_answers", label: "Questions", description: "Ready for your input" },
@@ -63,6 +57,7 @@ const PIPELINE_STEPS: PipelineStep[] = [
 
 const ERROR_STATUS_LABELS: Record<string, string> = {
   uploading_error:     "Upload failed",
+  summarizing_error:   "Summarisation failed",
   processing_error:    "Processing failed",
   analyzing_error:     "Analysis failed",
   re_evaluating_error: "Re-evaluation failed",
@@ -81,28 +76,47 @@ function stepIndexForStatus(status: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// Polling wrapper — refreshes every 2s while not awaiting_answers / complete
+// SSE hook — replaces polling
 // ---------------------------------------------------------------------------
 
-function useSessionPolling(sessionId: AgentSessionId) {
-  const baseAtom = useMemo(() => sessionQueryFamily(sessionId), [sessionId]);
-  const sessionResult = useAtomValue(baseAtom);
+type StreamStatus = "connecting" | "live" | "closed" | "error";
 
-  const status = AsyncResult.isSuccess(sessionResult) ? sessionResult.value.status : null;
+function useSessionStream(sessionId: AgentSessionId) {
+  const [snapshot, setSnapshot] = useState<SessionQuestionsSnapshot | null>(null);
+  const [streamStatus, setStreamStatus] = useState<StreamStatus>("connecting");
+  const esRef = useRef<EventSource | null>(null);
 
-  const shouldPoll =
-    status !== null &&
-    status !== "awaiting_answers" &&
-    status !== "complete" &&
-    !isErrorStatus(status);
+  useEffect(() => {
+    // Hit the API directly in dev to bypass Vite proxy buffering.
+    const origin = import.meta.env.DEV ? "http://localhost:3000" : "";
+    const url = `${origin}/api/sessions/${sessionId}/questions/stream`;
 
-  const pollingAtom = useMemo(
-    () => (shouldPoll ? Atom.withRefresh(baseAtom, "2 seconds") : baseAtom),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [shouldPoll],
-  );
+    const es = new EventSource(url, { withCredentials: true });
+    esRef.current = es;
 
-  return useAtomValue(pollingAtom);
+    es.addEventListener("open", () => setStreamStatus("live"));
+
+    es.addEventListener("snapshot", (e: MessageEvent) => {
+      try {
+        setSnapshot(JSON.parse(e.data) as SessionQuestionsSnapshot);
+        setStreamStatus("live");
+      } catch {
+        // ignore malformed JSON
+      }
+    });
+
+    es.addEventListener("error", () => {
+      // Close immediately — don't let EventSource auto-reconnect on auth errors.
+      es.close();
+      setStreamStatus(es.readyState === EventSource.CLOSED ? "closed" : "error");
+    });
+
+    return () => {
+      es.close();
+    };
+  }, [sessionId]);
+
+  return { snapshot, streamStatus };
 }
 
 // ---------------------------------------------------------------------------
@@ -222,61 +236,63 @@ function PipelineError({
 // ---------------------------------------------------------------------------
 
 function QuestionsPage({ sessionId }: { sessionId: AgentSessionId }) {
-  const sessionResult = useSessionPolling(sessionId);
+  const { snapshot, streamStatus } = useSessionStream(sessionId);
 
-  return pipe(
-    Match.value(sessionResult),
-    Match.when(
-      (r) => AsyncResult.isWaiting(r) && !AsyncResult.isSuccess(r),
-      () => (
-        <div className="flex min-h-svh flex-col items-center justify-center gap-6">
-          <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
-          <Spinner className="size-4" />
-          <p className="text-xs text-muted-foreground">Loading session…</p>
-        </div>
-      ),
-    ),
-    Match.when(AsyncResult.isFailure, () => (
-      <div className="flex min-h-svh flex-col items-center justify-center gap-6">
-        <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
-        <Alert variant="destructive" className="max-w-sm">
-          <AlertDescription>
-            Failed to load session. Check your connection and reload.
-          </AlertDescription>
-        </Alert>
-      </div>
-    )),
-    Match.when(AsyncResult.isSuccess, ({ value: session }) => {
-      if (session.status === "complete") {
-        return <Navigate to={"/sessions/$sessionId/output"} params={{ sessionId }} />;
-      }
-
-      if (session.status === "awaiting_answers" && session.questions.length > 0) {
-        return (
-          <AnswerForm
-            sessionId={sessionId}
-            questions={[...session.questions].sort((a, b) => a.orderIndex - b.orderIndex)}
-          />
-        );
-      }
-
-      if (isErrorStatus(session.status)) {
-        return (
-          <div className="flex min-h-svh flex-col items-center justify-center gap-6">
-            <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
-            <PipelineError status={session.status} errorReason={session.errorReason} sessionId={sessionId} />
-          </div>
-        );
-      }
-
+  // While connecting and no snapshot yet — show loading
+  if (snapshot === null) {
+    if (streamStatus === "error" || streamStatus === "closed") {
       return (
         <div className="flex min-h-svh flex-col items-center justify-center gap-6">
           <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
-          <PipelineProgress status={session.status} />
+          <Alert variant="destructive" className="max-w-sm">
+            <AlertDescription>
+              Failed to connect to session stream. Check your connection and reload.
+            </AlertDescription>
+          </Alert>
         </div>
       );
-    }),
-    Match.orElse(() => null),
+    }
+
+    return (
+      <div className="flex min-h-svh flex-col items-center justify-center gap-6">
+        <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
+        <Spinner className="size-4" />
+        <p className="text-xs text-muted-foreground">Loading session…</p>
+      </div>
+    );
+  }
+
+  const { status, errorReason, questions } = snapshot;
+
+  if (status === "complete") {
+    return <Navigate to={"/sessions/$sessionId/output"} params={{ sessionId }} />;
+  }
+
+  if (status === "awaiting_answers" && questions.length > 0) {
+    return (
+      <AnswerForm
+        sessionId={sessionId}
+        questions={[...questions]
+          .sort((a, b) => a.orderIndex - b.orderIndex)
+          .map((q) => ({ ...q, id: q.id as QuestionId }))}
+      />
+    );
+  }
+
+  if (isErrorStatus(status)) {
+    return (
+      <div className="flex min-h-svh flex-col items-center justify-center gap-6">
+        <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
+        <PipelineError status={status} errorReason={errorReason} sessionId={sessionId} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-svh flex-col items-center justify-center gap-6">
+      <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
+      <PipelineProgress status={status} />
+    </div>
   );
 }
 

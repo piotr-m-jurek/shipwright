@@ -184,26 +184,41 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
           Effect.mapError((cause) => new ConfirmAnalysisError({ cause })),
         );
 
-        const state = actor.getSnapshot();
+        const stateValue = actor.getSnapshot().value;
 
-        if (state.value !== "idle") {
+        // Already past uploading — confirm was already processed.
+        const isUploading =
+          typeof stateValue === "object" && stateValue !== null && "uploading" in stateValue;
+        const isIdle = stateValue === "idle";
+
+        if (!isIdle && !isUploading) {
           return new ConfirmAnalysisResponse({ started: true });
         }
 
-        // Advance the actor: idle → uploading → summarizing.
-        actor.send({ type: "UPLOAD_COMPLETE" });
+        // Advance idle → uploading_pending_docs first if still idle.
+        if (isIdle) {
+          actor.send({ type: "UPLOAD_COMPLETE" });
+        }
+
+        // Send USER_CONFIRM — machine transitions to either:
+        //   uploading_docs_ready → summarizing  (docs already ready)
+        //   uploading_pending_docs → waiting_for_documents  (docs still processing)
         actor.send({ type: "USER_CONFIRM" });
 
-        // Publish session.workflow NOW — after the machine is in summarizing,
-        // so EXTRACTION_STARTED lands in the correct state.
-        // documents.process no longer publishes this to avoid the race where
-        // the workflow job starts before the user confirms.
-        const mq = yield* MessageQueue.pipe(
-          Effect.mapError((cause) => new ConfirmAnalysisError({ cause })),
-        );
-        yield* mq
-          .publish("session.workflow", { sessionId }, { maxAttempts: 5 })
-          .pipe(Effect.mapError((cause) => new ConfirmAnalysisError({ cause })));
+        // Publish session.workflow only if machine is now in summarizing.
+        // If it entered waiting_for_documents instead, processUploadedDocuments
+        // will publish session.workflow after sending DOCUMENTS_READY.
+        const afterState = actor.getSnapshot().value;
+        const isNowSummarizing = afterState === "summarizing";
+
+        if (isNowSummarizing) {
+          const mq = yield* MessageQueue.pipe(
+            Effect.mapError((cause) => new ConfirmAnalysisError({ cause })),
+          );
+          yield* mq
+            .publish("session.workflow", { sessionId }, { maxAttempts: 5 })
+            .pipe(Effect.mapError((cause) => new ConfirmAnalysisError({ cause })));
+        }
 
         return new ConfirmAnalysisResponse({ started: true });
       }),
