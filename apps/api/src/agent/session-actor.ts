@@ -13,6 +13,7 @@ const registry = new Map<AgentSessionId, AgentActor>();
 // XState states that map to the 'error' value in the Postgres session_status enum.
 const ERROR_STATES = new Set([
   "uploading_error",
+  "summarizing_error",
   "processing_error",
   "analyzing_error",
   "re_evaluating_error",

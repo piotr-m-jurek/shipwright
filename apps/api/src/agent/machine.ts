@@ -24,10 +24,34 @@ export const initialContext: MachineContext = {
   outputs: {},
 };
 
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/** All documents have settled (done or failed) — none still pending. */
+export function allDocumentsSettled(context: MachineContext): boolean {
+  return context.documents.length > 0 && context.documents.every((d) => d.status !== "pending");
+}
+
+/** At least one document succeeded extraction. */
+export function atLeastOneDocumentDone(context: MachineContext): boolean {
+  return context.documents.some((d) => d.status === "done");
+}
+
 // ── Guards ─────────────────────────────────────────────────────────────────
 
 // Summary token counts are used (not raw document token counts) per docs/stack.md.
 const CONTEXT_TOKEN_THRESHOLD = 100_000;
+
+// Project the DOCUMENT_EXTRACTED event onto context to compute the post-update document list.
+// Guards run before actions, so context still reflects pre-event state here.
+// Accepts the full event union — narrows internally.
+function projectExtracted(context: MachineContext, event: { type: string; [k: string]: unknown }) {
+  if (event.type !== "DOCUMENT_EXTRACTED") return context.documents;
+  const filename = event.filename as string;
+  const status = event.status as "done" | "failed";
+  return context.documents.map((d) =>
+    d.filename === filename ? { ...d, status } : d,
+  );
+}
 
 const guards = {
   // true → all summary token counts fit in context window
@@ -41,6 +65,21 @@ const guards = {
 
   // inverse of roundLimitReached — used in the ANSWERS_INSUFFICIENT branch
   roundLimitNotReached: ({ context }: { context: MachineContext }) => context.round < 2,
+
+  // All documents settled and at least one succeeded — proceed to processing.
+  extractionPartialOrFullSuccess: ({ context, event }: { context: MachineContext; event: { type: string; [k: string]: unknown } }) => {
+    const updated = projectExtracted(context, event);
+    return allDocumentsSettled({ ...context, documents: updated }) &&
+      atLeastOneDocumentDone({ ...context, documents: updated });
+  },
+
+  // All documents settled and ALL failed — hard error.
+  extractionTotalFailure: ({ context, event }: { context: MachineContext; event: { type: string; [k: string]: unknown } }) => {
+    const updated = projectExtracted(context, event);
+    return (
+      updated.every((d) => d.status !== "pending") && updated.every((d) => d.status === "failed")
+    );
+  },
 } as const;
 
 // ── Machine ────────────────────────────────────────────────────────────────
@@ -60,6 +99,11 @@ export const agentMachine = setup({
       | { type: "USER_ANSWERED"; answers: MachineContext["answers"] }
       | { type: "ANSWERS_SUFFICIENT"; questions: MachineContext["questions"] }
       | { type: "ANSWERS_INSUFFICIENT"; questions: MachineContext["questions"] }
+      // Fired once per document when extraction completes (success or failure).
+      // Effect drives the workers; machine tracks aggregate status.
+      | { type: "DOCUMENT_EXTRACTED"; filename: string; status: "done" | "failed" }
+      // Fired once by the workflow to initialise per-doc tracking before fibers start.
+      | { type: "EXTRACTION_STARTED"; filenames: string[] }
       | { type: "SUMMARIZATION_DONE"; documentSummaries: MachineContext["documentSummaries"] }
       | { type: "OUTPUT_READY"; outputs: MachineContext["outputs"] }
       | { type: "ERROR"; cause: unknown }
@@ -95,6 +139,20 @@ export const agentMachine = setup({
         return [...context.answers, ...event.answers];
       },
       round: ({ context }) => context.round + 1,
+    }),
+    assignExtractionStarted: assign({
+      documents: ({ event }) => {
+        if (event.type !== "EXTRACTION_STARTED") return [];
+        return event.filenames.map((filename) => ({ filename, status: "pending" as const }));
+      },
+    }),
+    assignDocumentExtracted: assign({
+      documents: ({ context, event }) => {
+        if (event.type !== "DOCUMENT_EXTRACTED") return context.documents;
+        return context.documents.map((d) =>
+          d.filename === event.filename ? { ...d, status: event.status } : d,
+        );
+      },
     }),
     assignDocumentSummaries: assign({
       documentSummaries: ({ context, event }) => {
@@ -155,12 +213,37 @@ export const agentMachine = setup({
 
     summarizing: {
       on: {
+        // Initialise per-doc status tracking when fibers are about to start.
+        EXTRACTION_STARTED: {
+          actions: "assignExtractionStarted",
+        },
+        // Each document fiber reports its outcome individually.
+        DOCUMENT_EXTRACTED: [
+          {
+            // Last document settled and at least one succeeded — proceed.
+            guard: "extractionPartialOrFullSuccess",
+            target: "processing",
+            actions: "assignDocumentExtracted",
+          },
+          {
+            // Last document settled but ALL failed — hard error.
+            guard: "extractionTotalFailure",
+            target: "summarizing_error",
+            actions: "assignDocumentExtracted",
+          },
+          {
+            // Still waiting for other documents — just update status.
+            actions: "assignDocumentExtracted",
+          },
+        ],
         SUMMARIZATION_DONE: {
           target: "processing",
           actions: "assignDocumentSummaries",
         },
       },
     },
+
+    summarizing_error: { type: "final" },
 
     analyzing: {
       // Suspend point — waits for external ANALYSIS_DONE event.

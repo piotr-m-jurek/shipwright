@@ -1,26 +1,31 @@
 import { Schema } from "effect";
-import { AgentSessionId, DocumentId, QuestionId, SummaryId } from "../domain/ids.ts";
+import { AgentSessionId, QuestionId, SummaryId } from "../domain/ids.ts";
 import { TokenCount } from "../domain/value-objects.ts";
+
+// Per-document extraction status tracked in the machine.
+// Uses filename (domain concept) not DocumentId (DB concern).
+export class DocumentExtractionStatus extends Schema.Opaque<DocumentExtractionStatus>()(
+  Schema.Struct({
+    filename: Schema.String,
+    status: Schema.Literals(["pending", "done", "failed"]),
+  }),
+) {}
 
 export class MachineContextEffectSchema extends Schema.Class<MachineContextEffectSchema>(
   "MachineContextEffectSchema",
 )({
   sessionId: AgentSessionId,
-  documents: Schema.Array(
-    Schema.Struct({
-      id: DocumentId,
-      filename: Schema.String,
-      tokenCount: TokenCount,
-    }),
-  ),
+  // Domain-level document tracking: filename + extraction status only.
+  // No DB IDs — those are a persistence concern, not machine state.
+  documents: Schema.Array(DocumentExtractionStatus),
   // Latest final summary per document, loaded before the analyzing state.
   // All downstream passes (Challenger, Writers) consume these — never raw text.
+  // SummaryId retained for downstream reference (e.g. fetching items); no other DB IDs.
   documentSummaries: Schema.Array(
     Schema.Struct({
-      id: SummaryId, // document_summaries.id
-      documentId: DocumentId,
-      sourceDocument: Schema.String, // documents.filename
-      content: Schema.String, // final summary content
+      id: SummaryId,
+      sourceDocument: Schema.String, // documents.filename — domain identity
+      content: Schema.String,
       tokenCount: TokenCount,
     }),
   ),

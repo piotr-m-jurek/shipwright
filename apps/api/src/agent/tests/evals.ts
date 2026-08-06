@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../../../../");
 
-import { Effect, Layer, ManagedRuntime, Option, pipe, Schema } from "effect";
+import { Effect, Layer, ManagedRuntime, Option, pipe } from "effect";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { DB, AppDBLiveLayer } from "../../db/index.js";
 import { users } from "../../db/schema.js";

@@ -1,13 +1,14 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { Clock, Effect, Exit, Metric, Option } from "effect";
+import { Clock, Effect, Exit, Metric, Option, pipe } from "effect";
 import { sessionErrorCounter, pipelineDurationHistogram } from "../../observability/metrics.ts";
 import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
 import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
+import { DocumentRepository } from "../../db/repositories/document-repository.ts";
 import { getOrRestoreActor } from "../session-actor.js";
-import { summarizeAllDocuments } from "../writers/summarizer.js";
+import { summarizeDocument } from "../writers/summarizer.js";
 import { runChallenger } from "../writers/challenger.js";
 import { runQuestionGenerator } from "../writers/question-generator.js";
-import { AnalysisPipelineError } from "../errors.js";
+import { AnalysisPipelineError, AllExtractionsFailedError } from "../errors.js";
 import { Spans } from "../../observability/spans.ts";
 import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
 
@@ -18,14 +19,54 @@ const runSessionWorkflowInner = Effect.fn("agent/runSessionWorkflow")(function* 
 
   const summaryDb = yield* SummaryRepository;
   const clarificationDb = yield* ClarificationRepository;
+  const documentDb = yield* DocumentRepository;
   const actor = yield* getOrRestoreActor(sessionId);
 
-  yield* summarizeAllDocuments(sessionId);
+  // ── Parallel extraction ──────────────────────────────────────────────────
+  // Fetch documents for this session (DB concern — stays out of machine context).
+  const docs = yield* documentDb.getDocumentsBySessionId(sessionId);
 
-  const documentSummaries = yield* summaryDb.getFinalSummariesBySession(sessionId);
-  yield* Effect.logInfo(`[runSessionWorkflow] summarization done — ${documentSummaries.length} summaries`).pipe(
-    Effect.annotateLogs({ sessionId, summaryCount: documentSummaries.length }),
+  // Initialise per-doc tracking in the machine (filenames only, no DB IDs).
+  actor.send({ type: "EXTRACTION_STARTED", filenames: docs.map((d) => d.filename) });
+  yield* Effect.logInfo(`[runSessionWorkflow] extraction started — ${docs.length} documents`).pipe(
+    Effect.annotateLogs({ sessionId, documentCount: docs.length }),
   );
+
+  // Run one fiber per document. Each reports its outcome to the machine individually.
+  // A failing document does NOT abort sibling fibers.
+  yield* Effect.forEach(
+    docs,
+    (doc) =>
+      pipe(
+        summarizeDocument(doc.id, sessionId, doc.filename),
+        Effect.andThen(() => {
+          actor.send({ type: "DOCUMENT_EXTRACTED", filename: doc.filename, status: "done" });
+          return Effect.logInfo(`[runSessionWorkflow] extracted: ${doc.filename}`).pipe(
+            Effect.annotateLogs({ sessionId, filename: doc.filename }),
+          );
+        }),
+        Effect.catch((err) => {
+          actor.send({ type: "DOCUMENT_EXTRACTED", filename: doc.filename, status: "failed" });
+          return Effect.logError(
+            `[runSessionWorkflow] extraction failed: ${doc.filename}`,
+            err,
+          ).pipe(Effect.annotateLogs({ sessionId, filename: doc.filename }));
+        }),
+      ),
+    { concurrency: 2 },
+  );
+
+  // All fibers settled. Check if machine transitioned to summarizing_error (all failed).
+  const stateAfterExtraction = actor.getSnapshot().value as string;
+  if (stateAfterExtraction === "summarizing_error") {
+    return yield* new AllExtractionsFailedError();
+  }
+
+  // Fetch final summaries from DB and send SUMMARIZATION_DONE.
+  const documentSummaries = yield* summaryDb.getFinalSummariesBySession(sessionId);
+  yield* Effect.logInfo(
+    `[runSessionWorkflow] summarization done — ${documentSummaries.length} summaries`,
+  ).pipe(Effect.annotateLogs({ sessionId, summaryCount: documentSummaries.length }));
   yield* Effect.annotateCurrentSpan({ "shipwright.summary.count": documentSummaries.length });
 
   actor.send({
@@ -33,7 +74,6 @@ const runSessionWorkflowInner = Effect.fn("agent/runSessionWorkflow")(function* 
     documentSummaries: documentSummaries.map((summary) => ({
       id: summary.id,
       content: summary.summary,
-      documentId: summary.documentId,
       sourceDocument: summary.sourceDocument,
       tokenCount: summary.tokenCount,
     })),
@@ -48,17 +88,17 @@ const runSessionWorkflowInner = Effect.fn("agent/runSessionWorkflow")(function* 
   );
 
   const gapReport = yield* runChallenger(documentSummaries);
-  yield* Effect.logInfo(`[runSessionWorkflow] challenger done — ${gapReport.conflicts.length} conflicts, ${gapReport.gaps.length} gaps, ${gapReport.ambiguities.length} ambiguities`).pipe(
-    Effect.annotateLogs({ sessionId }),
-  );
+  yield* Effect.logInfo(
+    `[runSessionWorkflow] challenger done — ${gapReport.conflicts.length} conflicts, ${gapReport.gaps.length} gaps, ${gapReport.ambiguities.length} ambiguities`,
+  ).pipe(Effect.annotateLogs({ sessionId }));
 
   const { questions: generatedQuestions } = yield* runQuestionGenerator(
     gapReport,
     documentSummaries,
   );
-  yield* Effect.logInfo(`[runSessionWorkflow] question generator done — ${generatedQuestions.length} questions`).pipe(
-    Effect.annotateLogs({ sessionId, questionCount: generatedQuestions.length }),
-  );
+  yield* Effect.logInfo(
+    `[runSessionWorkflow] question generator done — ${generatedQuestions.length} questions`,
+  ).pipe(Effect.annotateLogs({ sessionId, questionCount: generatedQuestions.length }));
 
   const dbQuestions = yield* clarificationDb.createQuestions(
     generatedQuestions.map((q, idx) => ({
@@ -100,7 +140,7 @@ export const runSessionWorkflow = (sessionId: AgentSessionId) =>
         yield* Effect.logError("[runSessionWorkflow] analysis pipeline failed").pipe(
           Effect.annotateLogs({ sessionId }),
           Effect.andThen(Effect.logError(cause)),
-          Effect.andThen(Effect.annotateCurrentSpan({ "error": true })),
+          Effect.andThen(Effect.annotateCurrentSpan({ error: true })),
         );
         // Drive the actor into its error state so the session-actor subscriber
         // persists the status as "error" in the DB. Without this the session
