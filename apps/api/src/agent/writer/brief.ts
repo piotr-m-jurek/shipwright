@@ -33,10 +33,11 @@ Structure (use these Markdown headings):
 
 ANTI-HALLUCINATION RULE: Do not include any requirement, constraint, or decision not present in the provided summaries or answers. If something is unclear, say it is unclear — do not invent clarity.
 
-TOOL USE: You have three tools available:
+TOOL USE: You have four tools available:
 - query_chunks: semantic search over document chunks — use for targeted retrieval
 - get_document: full text of a source document by filename — use when you need complete context
-- get_document_summary: structured summary with requirements/constraints/assumptions — use to re-read the analysis for a specific document`;
+- get_document_summary: structured summary with requirements/constraints/assumptions — use to re-read the analysis for a specific document
+- score_completeness: evaluate a section you just wrote against the source context — call this after each major section. If score < 0.85, rewrite that section only (not the full document) before continuing.`;
 
 function formatSummariesForBrief(
   summaries: DocumentSummary[],

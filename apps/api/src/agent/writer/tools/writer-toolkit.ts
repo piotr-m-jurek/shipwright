@@ -1,5 +1,6 @@
-import { Array, Effect, pipe, Schema } from "effect";
-import { Tool, Toolkit } from "effect/unstable/ai";
+import { Array, Effect, Layer, pipe, Schema } from "effect";
+import { LanguageModel, Prompt, Tool, Toolkit } from "effect/unstable/ai";
+import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../../providers.ts";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkRepository } from "../../../db/repositories/chunk-repository.ts";
 import { DocumentRepository } from "../../../db/repositories/document-repository.ts";
@@ -21,6 +22,45 @@ class DocumentSummaryNotFoundError extends Schema.TaggedErrorClass<DocumentSumma
 
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
+// Score threshold below which the writer must revise the failing section.
+// Intentionally section-level (not full-draft) revision:
+// re-generating the full draft re-spends all input tokens (summaries + Q&A context),
+// which is expensive. Targeting only the deficient section costs a fraction of that.
+const SCORE_COMPLETENESS_THRESHOLD = 0.85;
+
+const ScoreCompletenessTool = Tool.make("score-completeness", {
+  description:
+    "Evaluate a named section of the document you just drafted for completeness against " +
+    "the source summaries. Call this after writing each major section. " +
+    `If the returned score is below ${SCORE_COMPLETENESS_THRESHOLD}, rewrite that section only — ` +
+    "do not regenerate the full document.",
+  parameters: Schema.Struct({
+    sectionName: Schema.String.annotate({
+      description:
+        "The exact heading name of the section being evaluated (e.g. '## Key Constraints')",
+    }),
+    sectionContent: Schema.String.annotate({
+      description: "The full text of the section you just wrote",
+    }),
+    sourceSummaryContext: Schema.String.annotate({
+      description:
+        "The relevant portion of the source summaries that this section should reflect. " +
+        "Include requirements, constraints, or assumptions the section must cover.",
+    }),
+  }),
+  success: Schema.Struct({
+    score: Schema.Finite.annotate({ description: "Completeness score 0.0–1.0" }),
+    reasoning: Schema.String.annotate({ description: "Why this score was given" }),
+    missedItems: Schema.Array(Schema.String).annotate({
+      description: "Specific items from the source context that are absent from the section",
+    }),
+    pass: Schema.Boolean.annotate({
+      description: `true if score >= ${SCORE_COMPLETENESS_THRESHOLD}`,
+    }),
+  }),
+  failureMode: "return",
+});
+
 const QueryChunksTool = Tool.make("query-chunks", {
   description:
     "Retrieve relevant document chunks by semantic similarity. Use when you need more " +
@@ -31,7 +71,7 @@ const QueryChunksTool = Tool.make("query-chunks", {
       description: "A specific question or topic to search for in the source documents",
     }),
     limit: Schema.optionalKey(
-      Schema.Number.check(Schema.isBetween({ minimum: 1, maximum: 20 })),
+      Schema.Finite.check(Schema.isBetween({ minimum: 1, maximum: 20 })),
     ).annotate({
       description: "Maximum number of chunks to return (1–20, default 5). Omit to use the default.",
     }),
@@ -39,10 +79,10 @@ const QueryChunksTool = Tool.make("query-chunks", {
   success: Schema.Struct({
     results: Schema.Array(
       Schema.Struct({
-        similarity: Schema.Number,
+        similarity: Schema.Finite,
         content: Schema.String,
         headingPath: Schema.NullOr(Schema.Array(Schema.String)),
-        pageNumber: Schema.NullOr(Schema.Number),
+        pageNumber: Schema.NullOr(Schema.Finite),
       }),
     ),
   }),
@@ -55,14 +95,15 @@ const GetDocumentTool = Tool.make("get-document", {
     "the complete context of a document — not just matching chunks — before writing a section.",
   parameters: Schema.Struct({
     filename: Schema.String.annotate({
-      description: "The exact filename of the document as it appears in the session (e.g. 'requirements.pdf')",
+      description:
+        "The exact filename of the document as it appears in the session (e.g. 'requirements.pdf')",
     }),
   }),
   success: Schema.Struct({
     filename: Schema.String,
     content: Schema.String,
     mimeType: Schema.String,
-    sizeBytes: Schema.Number,
+    sizeBytes: Schema.Finite,
   }),
   failure: DocumentNotFoundError,
   failureMode: "return",
@@ -91,7 +132,14 @@ const GetDocumentSummaryTool = Tool.make("get-document-summary", {
 
 // ── Toolkit ───────────────────────────────────────────────────────────────────
 
-export const WriterToolkit = Toolkit.make(QueryChunksTool, GetDocumentTool, GetDocumentSummaryTool);
+export const WriterToolkit = Toolkit.make(
+  QueryChunksTool,
+  GetDocumentTool,
+  GetDocumentSummaryTool,
+  ScoreCompletenessTool,
+);
+
+export { SCORE_COMPLETENESS_THRESHOLD };
 
 // ── Layer factory ─────────────────────────────────────────────────────────────
 
@@ -121,7 +169,14 @@ export const makeWriterToolkitLayer = (sessionId: AgentSessionId) =>
             .pipe(
               Effect.catch((cause) =>
                 Effect.logError("query-chunks: DB query failed", cause).pipe(
-                  Effect.as([] as { similarity: number; content: string; headingPath: string[] | null; pageNumber: number | null }[]),
+                  Effect.as(
+                    [] as {
+                      similarity: number;
+                      content: string;
+                      headingPath: string[] | null;
+                      pageNumber: number | null;
+                    }[],
+                  ),
                 ),
               ),
             );
@@ -145,18 +200,80 @@ export const makeWriterToolkitLayer = (sessionId: AgentSessionId) =>
         }),
 
         "get-document-summary": Effect.fn("tools/get-document-summary")(function* ({ filename }) {
-          const summaries = yield* summaryDb.getFinalSummariesBySession(sessionId).pipe(Effect.orDie);
-          const summary = yield* Array.findFirst(summaries, (s) => s.sourceDocument === filename).pipe(
+          const summaries = yield* summaryDb
+            .getFinalSummariesBySession(sessionId)
+            .pipe(Effect.orDie);
+          const summary = yield* Array.findFirst(
+            summaries,
+            (s) => s.sourceDocument === filename,
+          ).pipe(
             Effect.fromOption,
-            Effect.catchTag("NoSuchElementError", () => new DocumentSummaryNotFoundError({ filename })),
+            Effect.catchTag(
+              "NoSuchElementError",
+              () => new DocumentSummaryNotFoundError({ filename }),
+            ),
           );
           return {
             filename: summary.sourceDocument,
             summary: summary.summary,
-            requirements: summary.requirements.map((r) => ({ text: r.text, confidence: r.confidence })),
-            constraints: summary.constraints.map((c) => ({ text: c.text, confidence: c.confidence })),
-            assumptions: summary.assumptions.map((a) => ({ text: a.text, confidence: a.confidence })),
+            requirements: summary.requirements.map((r) => ({
+              text: r.text,
+              confidence: r.confidence,
+            })),
+            constraints: summary.constraints.map((c) => ({
+              text: c.text,
+              confidence: c.confidence,
+            })),
+            assumptions: summary.assumptions.map((a) => ({
+              text: a.text,
+              confidence: a.confidence,
+            })),
           };
+        }),
+
+        "score-completeness": Effect.fn("tools/score-completeness")(function* ({
+          sectionName,
+          sectionContent,
+          sourceSummaryContext,
+        }) {
+          const judgePrompt = `You are a completeness auditor for a document section.
+
+You will receive:
+1. A section name and its drafted content
+2. The source summary context that section should reflect
+
+Your job: identify specific requirements, constraints, or assumptions from the source context that are NOT reflected in the section.
+
+Score 0.0–1.0 where 1.0 = fully complete, 0.0 = critical items missing.
+Pass threshold: ${SCORE_COMPLETENESS_THRESHOLD}
+
+Respond with JSON:
+{
+  "score": 0.0-1.0,
+  "reasoning": "...",
+  "missedItems": ["item not covered", ...],
+  "pass": true/false
+}`;
+
+          const userContent = `## Section: ${sectionName}\n\n${sectionContent}\n\n## Source Context\n\n${sourceSummaryContext}`;
+
+          const response = yield* LanguageModel.generateObject({
+            schema: Schema.Struct({
+              score: Schema.Finite,
+              reasoning: Schema.String,
+              missedItems: Schema.Array(Schema.String),
+              pass: Schema.Boolean,
+            }),
+            prompt: Prompt.make([
+              { role: "system", content: judgePrompt },
+              { role: "user", content: userContent },
+            ]),
+          }).pipe(
+            Effect.provide(Layer.provideMerge(AnthropicHaikuModelLayer, AnthropicClientLayer)),
+            Effect.orDie,
+          );
+
+          return response.value;
         }),
       });
     }),

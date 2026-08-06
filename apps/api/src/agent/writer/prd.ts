@@ -53,10 +53,11 @@ Any ambiguities that remain after the clarifying session. The coding agent must 
 
 ANTI-HALLUCINATION RULE: Every requirement in the Acceptance Criteria must be traceable to the provided document summaries or clarification answers. Do not invent scope. If a section cannot be filled from the available information, say so explicitly.
 
-TOOL USE: You have three tools available:
+TOOL USE: You have four tools available:
 - query_chunks: semantic search over document chunks — use for targeted retrieval
 - get_document: full text of a source document by filename — use when you need complete context
-- get_document_summary: structured summary with requirements/constraints/assumptions — use to re-read the analysis for a specific document`;
+- get_document_summary: structured summary with requirements/constraints/assumptions — use to re-read the analysis for a specific document
+- score_completeness: evaluate a section you just wrote against the source context — call this after each major section. If score < 0.85, rewrite that section only (not the full document) before continuing.`;
 
 function formatSummariesForPrd(
   summaries: DocumentSummary[],
