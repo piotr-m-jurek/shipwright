@@ -9,7 +9,7 @@ import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
 import { TextGenerationError } from "../errors.ts";
 import { estimateTokenCount } from "../lib/estimate-token-count.ts";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
-import { type DocumentSummaryEffect, DocumentSummaryEffectSchema } from "../schemas.ts";
+import { type DocumentSummaryEffect, DocumentSummaryEffectSchema } from "./schemas.ts";
 import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers.ts";
 
 class ChunksRetrievalError extends Schema.TaggedErrorClass<ChunksRetrievalError>()(

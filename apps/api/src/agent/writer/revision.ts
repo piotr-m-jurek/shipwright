@@ -11,7 +11,7 @@ type LlmFinishCapture = {
 };
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
-import { makeWriterToolkitLayer, WriterToolkit } from "../tools/writer-toolkit.ts";
+import { makeWriterToolkitLayer, WriterToolkit } from "./tools/writer-toolkit.ts";
 
 export class RevisionWriterError extends Schema.TaggedErrorClass<RevisionWriterError>()(
   "shipwright/agent/RevisionWriterError",

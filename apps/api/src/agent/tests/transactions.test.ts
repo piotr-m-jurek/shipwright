@@ -21,12 +21,12 @@ import { AgentSessionRepository } from "../../db/repositories/agent-session-repo
 import { StorageAdapter } from "../../storage/index.js";
 import { EmbeddingService } from "../../agent/embedding-service.js";
 import { MessageQueue } from "../../queue/index.ts";
-import { persistSummary } from "../../agent/writers/summarizer.ts";
+import { persistSummary } from "../../agent/extractor/index.ts";
 import { processUploadedDocuments } from "../../agent/pipelines/process-uploaded-documents.ts";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { Schema } from "effect";
 import { TokenCount } from "@shipwright/shared/domain/value-objects";
-import type { DocumentSummaryEffect } from "../../agent/schemas.ts";
+import type { DocumentSummaryEffect } from "../../agent/extractor/index.ts";
 
 // ── ID helpers ────────────────────────────────────────────────────────────
 

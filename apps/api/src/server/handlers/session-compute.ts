@@ -28,19 +28,18 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const clarificationDb = yield* ClarificationRepository;
         const user = yield* CurrentUser;
 
-        const session = yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(
-          Effect.mapError(() => new AgentSessionNotFound()),
-          Effect.flatMap(Option.match({
-            onNone: () => Effect.fail(new AgentSessionNotFound()),
-            onSome: Effect.succeed,
-          })),
+        const session = yield* pipe(
+          agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }),
+          Effect.map((v) => Option.getOrThrow(v)),
+          Effect.catch(() => new AgentSessionNotFound()),
         );
 
         // Include current questions when session is awaiting answers
-        const questions = yield* clarificationDb.getQuestionsBySessionId(sessionId).pipe(
-          Effect.mapError(() => new AgentSessionNotFound()),
+        const questions = yield* pipe(
+          clarificationDb.getQuestionsBySessionId(sessionId),
           Effect.when(Effect.succeed(session.status === "awaiting_answers")),
           Effect.map(Option.getOrElse(() => [] as Question[])),
+          Effect.mapError(() => new AgentSessionNotFound()),
         );
 
         return new GetAgentSessionResponse({
@@ -65,14 +64,11 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const documentDb = yield* DocumentRepository;
         const user = yield* CurrentUser;
 
-        // Ownership check — 404 for unknown or other user's session
-        yield* agentSessionDb
-          .getAgentSessionByIdForUser({ sessionId, userId: user.id })
-          .pipe(
-            Effect.orDie,
-            Effect.flatMap(Effect.fromOption),
-            Effect.catchTag("NoSuchElementError", () => new AgentSessionNotFound()),
-          );
+        yield* pipe(
+          agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }),
+          Effect.flatMap(Effect.fromOption),
+          Effect.catch(() => new AgentSessionNotFound()),
+        );
 
         const documents = yield* documentDb.getDocumentsBySessionId(sessionId).pipe(Effect.orDie);
 
@@ -120,25 +116,30 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
           .pipe(Effect.orDie);
 
         const documents = yield* documentDb.getDocumentsBySessionId(sessionId).pipe(Effect.orDie);
-        const questions = yield* clarificationDb.getQuestionsBySessionId(sessionId).pipe(Effect.orDie);
+        const questions = yield* clarificationDb
+          .getQuestionsBySessionId(sessionId)
+          .pipe(Effect.orDie);
         const answers = yield* clarificationDb.getAnswersBySessionId(sessionId).pipe(Effect.orDie);
         const outputs = yield* outputDb.getOutputsBySessionId(sessionId).pipe(Effect.orDie);
 
         // Extract XState context from snapshot
-        const xstate = Option.match(Option.fromNullishOr(session.xstateSnapshot), {
-          onNone: () => null,
-          onSome: (snap) => ({
-            value: String(session.status),
-            round: snap.round ?? 0,
-            inputMode: snap.inputMode ?? "context",
-            outputVersion: snap.outputVersion ?? 1,
-            documentSummaryCount: snap.documentSummaries?.length ?? 0,
-            questionCount: snap.questions?.length ?? 0,
-            answerCount: snap.answers?.length ?? 0,
-            revisionFeedback: snap.revisionFeedback ? Option.getOrNull(snap.revisionFeedback) : null,
-            raw: snap as unknown,
+        const xstate = pipe(
+          Option.fromNullishOr(session.xstateSnapshot),
+          Option.match({
+            onNone: () => null,
+            onSome: (snap) => ({
+              value: String(session.status),
+              round: snap.round ?? 0,
+              inputMode: snap.inputMode ?? "context",
+              outputVersion: snap.outputVersion ?? 1,
+              documentSummaryCount: snap.documentSummaries?.length ?? 0,
+              questionCount: snap.questions?.length ?? 0,
+              answerCount: snap.answers?.length ?? 0,
+              revisionFeedback: Option.getOrNull(snap.revisionFeedback),
+              raw: snap as unknown,
+            }),
           }),
-        });
+        );
 
         return new GetSessionDebugResponse({
           session: {
@@ -155,7 +156,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
             status: d.status,
             mimeType: d.mimeType,
             sizeBytes: d.sizeBytes,
-            tokenCount: d.tokenCount ?? null,
+            tokenCount: d.tokenCount,
           })),
           questions: questions.map((q) => ({
             id: q.id,
@@ -169,7 +170,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
           })),
           outputs: outputs.map((o) => ({
             type: o.type,
-            version: o.version ?? null,
+            version: o.version,
             createdAt: o.createdAt,
             contentLength: o.content?.length ?? 0,
           })),
@@ -200,9 +201,9 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const mq = yield* MessageQueue.pipe(
           Effect.mapError((cause) => new ConfirmAnalysisError({ cause })),
         );
-        yield* mq.publish("session.workflow", { sessionId }, { maxAttempts: 5 }).pipe(
-          Effect.mapError((cause) => new ConfirmAnalysisError({ cause })),
-        );
+        yield* mq
+          .publish("session.workflow", { sessionId }, { maxAttempts: 5 })
+          .pipe(Effect.mapError((cause) => new ConfirmAnalysisError({ cause })));
 
         return new ConfirmAnalysisResponse({ started: true });
       }),

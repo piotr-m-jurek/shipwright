@@ -1,11 +1,11 @@
 import { Array, Effect, pipe, Schema } from "effect";
 import { Tool, Toolkit } from "effect/unstable/ai";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
-import { EmbeddingService } from "../embedding-service.ts";
-import { StorageAdapter } from "../../storage/index.ts";
+import { ChunkRepository } from "../../../db/repositories/chunk-repository.ts";
+import { DocumentRepository } from "../../../db/repositories/document-repository.ts";
+import { SummaryRepository } from "../../../db/repositories/summary-repository.ts";
+import { EmbeddingService } from "../../embedding-service.ts";
+import { StorageAdapter } from "../../../storage/index.ts";
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 

@@ -2,7 +2,7 @@ import { Effect, pipe } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import { TextGenerationError } from "../errors.ts";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
-import { GapReportEffectSchema } from "../schemas.ts";
+import { GapReportEffectSchema } from "./schemas.ts";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { AnthropicHaikuModelLayer } from "../providers.ts";
 

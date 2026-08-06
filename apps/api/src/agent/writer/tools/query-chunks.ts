@@ -1,8 +1,8 @@
 import { Effect, pipe, Schema } from "effect";
 import { Tool, Toolkit } from "effect/unstable/ai";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
-import { EmbeddingService } from "../embedding-service.ts";
+import { ChunkRepository } from "../../../db/repositories/chunk-repository.ts";
+import { EmbeddingService } from "../../embedding-service.ts";
 
 class QueryChunksToolParameters extends Schema.Class<QueryChunksToolParameters>(
   "QueryChunksToolParameters",

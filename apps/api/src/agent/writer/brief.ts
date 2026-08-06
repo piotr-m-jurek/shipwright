@@ -5,71 +5,52 @@ import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
-import { makeWriterToolkitLayer, WriterToolkit } from "../tools/writer-toolkit.ts";
+import { makeWriterToolkitLayer, WriterToolkit } from "./tools/writer-toolkit.ts";
 
-export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()(
-  "shipwright/agent/PrdWriterError",
+export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(
+  "shipwright/agent/BriefWriterError",
   {
     cause: Schema.Defect(),
   },
 ) {}
 
-// This prompt is a meta-prompting exercise: the PRD is written FOR a coding agent,
-// not for a human. Structure, specificity, and completeness matter more than readability.
-const PrdSystemPrompt = `You are writing an Implementation PRD that will be given directly to a coding agent (Claude Code, Cursor, or Codex) as its primary instruction set. The coding agent will read this document and start implementing without further clarification.
+const BriefSystemPrompt = `You are a technical writer producing a Project Brief for a non-technical stakeholder.
 
-This is NOT a human-readable document. Write for a coding agent.
+The Project Brief must:
+- Be readable in under 5 minutes
+- Use plain language — no jargon, no technical implementation details
+- Tell a clear story: what the project is, why it exists, what it will do, what is explicitly out of scope
+- Cite specific source documents where key decisions are grounded (e.g. "per the RFP" or "as agreed in the discovery call")
+- Include a short summary of open questions that were resolved during the clarifying session
 
-The PRD must contain the following sections — use these exact Markdown headings:
+Structure (use these Markdown headings):
+## Overview
+## What Will Be Built
+## What Is Out of Scope
+## Key Constraints
+## Resolved Decisions
+## Next Steps
 
-## Project Overview
-One paragraph. What is being built and why. Include the tech stack if known.
-
-## Acceptance Criteria
-Numbered list. Each item must be testable and specific. Format: "[ ] <criterion>"
-Cover: happy path, edge cases, error states, and integration points.
-
-## Non-Goals
-Explicit list of what is OUT OF SCOPE for this implementation. Be specific.
-The coding agent must not implement anything on this list.
-
-## Technical Requirements
-- Data models / schema changes required
-- API endpoints with method, path, request shape, response shape, and error codes
-- Third-party integrations and their specific API calls
-- Performance requirements (response times, concurrency limits)
-
-## File and Module Hints
-Suggested file structure and module boundaries. Not prescriptive — the coding agent can deviate with good reason.
-
-## Edge Cases and Error Handling
-Specific scenarios that must be handled. Each with: scenario, expected behaviour, error response if applicable.
-
-## Recommended Stack
-Technology choices already decided. The coding agent should use these unless there is a strong technical reason not to.
-
-## Open Questions
-Any ambiguities that remain after the clarifying session. The coding agent must surface these before implementing the affected feature, not make silent assumptions.
-
-ANTI-HALLUCINATION RULE: Every requirement in the Acceptance Criteria must be traceable to the provided document summaries or clarification answers. Do not invent scope. If a section cannot be filled from the available information, say so explicitly.
+ANTI-HALLUCINATION RULE: Do not include any requirement, constraint, or decision not present in the provided summaries or answers. If something is unclear, say it is unclear — do not invent clarity.
 
 TOOL USE: You have three tools available:
 - query_chunks: semantic search over document chunks — use for targeted retrieval
 - get_document: full text of a source document by filename — use when you need complete context
 - get_document_summary: structured summary with requirements/constraints/assumptions — use to re-read the analysis for a specific document`;
 
-function formatSummariesForPrd(
+function formatSummariesForBrief(
   summaries: DocumentSummary[],
   answers: MachineContext["answers"],
   questions: MachineContext["questions"],
 ): string {
   const summarySection = summaries
     .map((s) => {
-      const reqs = s.requirements.map((r) => `  REQ [${r.confidence}]: ${r.text}`).join("\n");
-      const cons = s.constraints.map((c) => `  CONSTRAINT [${c.confidence}]: ${c.text}`).join("\n");
-      const asms = s.assumptions.map((a) => `  ASSUMPTION [${a.confidence}]: ${a.text}`).join("\n");
-      const items = [reqs, cons, asms].filter(Boolean).join("\n");
-      return `=== ${s.sourceDocument} (${s.sourceDocument.split(".").pop()?.toUpperCase()}) ===\n${s.summary}${items ? `\n${items}` : ""}`;
+      const items = [
+        ...s.requirements.map((r) => `  - [req] ${r.text} (${r.confidence})`),
+        ...s.constraints.map((c) => `  - [constraint] ${c.text} (${c.confidence})`),
+        ...s.assumptions.map((a) => `  - [assumption] ${a.text} (${a.confidence})`),
+      ].join("\n");
+      return `=== ${s.sourceDocument} ===\n${s.summary}${items ? `\n${items}` : ""}`;
     })
     .join("\n\n");
 
@@ -78,7 +59,7 @@ function formatSummariesForPrd(
     Filter.fromPredicateOption((q) =>
       pipe(
         Option.fromNullishOr(answers.find((a) => a.questionId === q.id)),
-        Option.map((answer) => `DECISION [${q.sourceDocuments.join(", ")}]: ${q.text}\nRESPONSE: ${answer.text}`),
+        Option.map((answer) => `Q: ${q.text}\nA: ${answer.text}`),
       )
     ),
   ).join("\n\n");
@@ -86,14 +67,14 @@ function formatSummariesForPrd(
   return [
     "=== DOCUMENT SUMMARIES ===",
     summarySection,
-    answeredQuestions ? "\n=== RESOLVED DECISIONS ===" : "",
+    answeredQuestions ? "\n=== RESOLVED CLARIFICATIONS ===" : "",
     answeredQuestions,
   ]
     .filter(Boolean)
     .join("\n\n");
 }
 
-export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
+export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
   function* (
     summaries: DocumentSummary[],
     answers: MachineContext["answers"],
@@ -101,23 +82,25 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
     sessionId: AgentSessionId,
   ) {
     yield* Effect.annotateCurrentSpan({
-      ...Spans.pass("writer-prd"),
+      ...Spans.pass("writer-brief"),
       ...Spans.counts({ documents: summaries.length, answers: answers.length }),
     });
-    const userContent = formatSummariesForPrd(summaries, answers, questions);
+
+    const userContent = formatSummariesForBrief(summaries, answers, questions);
+
     const finishRef = yield* Ref.make<{ modelId: string | undefined; inputTokens: number | undefined; outputTokens: number | undefined; cacheReadTokens: number | undefined } | undefined>(undefined);
 
     return yield* LanguageModel.streamText({
       toolkit: WriterToolkit,
       prompt: [
-        { role: "system", content: PrdSystemPrompt },
+        { role: "system", content: BriefSystemPrompt },
         {
           role: "user",
           content: [
             {
               type: "text",
               text: userContent,
-              // Prompt caching: same document summaries as Brief pass — pays token cost once
+              // Prompt caching: document summaries are identical across Brief and PRD passes
               options: { anthropic: { cacheControl: { type: "ephemeral" } } },
             },
           ],
@@ -164,7 +147,7 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
             : Effect.void,
         ),
       ),
-      Effect.mapError((cause) => new PrdWriterError({ cause })),
+      Effect.mapError((cause) => new BriefWriterError({ cause })),
     );
   },
   Effect.provide(AnthropicSonnetModelLayer),

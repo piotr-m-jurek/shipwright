@@ -16,7 +16,7 @@ import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
 import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
 import { EmbeddingService } from "../embedding-service.ts";
 import { StorageAdapter } from "../../storage/index.ts";
-import { makeWriterToolkitLayer, WriterToolkit } from "../tools/writer-toolkit.ts";
+import { makeWriterToolkitLayer, WriterToolkit } from "../writer/tools/writer-toolkit.ts";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { TokenCount } from "@shipwright/shared/domain/value-objects";
 

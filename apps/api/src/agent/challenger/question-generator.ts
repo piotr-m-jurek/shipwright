@@ -1,6 +1,6 @@
 import { Effect, pipe } from "effect";
 import { Spans } from "../../observability/spans.ts";
-import { ClarifyingQuestionsEffectSchema, type GapReportEffect } from "../schemas.ts";
+import { ClarifyingQuestionsEffectSchema, type GapReportEffect } from "./schemas.ts";
 import { TextGenerationError } from "../errors.ts";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
