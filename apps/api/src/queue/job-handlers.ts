@@ -31,6 +31,9 @@ function withJobSpan<A, E, R>(
         Effect.andThen(Effect.logError(cause)),
       ),
     ),
+    // Propagate session ID to every child span so Langfuse can filter/group
+    // all observations within a pipeline run by session.
+    Effect.annotateSpans(Spans.session(sessionId)),
     Effect.withSpan(spanName, { attributes: Spans.session(sessionId) }),
   );
 }

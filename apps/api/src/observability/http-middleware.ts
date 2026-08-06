@@ -22,8 +22,13 @@ const requestLoggingMiddleware = <E, R>(
 
     const startMs = yield* Clock.currentTimeMillis;
 
-    // Attach requestId to current span
-    yield* Effect.annotateCurrentSpan({ "http.request_id": requestId });
+    // Name the trace for Langfuse — fixes "Unknown" traces in the Langfuse UI.
+    // Uses "{METHOD} {path}" so each route type groups cleanly.
+    // Also propagate requestId for cross-system correlation.
+    yield* Effect.annotateCurrentSpan({
+      "http.request_id": requestId,
+      "langfuse.trace.name": `${request.method} ${request.url}`,
+    });
 
     // Register a pre-response handler to echo requestId header
     yield* HttpEffect.appendPreResponseHandler((_req, response) =>
