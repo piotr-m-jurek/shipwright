@@ -6,6 +6,7 @@ import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { Chat } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
 import { runAgenticLoop } from "./agentic-loop.ts";
+import { LangfuseClient } from "../../observability/langfuse-client.ts";
 
 export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(
   "shipwright/agent/BriefWriterError",
@@ -91,12 +92,28 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
 
     const userContent = formatSummariesForBrief(summaries, answers, questions);
 
+    // Fetch prompt from Langfuse registry; fall back to hardcoded if unavailable.
+    const langfuse = yield* LangfuseClient;
+    const promptResult = yield* langfuse.getPrompt("shipwright-brief");
+    const systemPrompt = Option.match(promptResult, {
+      onNone: () => BriefSystemPrompt,
+      onSome: (p) => p.text,
+    });
+    yield* Option.match(promptResult, {
+      onNone: () => Effect.void,
+      onSome: (p) =>
+        Effect.annotateCurrentSpan({
+          "langfuse.observation.prompt.name": p.name,
+          "langfuse.observation.prompt.version": p.version,
+        }),
+    });
+
     const chat = yield* Chat.empty;
 
     const result = yield* runAgenticLoop({
       chat,
       firstTurnPrompt: [
-        { role: "system", content: BriefSystemPrompt },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
           content: [

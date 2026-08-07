@@ -49,6 +49,8 @@ import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
 import { OutputRepository } from "../../db/repositories/output-repository.ts";
 import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
 import { StorageAdapter } from "../../storage/index.js";
+import { LangfuseClient } from "../../observability/langfuse-client.ts";
+import { FetchHttpClient } from "effect/unstable/http";
 import { ConfigService } from "../../config/config.js";
 import type { GapReportEffect } from "../challenger/index.ts";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
@@ -64,7 +66,7 @@ import {
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, OutputRepository.layer, ClarificationRepository.layer),
+    Layer.mergeAll(StorageAdapter.layer, AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, OutputRepository.layer, ClarificationRepository.layer, LangfuseClient.layer.pipe(Layer.provide(FetchHttpClient.layer))),
     Layer.provideMerge(AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),

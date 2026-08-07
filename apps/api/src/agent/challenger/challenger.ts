@@ -1,10 +1,11 @@
-import { Effect, pipe } from "effect";
+import { Effect, Option, pipe } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import { TextGenerationError } from "../errors.ts";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { GapReportEffectSchema } from "./schemas.ts";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { AnthropicHaikuModelLayer } from "../providers.ts";
+import { LangfuseClient } from "../../observability/langfuse-client.ts";
 
 const ChallengerSystemPrompt = `You are an adversarial requirements reviewer. Your job is to find everything wrong, missing, or contradictory across a set of project document summaries.
 
@@ -34,11 +35,28 @@ export const runChallenger = Effect.fn("agent/run-challenger")(function* (
     ...Spans.pass("challenger"),
     ...Spans.counts({ documents: summaries.length }),
   });
+
+  // Fetch prompt from Langfuse registry; fall back to hardcoded if unavailable.
+  const langfuse = yield* LangfuseClient;
+  const promptResult = yield* langfuse.getPrompt("shipwright-challenger");
+  const systemPrompt = Option.match(promptResult, {
+    onNone: () => ChallengerSystemPrompt,
+    onSome: (p) => p.text,
+  });
+  yield* Option.match(promptResult, {
+    onNone: () => Effect.void,
+    onSome: (p) =>
+      Effect.annotateCurrentSpan({
+        "langfuse.observation.prompt.name": p.name,
+        "langfuse.observation.prompt.version": p.version,
+      }),
+  });
+
   const response = yield* pipe(
     LanguageModel.generateObject({
       schema: GapReportEffectSchema,
       prompt: Prompt.make([
-        { role: "system", content: ChallengerSystemPrompt },
+        { role: "system", content: systemPrompt },
         { role: "user", content: summaries.map(prepareDocument).join("\n\n") },
       ]),
     }),

@@ -5,6 +5,16 @@
       "type": "remote",
       "url": "https://mcp.linear.app/mcp",
       "enabled": true
+    },
+    "langfuse": {
+      "type": "local",
+      "command": ["npx", "-y", "langfuse-mcp"],
+      "enabled": true,
+      "environment": {
+        "LANGFUSE_PUBLIC_KEY": "pk-lf-shipwright",
+        "LANGFUSE_SECRET_KEY": "sk-lf-shipwright",
+        "LANGFUSE_BASE_URL": "http://localhost:3001"
+      }
     }
   }
 }

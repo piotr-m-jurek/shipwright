@@ -45,26 +45,30 @@ type PipelineStep = {
 };
 
 const PIPELINE_STEPS: PipelineStep[] = [
-  { status: "uploading",              label: "Upload",    description: "Receiving documents" },
-  { status: "waiting_for_documents",  label: "Upload",    description: "Processing documents…" },
-  { status: "summarizing",            label: "Summarise", description: "Reading and summarising content" },
-  { status: "processing",       label: "Process",   description: "Chunking and indexing" },
-  { status: "analyzing",        label: "Analyse",   description: "Finding gaps and contradictions" },
+  { status: "uploading", label: "Upload", description: "Receiving documents" },
+  {
+    status: "waiting_for_documents",
+    label: "Chunking & Modeling",
+    description: "Processing documents…",
+  },
+  { status: "summarizing", label: "Summarise", description: "Reading and summarising content" },
+  { status: "processing", label: "Process", description: "Chunking and indexing" },
+  { status: "analyzing", label: "Analyse", description: "Finding gaps and contradictions" },
   { status: "awaiting_answers", label: "Questions", description: "Ready for your input" },
-  { status: "re_evaluating",    label: "Evaluate",  description: "Reviewing your answers" },
-  { status: "generating",       label: "Generate",  description: "Writing outputs" },
+  { status: "re_evaluating", label: "Evaluate", description: "Reviewing your answers" },
+  { status: "generating", label: "Generate", description: "Writing outputs" },
 ];
 
 const ERROR_STATUS_LABELS: Record<string, string> = {
-  uploading_error:     "Upload failed",
-  summarizing_error:   "Summarisation failed",
-  processing_error:    "Processing failed",
-  analyzing_error:     "Analysis failed",
+  uploading_error: "Upload failed",
+  summarizing_error: "Summarisation failed",
+  processing_error: "Processing failed",
+  analyzing_error: "Analysis failed",
   re_evaluating_error: "Re-evaluation failed",
-  generating_error:    "Generation failed",
-  revising_error:      "Revision failed",
-  error:               "An error occurred",
-  partial_error:       "Some documents could not be processed",
+  generating_error: "Generation failed",
+  revising_error: "Revision failed",
+  error: "An error occurred",
+  partial_error: "Some documents could not be processed",
 };
 
 function isErrorStatus(status: string): boolean {
@@ -130,8 +134,8 @@ function PipelineProgress({ status }: { status: string }) {
     <div className="w-full max-w-sm space-y-4">
       <ol className="space-y-2">
         {PIPELINE_STEPS.map((step, idx) => {
-          const isDone    = idx < currentIdx;
-          const isActive  = idx === currentIdx;
+          const isDone = idx < currentIdx;
+          const isActive = idx === currentIdx;
           const isPending = idx > currentIdx;
 
           return (
@@ -157,12 +161,12 @@ function PipelineProgress({ status }: { status: string }) {
 
               {/* Step text */}
               <div className={isPending ? "opacity-35" : ""}>
-                <p className={`text-xs font-medium ${isActive ? "" : isDone ? "line-through opacity-50" : ""}`}>
+                <p
+                  className={`text-xs font-medium ${isActive ? "" : isDone ? "line-through opacity-50" : ""}`}
+                >
                   {step.label}
                 </p>
-                {isActive && (
-                  <p className="text-xs text-muted-foreground">{step.description}…</p>
-                )}
+                {isActive && <p className="text-xs text-muted-foreground">{step.description}…</p>}
               </div>
             </li>
           );
@@ -221,10 +225,20 @@ function PipelineError({
           disabled={isRetrying}
           className="w-full gap-2"
         >
-          {isRetrying ? <><Spinner />Retrying…</> : "Retry"}
+          {isRetrying ? (
+            <>
+              <Spinner />
+              Retrying…
+            </>
+          ) : (
+            "Retry"
+          )}
         </Button>
       )}
-      <a href="/" className="block text-center text-xs text-muted-foreground underline underline-offset-2">
+      <a
+        href="/"
+        className="block text-center text-xs text-muted-foreground underline underline-offset-2"
+      >
         Start a new session
       </a>
     </div>

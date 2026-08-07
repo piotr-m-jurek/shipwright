@@ -9,6 +9,8 @@ import { Api } from "@shipwright/shared/api.js";
 import { SessionCompute } from "./handlers/session-compute.ts";
 import { ConfigService } from "../config/config.js";
 import { OtlpLayer } from "../observability/observability.js";
+import { LangfuseClient } from "../observability/langfuse-client.ts";
+import { LangfuseSpanTransformerLayer } from "../observability/langfuse-span-transformer.ts";
 import { AgentSessionRepository } from "../db/repositories/agent-session-repository.ts";
 import { DocumentRepository } from "../db/repositories/document-repository.ts";
 import { ChunkRepository } from "../db/repositories/chunk-repository.ts";
@@ -18,7 +20,10 @@ import { OutputRepository } from "../db/repositories/output-repository.ts";
 import { AppDBLiveLayer } from "../db/index.js";
 import { AuthorizationLayer } from "./authorization.js";
 import { EmbeddingService } from "../agent/embedding-service.ts";
-import { AnthropicClientLayer, HuggingFaceTeiEmbeddingModelLayerProvided } from "../agent/providers.ts";
+import {
+  AnthropicClientLayer,
+  HuggingFaceTeiEmbeddingModelLayerProvided,
+} from "../agent/providers.ts";
 import { AuthRouteLayer } from "./handlers/auth.ts";
 import { SessionStorage } from "./handlers/session-storage.ts";
 import { SessionResults } from "./handlers/session-results.ts";
@@ -33,7 +38,14 @@ export const ApiLayer = pipe(
   HttpApiBuilder.layer(Api, { openapiPath: "/opencode.json" }),
   Layer.provide([SessionStorage, SessionCompute, SessionResults, PublicApi]),
   Layer.provide(AuthorizationLayer),
-  Layer.provide([AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, ClarificationRepository.layer, OutputRepository.layer]),
+  Layer.provide([
+    AgentSessionRepository.layer,
+    DocumentRepository.layer,
+    ChunkRepository.layer,
+    SummaryRepository.layer,
+    ClarificationRepository.layer,
+    OutputRepository.layer,
+  ]),
   Layer.provide(StorageAdapter.layer),
   Layer.provide(AppDBLiveLayer),
   Layer.provide(ConfigService.layer),
@@ -78,14 +90,27 @@ const EmbeddingServiceLayer = EmbeddingService.layer.pipe(
   Layer.provideMerge(HuggingFaceTeiEmbeddingModelLayerProvided),
 );
 
+const LangfuseClientLayer = LangfuseClient.layer.pipe(
+  Layer.provide(ConfigService.layer),
+  Layer.provide(FetchHttpClient.layer),
+);
+
 const JobHandlersLayer = pipe(
   JobHandlers.layer,
   Layer.provide([
-    AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, ClarificationRepository.layer, OutputRepository.layer,
+    AgentSessionRepository.layer,
+    DocumentRepository.layer,
+    ChunkRepository.layer,
+    SummaryRepository.layer,
+    ClarificationRepository.layer,
+    OutputRepository.layer,
+    OtlpLayerProvided,
     EmbeddingServiceLayer,
     AnthropicClientLayer,
     StorageAdapter.layer,
     MessageQueue.layer,
+    LangfuseClientLayer,
+    LangfuseSpanTransformerLayer,
   ]),
   Layer.provide(AppDBLiveLayer),
 );
@@ -93,10 +118,16 @@ const JobHandlersLayer = pipe(
 const ServiceLayer = pipe(
   Layer.mergeAll(OtlpLayerProvided, NodeHttpServer.layer(createServer, { port: 3000 })),
   Layer.provideMerge([
-    AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, ClarificationRepository.layer, OutputRepository.layer,
+    AgentSessionRepository.layer,
+    DocumentRepository.layer,
+    ChunkRepository.layer,
+    SummaryRepository.layer,
+    ClarificationRepository.layer,
+    OutputRepository.layer,
     EmbeddingServiceLayer,
     AnthropicClientLayer,
     StorageAdapter.layer,
+    LangfuseClientLayer,
   ]),
   Layer.provideMerge(JobHandlersLayer),
   Layer.provideMerge(MessageQueue.layer),
@@ -108,9 +139,7 @@ const StartupLayer = Layer.effectDiscard(
     yield* Effect.logInfo("Server starting").pipe(
       Effect.annotateLogs({ port: 3000, env: process.env.NODE_ENV ?? "development" }),
     );
-    yield* Effect.addFinalizer(() =>
-      Effect.logInfo("Server shutting down"),
-    );
+    yield* Effect.addFinalizer(() => Effect.logInfo("Server shutting down"));
   }),
 );
 

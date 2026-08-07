@@ -1,4 +1,4 @@
-import { Array, Effect, Filter, Option, pipe, Schema } from "effect";
+import { Array, Effect, Filter, Layer, Option, pipe, Schema } from "effect";
 import { Spans } from "../../observability/spans.ts";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
@@ -6,6 +6,7 @@ import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
 import { Chat } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
 import { runAgenticLoop } from "./agentic-loop.ts";
+import { LangfuseClient } from "../../observability/langfuse-client.ts";
 
 export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()(
   "shipwright/agent/PrdWriterError",
@@ -81,8 +82,11 @@ function formatSummariesForPrd(
     Filter.fromPredicateOption((q) =>
       pipe(
         Option.fromNullishOr(answers.find((a) => a.questionId === q.id)),
-        Option.map((answer) => `DECISION [${q.sourceDocuments.join(", ")}]: ${q.text}\nRESPONSE: ${answer.text}`),
-      )
+        Option.map(
+          (answer) =>
+            `DECISION [${q.sourceDocuments.join(", ")}]: ${q.text}\nRESPONSE: ${answer.text}`,
+        ),
+      ),
     ),
   ).join("\n\n");
 
@@ -109,12 +113,29 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
     });
 
     const userContent = formatSummariesForPrd(summaries, answers, questions);
+
+    // Fetch prompt from Langfuse registry; fall back to hardcoded if unavailable.
+    const langfuse = yield* LangfuseClient;
+    const promptResult = yield* langfuse.getPrompt("shipwright-prd");
+    const systemPrompt = Option.match(promptResult, {
+      onNone: () => PrdSystemPrompt,
+      onSome: (p) => p.text,
+    });
+    yield* Option.match(promptResult, {
+      onNone: () => Effect.void,
+      onSome: (p) =>
+        Effect.annotateCurrentSpan({
+          "langfuse.observation.prompt.name": p.name,
+          "langfuse.observation.prompt.version": p.version,
+        }),
+    });
+
     const chat = yield* Chat.empty;
 
     const result = yield* runAgenticLoop({
       chat,
       firstTurnPrompt: [
-        { role: "system", content: PrdSystemPrompt },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
           content: [
@@ -142,6 +163,5 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
 
     return result.text;
   },
-  Effect.provide(AnthropicSonnetModelLayer),
-  Effect.provide(AnthropicClientLayer),
+  Effect.provide(Layer.provideMerge(AnthropicClientLayer, AnthropicSonnetModelLayer)),
 );

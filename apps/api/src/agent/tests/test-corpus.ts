@@ -40,10 +40,12 @@ import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
 import { StorageAdapter } from "../../storage/index.js";
 import { ConfigService } from "../../config/config.js";
 import { AnthropicClientLayer } from "../providers.js";
+import { LangfuseClient } from "../../observability/langfuse-client.ts";
+import { FetchHttpClient } from "effect/unstable/http";
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer),
+    Layer.mergeAll(StorageAdapter.layer, AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, LangfuseClient.layer.pipe(Layer.provide(FetchHttpClient.layer))),
     Layer.provideMerge(AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
