@@ -7,6 +7,17 @@
  *                       ↘ dead (nack, max attempts reached)
  */
 import { integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import type { ConfirmUploadRequest } from "@shipwright/shared/schemas";
+
+/**
+ * Union of all possible queue job payloads.
+ * One member per queue name in job-handlers.ts.
+ * Note: the discriminant is the top-level `queue` column, not a field here.
+ */
+export type QueueMessagePayload =
+  | { readonly sessionId: AgentSessionId; readonly uploads: ConfirmUploadRequest["uploads"] }  // documents.process
+  | { readonly sessionId: AgentSessionId };  // session.workflow | session.generate | session.revise
 
 export const queueMessageStatusEnum = pgEnum("queue_message_status", [
   "pending",
@@ -30,7 +41,7 @@ export const queueMessages = pgTable("queue_messages", {
   routingKey: text("routing_key"),
 
   // Arbitrary JSON payload
-  payload: jsonb("payload").notNull(),
+  payload: jsonb("payload").notNull().$type<QueueMessagePayload>(),
 
   status: queueMessageStatusEnum("status").notNull().default("pending"),
 

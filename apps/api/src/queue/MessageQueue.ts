@@ -30,7 +30,7 @@
 import { Context, Duration, Effect, Fiber, FiberSet, Layer, Metric, Option, Queue, Schema, pipe } from "effect";
 import { and, eq, isNull, lte, or } from "drizzle-orm";
 import { DB } from "../db/index.js";
-import { queueMessages } from "./schema.js";
+import { type QueueMessagePayload, queueMessages } from "./schema.js";
 
 // ─── Backoff ─────────────────────────────────────────────────────────────────
 
@@ -232,7 +232,7 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
           .insert(queueMessages)
           .values({
             queue: queueName,
-            payload: payload as object,
+            payload: payload as QueueMessagePayload,
             routingKey: Option.getOrUndefined(routingKey),
             maxAttempts: opts.maxAttempts ?? 3,
             visibleAfter: opts.visibleAfter,
