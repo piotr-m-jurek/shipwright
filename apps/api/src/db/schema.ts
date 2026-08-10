@@ -12,7 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { defineRelations } from "drizzle-orm";
 
-import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
+import { type MachineContext } from "@shipwright/shared/schemas/machine";
 import type {
   AgentSessionId,
   AnswerId,
@@ -36,8 +36,8 @@ import {
 } from "@shipwright/shared/domain/types";
 import type { ChunkIndex, TokenCount } from "@shipwright/shared/domain/value-objects";
 
-import { queueMessages } from "../queue/schema.ts";
-export { queueMessages, queueMessageStatusEnum } from "../queue/schema.ts";
+import { queueMessages } from "../queue/schema";
+export { queueMessages, queueMessageStatusEnum } from "../queue/schema";
 
 // NOTE: pgEnum requires a non-empty tuple [string, ...string[]]. The *_VALUES
 // arrays imported from @shipwright/shared/domain/types are `as const` readonly

@@ -33,34 +33,34 @@ const REPO_ROOT = resolve(__dirname, "../../../../../");
 
 import { Effect, Layer, ManagedRuntime, Option, pipe } from "effect";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
-import { DB, AppDBLiveLayer } from "../../db/index.js";
-import { users } from "../../db/schema.js";
+import { DB, AppDBLiveLayer } from "../../db/index";
+import { users } from "../../db/schema";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
-import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
+import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers";
 
-import { runChallenger } from "../challenger/index.ts";
-import { parseDocument } from "../parsers.js";
-import { summarizeAllDocuments } from "../extractor/index.ts";
-import { estimateTokenCount } from "../lib/estimate-token-count.ts";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
-import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
-import { OutputRepository } from "../../db/repositories/output-repository.ts";
-import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
-import { StorageAdapter } from "../../storage/index.js";
-import { LangfuseClient } from "../../observability/langfuse-client.ts";
+import { runChallenger } from "../challenger/index";
+import { parseDocument } from "../parsers";
+import { summarizeAllDocuments } from "../extractor/index";
+import { estimateTokenCount } from "../lib/estimate-token-count";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { ChunkRepository } from "../../db/repositories/chunk-repository";
+import { SummaryRepository } from "../../db/repositories/summary-repository";
+import { OutputRepository } from "../../db/repositories/output-repository";
+import { ClarificationRepository } from "../../db/repositories/clarification-repository";
+import { StorageAdapter } from "../../storage/index";
+import { LangfuseClient } from "../../observability/langfuse-client";
 import { FetchHttpClient } from "effect/unstable/http";
-import { ConfigService } from "../../config/config.js";
-import type { GapReportEffect } from "../challenger/index.ts";
+import { ConfigService } from "../../config/config";
+import type { GapReportEffect } from "../challenger/index";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
-import type { QuestionSelect, AnswerSelect } from "../../db/types.ts";
+import type { QuestionSelect, AnswerSelect } from "../../db/types";
 import { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 import {
   FaithfulnessEvalSchema,
   CompletenessEvalSchema,
-} from "@shipwright/shared/schemas/evals.js";
+} from "@shipwright/shared/schemas/evals";
 
 // ── Runtime ────────────────────────────────────────────────────────────────
 

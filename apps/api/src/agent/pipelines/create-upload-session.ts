@@ -1,10 +1,10 @@
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { CreateAgentSessionRequest } from "@shipwright/shared/schemas/api.js";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { CreateAgentSessionRequest } from "@shipwright/shared/schemas/api";
 import type { UserId } from "@shipwright/shared/domain/ids";
-import { StorageAdapter } from "../../storage/index.ts";
+import { StorageAdapter } from "../../storage/index";
 import { Effect, Metric } from "effect";
-import { sessionCreatedCounter } from "../../observability/metrics.ts";
+import { sessionCreatedCounter } from "../../observability/metrics";
 
 export const createUploadSession = Effect.fn("agent/createUploadSession")(function* (payload: {
   userId: UserId;

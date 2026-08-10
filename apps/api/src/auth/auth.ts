@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
-import * as schema from "../db/schema.js";
+import * as schema from "../db/schema";
 import { drizzle } from "drizzle-orm/node-postgres";
 
 const authDb = drizzle({ connection: process.env.DATABASE_URL! });

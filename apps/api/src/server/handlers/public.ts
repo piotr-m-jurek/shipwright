@@ -1,9 +1,9 @@
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
-import { Api } from "@shipwright/shared/api.js";
+import { Api } from "@shipwright/shared/api";
 import { GetHealthResponse } from "@shipwright/shared/schemas";
-import { ServiceUnavailableError } from "@shipwright/shared/domain/errors.js";
+import { ServiceUnavailableError } from "@shipwright/shared/domain/errors";
 
 const VERSION = "1.0.0";
 

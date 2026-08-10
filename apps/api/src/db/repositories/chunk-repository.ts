@@ -1,9 +1,9 @@
 import { Context, Effect, Layer } from "effect";
-import type { InsertChunk, SelectChunk } from "../types.ts";
+import type { InsertChunk, SelectChunk } from "../types";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { chunks } from "../schema.ts";
-import { DB } from "../index.ts";
+import { chunks } from "../schema";
+import { DB } from "../index";
 import { and, asc, cosineDistance, desc, eq, gt, sql } from "drizzle-orm";
 
 interface Interface {

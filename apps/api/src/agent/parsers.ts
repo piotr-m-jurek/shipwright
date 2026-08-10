@@ -2,9 +2,9 @@ import { fileTypeFromBuffer } from "file-type";
 import { extractText, getDocumentProxy } from "unpdf";
 import { extractRawText } from "mammoth";
 import path from "node:path";
-import { PDF_PAGES_SEPARATOR } from "./index.js";
+import { PDF_PAGES_SEPARATOR } from "./index";
 import { Effect, Match, pipe, Schema } from "effect";
-import { StorageAdapter } from "../storage/index.js";
+import { StorageAdapter } from "../storage/index";
 
 export type ParsedFileType = "markdown" | "pdf" | "plain-text" | "docx";
 

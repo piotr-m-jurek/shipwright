@@ -1,11 +1,11 @@
 import { Effect, Option, pipe } from "effect";
-import { Spans } from "../../observability/spans.ts";
-import { TextGenerationError } from "../errors.ts";
+import { Spans } from "../../observability/spans";
+import { TextGenerationError } from "../errors";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
-import { GapReportEffectSchema } from "./schemas.ts";
+import { GapReportEffectSchema } from "./schemas";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
-import { AnthropicHaikuModelLayer } from "../providers.ts";
-import { LangfuseClient } from "../../observability/langfuse-client.ts";
+import { AnthropicHaikuModelLayer } from "../providers";
+import { LangfuseClient } from "../../observability/langfuse-client";
 
 const ChallengerSystemPrompt = `You are an adversarial requirements reviewer. Your job is to find everything wrong, missing, or contradictory across a set of project document summaries.
 

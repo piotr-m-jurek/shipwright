@@ -1,0 +1,31 @@
+# fly.toml — Shipwright AI
+app = "shipwright-ai"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Runs migrations before traffic is shifted — bun runs TypeScript directly
+  release_command = "bun apps/api/src/db/migrate.ts"
+
+[env]
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/api/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

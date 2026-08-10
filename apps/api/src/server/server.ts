@@ -1,51 +1,58 @@
 import { Effect, Layer, pipe } from "effect";
-import { FetchHttpClient, HttpRouter, HttpStaticServer } from "effect/unstable/http";
-import { createServer } from "node:http";
+import { FetchHttpClient, HttpRouter } from "effect/unstable/http";
 import { HttpApiBuilder, HttpApiScalar } from "effect/unstable/httpapi";
-import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
-import path from "node:path";
-import { StorageAdapter } from "../storage/index.js";
-import { Api } from "@shipwright/shared/api.js";
-import { SessionCompute } from "./handlers/session-compute.ts";
-import { ConfigService } from "../config/config.js";
-import { OtlpLayer } from "../observability/observability.js";
-import { LangfuseClient } from "../observability/langfuse-client.ts";
-import { LangfuseSpanTransformerLayer } from "../observability/langfuse-span-transformer.ts";
-import { AgentSessionRepository } from "../db/repositories/agent-session-repository.ts";
-import { DocumentRepository } from "../db/repositories/document-repository.ts";
-import { ChunkRepository } from "../db/repositories/chunk-repository.ts";
-import { SummaryRepository } from "../db/repositories/summary-repository.ts";
-import { ClarificationRepository } from "../db/repositories/clarification-repository.ts";
-import { OutputRepository } from "../db/repositories/output-repository.ts";
-import { AppDBLiveLayer } from "../db/index.js";
-import { AuthorizationLayer } from "./authorization.js";
-import { EmbeddingService } from "../agent/embedding-service.ts";
+import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
+import { StorageAdapter } from "../storage/index";
+import { Api } from "@shipwright/shared/api";
+import { SessionCompute } from "./handlers/session-compute";
+import { ConfigService } from "../config/config";
+import { OtlpLayer } from "../observability/observability";
+import { LangfuseClient } from "../observability/langfuse-client";
+import { LangfuseSpanTransformerLayer } from "../observability/langfuse-span-transformer";
+import { AgentSessionRepository } from "../db/repositories/agent-session-repository";
+import { DocumentRepository } from "../db/repositories/document-repository";
+import { ChunkRepository } from "../db/repositories/chunk-repository";
+import { SummaryRepository } from "../db/repositories/summary-repository";
+import { ClarificationRepository } from "../db/repositories/clarification-repository";
+import { OutputRepository } from "../db/repositories/output-repository";
+import { AppDBLiveLayer } from "../db/index";
+import { AuthorizationLayer } from "./authorization";
+import { EmbeddingService } from "../agent/embedding-service";
 import {
   AnthropicClientLayer,
   HuggingFaceTeiEmbeddingModelLayerProvided,
-} from "../agent/providers.ts";
-import { AuthRouteLayer } from "./handlers/auth.ts";
-import { SessionStorage } from "./handlers/session-storage.ts";
-import { SessionResults } from "./handlers/session-results.ts";
-import { PublicApi } from "./handlers/public.ts";
-import { MessageQueue } from "../queue/index.ts";
-import { JobHandlers } from "../queue/job-handlers.ts";
-import { RequestLoggingMiddlewareLayer } from "../observability/http-middleware.ts";
-import { SessionDebugSseLayer } from "./handlers/session-debug-sse.ts";
-import { SessionQuestionsSseLayer } from "./handlers/session-questions-sse.ts";
+} from "../agent/providers";
+import { AuthRouteLayer } from "./handlers/auth";
+import { SessionStorage } from "./handlers/session-storage";
+import { SessionResults } from "./handlers/session-results";
+import { PublicApi } from "./handlers/public";
+import { MessageQueue } from "../queue/index";
+import { JobHandlers } from "../queue/job-handlers";
+import { RequestLoggingMiddlewareLayer } from "../observability/http-middleware";
+import { SessionDebugSseLayer } from "./handlers/session-debug-sse";
+import { SessionQuestionsSseLayer } from "./handlers/session-questions-sse";
+
+export const ApiGroupsLayer = Layer.provide([
+  SessionStorage,
+  SessionCompute,
+  SessionResults,
+  PublicApi,
+]);
+
+export const RepositoriesLayer = Layer.provide([
+  AgentSessionRepository.layer,
+  DocumentRepository.layer,
+  ChunkRepository.layer,
+  SummaryRepository.layer,
+  ClarificationRepository.layer,
+  OutputRepository.layer,
+]);
 
 export const ApiLayer = pipe(
   HttpApiBuilder.layer(Api, { openapiPath: "/opencode.json" }),
-  Layer.provide([SessionStorage, SessionCompute, SessionResults, PublicApi]),
+  ApiGroupsLayer,
   Layer.provide(AuthorizationLayer),
-  Layer.provide([
-    AgentSessionRepository.layer,
-    DocumentRepository.layer,
-    ChunkRepository.layer,
-    SummaryRepository.layer,
-    ClarificationRepository.layer,
-    OutputRepository.layer,
-  ]),
+  RepositoriesLayer,
   Layer.provide(StorageAdapter.layer),
   Layer.provide(AppDBLiveLayer),
   Layer.provide(ConfigService.layer),
@@ -53,18 +60,12 @@ export const ApiLayer = pipe(
 
 const DocsLayer = HttpApiScalar.layer(Api, { path: "/docs" });
 
-const StaticFilesLayer = HttpStaticServer.layer({
-  root: path.resolve("dist"),
-  spa: true,
-  index: "index.html",
-});
-
+// HttpRouter.cors returns a global middleware Layer directly.
+// We unwrap the config to get allowedOrigins, then build the Layer.
 const CorsLayer = pipe(
-  Effect.gen(function* () {
-    const config = yield* ConfigService;
-    return HttpRouter.cors({ allowedOrigins: config.server.allowedOrigins, credentials: true });
-  }),
-  Effect.mapError(Effect.orDie),
+  Effect.map(ConfigService, (config) =>
+    HttpRouter.cors({ allowedOrigins: config.server.allowedOrigins, credentials: true }),
+  ),
   Layer.unwrap,
   Layer.provide(ConfigService.layer),
 );
@@ -75,7 +76,6 @@ const AllRoutesLayer = Layer.mergeAll(
   SessionQuestionsSseLayer,
   ApiLayer,
   DocsLayer,
-  StaticFilesLayer,
   CorsLayer,
   RequestLoggingMiddlewareLayer,
 );
@@ -116,7 +116,7 @@ const JobHandlersLayer = pipe(
 );
 
 const ServiceLayer = pipe(
-  Layer.mergeAll(OtlpLayerProvided, NodeHttpServer.layer(createServer, { port: 3000 })),
+  Layer.mergeAll(OtlpLayerProvided, BunHttpServer.layer({ port: 3000, hostname: "0.0.0.0" })),
   Layer.provideMerge([
     AgentSessionRepository.layer,
     DocumentRepository.layer,
@@ -147,7 +147,7 @@ pipe(
   HttpRouter.serve(Layer.merge(AllRoutesLayer, StartupLayer)),
   Layer.provideMerge(ServiceLayer),
   Layer.launch,
-  NodeRuntime.runMain,
+  BunRuntime.runMain,
 );
 
 // Effect.Effect<Value, Error, Requirements>

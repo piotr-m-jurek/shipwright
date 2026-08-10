@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { Option } from "effect";
-import { chunkDocument, type ChunkResult } from "../lib/chunker.ts";
+import { chunkDocument, type ChunkResult } from "../lib/chunker";
 
 // minChunkSize: 0 disables the merge guard — tests that explicitly test merging
 // set their own minChunkSize via the config override.

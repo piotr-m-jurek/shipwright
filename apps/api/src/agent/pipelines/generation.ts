@@ -1,16 +1,16 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Effect, Option, pipe } from "effect";
-import { Spans } from "../../observability/spans.js";
-import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
+import { Spans } from "../../observability/spans";
+import { SummaryRepository } from "../../db/repositories/summary-repository";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
-import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
-import { OutputRepository } from "../../db/repositories/output-repository.ts";
-import { StorageAdapter } from "../../storage/index.js";
-import { runBriefWriter, runPrdWriter, runRevisionBriefWriter, runRevisionPrdWriter } from "../writer/index.ts";
-import { getOrRestoreActor } from "../session-actor.js";
-import { AnalysisPipelineError, SessionStateError } from "../errors.js";
-import type { MachineContext } from "@shipwright/shared/schemas/machine.js";
-import { MessageQueue } from "../../queue/index.ts";
+import { ClarificationRepository } from "../../db/repositories/clarification-repository";
+import { OutputRepository } from "../../db/repositories/output-repository";
+import { StorageAdapter } from "../../storage/index";
+import { runBriefWriter, runPrdWriter, runRevisionBriefWriter, runRevisionPrdWriter } from "../writer/index";
+import { getOrRestoreActor } from "../session-actor";
+import { AnalysisPipelineError, SessionStateError } from "../errors";
+import type { MachineContext } from "@shipwright/shared/schemas/machine";
+import { MessageQueue } from "../../queue/index";
 
 export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
   function* (sessionId: AgentSessionId) {

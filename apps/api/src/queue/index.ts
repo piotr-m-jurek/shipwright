@@ -1,5 +1,5 @@
-export { MessageQueue } from "./MessageQueue.js";
-export type { Delivery, ConsumerHandle, PublishOptions } from "./MessageQueue.js";
-export { DeliveryTagNotFoundError } from "./MessageQueue.js";
-export { queueMessages, queueMessageStatusEnum } from "./schema.js";
-export type { QueueMessageInsert, QueueMessageSelect } from "./schema.js";
+export { MessageQueue } from "./MessageQueue";
+export type { Delivery, ConsumerHandle, PublishOptions } from "./MessageQueue";
+export { DeliveryTagNotFoundError } from "./MessageQueue";
+export { queueMessages, queueMessageStatusEnum } from "./schema";
+export type { QueueMessageInsert, QueueMessageSelect } from "./schema";

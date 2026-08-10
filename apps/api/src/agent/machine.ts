@@ -1,6 +1,6 @@
 import { assign, createActor, setup } from "xstate";
 import { Effect, Option, Schema } from "effect";
-import { MachineContextEffectSchema, type MachineContext } from "@shipwright/shared/schemas/machine.js";
+import { MachineContextEffectSchema, type MachineContext } from "@shipwright/shared/schemas/machine";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 export class SnapshotValidationError extends Schema.TaggedErrorClass<SnapshotValidationError>()(

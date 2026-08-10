@@ -7,7 +7,7 @@ import type {
   outputs,
   questions,
   summaryItems,
-} from "./schema.ts";
+} from "./schema";
 
 export type SessionInsert = typeof agentSessions.$inferInsert;
 export type SessionSelect = typeof agentSessions.$inferSelect;

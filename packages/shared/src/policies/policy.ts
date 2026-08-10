@@ -2,7 +2,7 @@ import type { UserId } from "@shipwright/shared/domain/ids";
 import { Context, Effect } from "effect";
 import type { NonEmptyReadonlyArray } from "effect/Array";
 import { HttpApiError } from "effect/unstable/httpapi";
-import { Permission } from "./permission.js";
+import { Permission } from "./permission";
 
 // DUMMY, for later implementation
 

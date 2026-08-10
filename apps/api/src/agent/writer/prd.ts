@@ -1,12 +1,12 @@
 import { Array, Effect, Filter, Layer, Option, pipe, Schema } from "effect";
-import { Spans } from "../../observability/spans.ts";
+import { Spans } from "../../observability/spans";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { type MachineContext } from "@shipwright/shared/schemas/machine.js";
+import { type MachineContext } from "@shipwright/shared/schemas/machine";
 import { Chat } from "effect/unstable/ai";
-import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
-import { runAgenticLoop } from "./agentic-loop.ts";
-import { LangfuseClient } from "../../observability/langfuse-client.ts";
+import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers";
+import { runAgenticLoop } from "./agentic-loop";
+import { LangfuseClient } from "../../observability/langfuse-client";
 
 export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()(
   "shipwright/agent/PrdWriterError",

@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from "vitest";
 import { Cause, Effect, Exit, Schema } from "effect";
-import { restoreAgentActor, createAgentActor } from "../machine.ts";
+import { restoreAgentActor, createAgentActor } from "../machine";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 const sessionId = Schema.decodeSync(

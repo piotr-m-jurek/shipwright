@@ -6,6 +6,6 @@
  *
  * Callers must import only from this file, never from internal modules.
  */
-export { runBriefWriter } from "./brief.ts";
-export { runPrdWriter } from "./prd.ts";
-export { runRevisionBriefWriter, runRevisionPrdWriter } from "./revision.ts";
+export { runBriefWriter } from "./brief";
+export { runPrdWriter } from "./prd";
+export { runRevisionBriefWriter, runRevisionPrdWriter } from "./revision";

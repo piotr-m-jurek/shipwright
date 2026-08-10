@@ -22,7 +22,7 @@
 import { Effect, Ref, Stream } from "effect";
 import type { Chat } from "effect/unstable/ai";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { makeWriterToolkitLayer, WriterToolkit } from "./tools/writer-toolkit.ts";
+import { makeWriterToolkitLayer, WriterToolkit } from "./tools/writer-toolkit";
 import type { Prompt } from "effect/unstable/ai";
 
 const MAX_ITERATIONS = 10;

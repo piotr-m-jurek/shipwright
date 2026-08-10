@@ -1,5 +1,5 @@
 import { pipe, Schema } from "effect";
-import { AgentSessionId, DocumentId, QuestionId } from "../domain/ids.ts";
+import { AgentSessionId, DocumentId, QuestionId } from "../domain/ids";
 
 export class GetHealthResponse extends Schema.Class<
   GetHealthResponse,

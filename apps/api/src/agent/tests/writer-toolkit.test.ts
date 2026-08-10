@@ -11,12 +11,12 @@
 
 import { describe, it, expect } from "vitest";
 import { Effect, Layer, Option, Schema, Stream } from "effect";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
-import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
-import { EmbeddingService } from "../embedding-service.ts";
-import { StorageAdapter } from "../../storage/index.ts";
-import { makeWriterToolkitLayer, WriterToolkit } from "../writer/tools/writer-toolkit.ts";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { SummaryRepository } from "../../db/repositories/summary-repository";
+import { ChunkRepository } from "../../db/repositories/chunk-repository";
+import { EmbeddingService } from "../embedding-service";
+import { StorageAdapter } from "../../storage/index";
+import { makeWriterToolkitLayer, WriterToolkit } from "../writer/tools/writer-toolkit";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { TokenCount } from "@shipwright/shared/domain/value-objects";
 

@@ -1,15 +1,15 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Clock, Effect, Exit, Metric, Option, pipe } from "effect";
-import { sessionErrorCounter, pipelineDurationHistogram } from "../../observability/metrics.ts";
-import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
-import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { getOrRestoreActor } from "../session-actor.js";
-import { summarizeDocument } from "../extractor/index.ts";
-import { runChallenger, runQuestionGenerator } from "../challenger/index.ts";
-import { AnalysisPipelineError, AllExtractionsFailedError } from "../errors.js";
-import { Spans } from "../../observability/spans.ts";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
+import { sessionErrorCounter, pipelineDurationHistogram } from "../../observability/metrics";
+import { SummaryRepository } from "../../db/repositories/summary-repository";
+import { ClarificationRepository } from "../../db/repositories/clarification-repository";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { getOrRestoreActor } from "../session-actor";
+import { summarizeDocument } from "../extractor/index";
+import { runChallenger, runQuestionGenerator } from "../challenger/index";
+import { AnalysisPipelineError, AllExtractionsFailedError } from "../errors";
+import { Spans } from "../../observability/spans";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
 
 const runSessionWorkflowInner = Effect.fn("agent/runSessionWorkflow")(function* (
   sessionId: AgentSessionId,

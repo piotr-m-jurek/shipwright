@@ -12,7 +12,7 @@
 
 import { Context, Effect, Layer, Option, Redacted, Schema } from "effect";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
-import { ConfigService } from "../config/config.ts";
+import { ConfigService } from "../config/config";
 
 // ── Prompt names ───────────────────────────────────────────────────────────
 

@@ -15,16 +15,16 @@ const REPO_ROOT = resolve(__dirname, "../../../../../");
 import { readFile } from "fs/promises";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
-import { StorageAdapter } from "../../storage/index.js";
-import { DB, AppDBLiveLayer } from "../../db/index.js";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
-import { agentSessions, outputs, users } from "../../db/schema.js";
+import { StorageAdapter } from "../../storage/index";
+import { DB, AppDBLiveLayer } from "../../db/index";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { ChunkRepository } from "../../db/repositories/chunk-repository";
+import { agentSessions, outputs, users } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { parseDocument } from "../parsers.js";
-import { estimateTokenCount } from "../lib/estimate-token-count.ts";
-import { ConfigService } from "../../config/config.js";
+import { parseDocument } from "../parsers";
+import { estimateTokenCount } from "../lib/estimate-token-count";
+import { ConfigService } from "../../config/config";
 
 const runtime = ManagedRuntime.make(
   Layer.mergeAll(

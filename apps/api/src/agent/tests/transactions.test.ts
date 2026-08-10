@@ -14,19 +14,19 @@
 import { describe, it, expect } from "vitest";
 import { Effect, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
-import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
-import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { StorageAdapter } from "../../storage/index.js";
-import { EmbeddingService } from "../../agent/embedding-service.js";
-import { MessageQueue } from "../../queue/index.ts";
-import { persistSummary } from "../../agent/extractor/index.ts";
-import { processUploadedDocuments } from "../../agent/pipelines/process-uploaded-documents.ts";
+import { SummaryRepository } from "../../db/repositories/summary-repository";
+import { ChunkRepository } from "../../db/repositories/chunk-repository";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { StorageAdapter } from "../../storage/index";
+import { EmbeddingService } from "../../agent/embedding-service";
+import { MessageQueue } from "../../queue/index";
+import { persistSummary } from "../../agent/extractor/index";
+import { processUploadedDocuments } from "../../agent/pipelines/process-uploaded-documents";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { Schema } from "effect";
 import { TokenCount } from "@shipwright/shared/domain/value-objects";
-import type { DocumentSummaryEffect } from "../../agent/extractor/index.ts";
+import type { DocumentSummaryEffect } from "../../agent/extractor/index";
 
 // ── ID helpers ────────────────────────────────────────────────────────────
 

@@ -1,9 +1,9 @@
 import { Context, Effect, Layer, Option } from "effect";
-import { InsertAgentSession, SelectAgentSession } from "../types.ts";
+import { InsertAgentSession, SelectAgentSession } from "../types";
 import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { agentSessions } from "../schema.ts";
-import { DB } from "../index.ts";
+import { agentSessions } from "../schema";
+import { DB } from "../index";
 import { and, eq } from "drizzle-orm";
 
 interface Interface {

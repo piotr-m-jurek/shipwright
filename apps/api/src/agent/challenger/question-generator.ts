@@ -1,10 +1,10 @@
 import { Effect, pipe } from "effect";
-import { Spans } from "../../observability/spans.ts";
-import { ClarifyingQuestionsEffectSchema, type GapReportEffect } from "./schemas.ts";
-import { TextGenerationError } from "../errors.ts";
+import { Spans } from "../../observability/spans";
+import { ClarifyingQuestionsEffectSchema, type GapReportEffect } from "./schemas";
+import { TextGenerationError } from "../errors";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
-import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers.ts";
+import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers";
 
 const QuestionGeneratorSystemPrompt = `You are a requirements analyst preparing clarifying questions for a project team.
 

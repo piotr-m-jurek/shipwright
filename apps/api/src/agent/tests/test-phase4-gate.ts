@@ -19,18 +19,18 @@ import {
   questions as questionsTable,
   answers as answersTable,
   users,
-} from "../../db/schema.js";
+} from "../../db/schema";
 import { eq, count } from "drizzle-orm";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
-import { DB, AppDBLiveLayer } from "../../db/index.js";
-import { parseDocument } from "../parsers.js";
-import { estimateTokenCount } from "../lib/estimate-token-count.ts";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { ChunkRepository } from "../../db/repositories/chunk-repository";
+import { DB, AppDBLiveLayer } from "../../db/index";
+import { parseDocument } from "../parsers";
+import { estimateTokenCount } from "../lib/estimate-token-count";
 import { Effect, Layer, ManagedRuntime, pipe } from "effect";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
-import { StorageAdapter } from "../../storage/index.js";
-import { ConfigService } from "../../config/config.js";
+import { StorageAdapter } from "../../storage/index";
+import { ConfigService } from "../../config/config";
 
 const runtime = ManagedRuntime.make(
   pipe(

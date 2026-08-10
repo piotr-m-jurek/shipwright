@@ -27,20 +27,20 @@ const REPO_ROOT = resolve(__dirname, "../../../../../");
 
 import { Effect, Layer, ManagedRuntime, pipe } from "effect";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
-import { DB, AppDBLiveLayer } from "../../db/index.js";
-import { users } from "../../db/schema.js";
-import { runChallenger } from "../challenger/index.ts";
-import { parseDocument } from "../parsers.js";
-import { summarizeAllDocuments } from "../extractor/index.ts";
-import { estimateTokenCount } from "../lib/estimate-token-count.ts";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
-import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
-import { StorageAdapter } from "../../storage/index.js";
-import { ConfigService } from "../../config/config.js";
-import { AnthropicClientLayer } from "../providers.js";
-import { LangfuseClient } from "../../observability/langfuse-client.ts";
+import { DB, AppDBLiveLayer } from "../../db/index";
+import { users } from "../../db/schema";
+import { runChallenger } from "../challenger/index";
+import { parseDocument } from "../parsers";
+import { summarizeAllDocuments } from "../extractor/index";
+import { estimateTokenCount } from "../lib/estimate-token-count";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { ChunkRepository } from "../../db/repositories/chunk-repository";
+import { SummaryRepository } from "../../db/repositories/summary-repository";
+import { StorageAdapter } from "../../storage/index";
+import { ConfigService } from "../../config/config";
+import { AnthropicClientLayer } from "../providers";
+import { LangfuseClient } from "../../observability/langfuse-client";
 import { FetchHttpClient } from "effect/unstable/http";
 
 const runtime = ManagedRuntime.make(

@@ -1,7 +1,7 @@
-import { Authorization, CurrentUser, Unauthorized } from "@shipwright/shared/middleware.js";
+import { Authorization, CurrentUser, Unauthorized } from "@shipwright/shared/middleware";
 import { UserId } from "@shipwright/shared/domain/ids";
 import { Effect, Layer, Redacted } from "effect";
-import { auth } from "../auth/auth.js";
+import { auth } from "../auth/auth";
 
 export const AuthorizationLayer = Layer.succeed(
   Authorization,

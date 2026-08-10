@@ -1,12 +1,12 @@
 import { Array, Effect, Layer, pipe, Schema } from "effect";
 import { LanguageModel, Prompt, Tool, Toolkit } from "effect/unstable/ai";
-import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../../providers.ts";
+import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../../providers";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { ChunkRepository } from "../../../db/repositories/chunk-repository.ts";
-import { DocumentRepository } from "../../../db/repositories/document-repository.ts";
-import { SummaryRepository } from "../../../db/repositories/summary-repository.ts";
-import { EmbeddingService } from "../../embedding-service.ts";
-import { StorageAdapter } from "../../../storage/index.ts";
+import { ChunkRepository } from "../../../db/repositories/chunk-repository";
+import { DocumentRepository } from "../../../db/repositories/document-repository";
+import { SummaryRepository } from "../../../db/repositories/summary-repository";
+import { EmbeddingService } from "../../embedding-service";
+import { StorageAdapter } from "../../../storage/index";
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 

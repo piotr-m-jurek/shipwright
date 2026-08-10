@@ -1,6 +1,6 @@
 import { Effect, Option, Schema } from "effect";
-import { createAgentActor, restoreAgentActor, type AgentActor } from "./machine.js";
-import { AgentSessionRepository } from "../db/repositories/agent-session-repository.ts";
+import { createAgentActor, restoreAgentActor, type AgentActor } from "./machine";
+import { AgentSessionRepository } from "../db/repositories/agent-session-repository";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 export class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()(

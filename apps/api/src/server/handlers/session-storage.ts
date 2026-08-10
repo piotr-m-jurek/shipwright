@@ -1,5 +1,5 @@
 import { Effect, Option, pipe } from "effect";
-import { StorageAdapter } from "../../storage/index.js";
+import { StorageAdapter } from "../../storage/index";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import {
   AgentSessionNotFound,
@@ -8,21 +8,21 @@ import {
   MissingUploads,
   OutputNotFoundError,
   RetrySessionError as RetrySessionHttpError,
-} from "@shipwright/shared/domain/errors.js";
+} from "@shipwright/shared/domain/errors";
 import {
   CreateAgentSessionResponse,
   ConfirmUploadResponse,
   OutputDownloadUrlResponse,
   RetrySessionResponse,
-} from "@shipwright/shared/schemas/api.js";
-import { Api } from "@shipwright/shared/api.js";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { OutputRepository } from "../../db/repositories/output-repository.ts";
-import { CurrentUser } from "@shipwright/shared/middleware.js";
-import { createUploadSession } from "../../agent/pipelines/create-upload-session.js";
-import { confirmUploadResults } from "../../agent/pipelines/confirm-upload-results.js";
-import { retrySession } from "../../agent/pipelines/retry-session.ts";
-import { MessageQueue } from "../../queue/index.ts";
+} from "@shipwright/shared/schemas/api";
+import { Api } from "@shipwright/shared/api";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { OutputRepository } from "../../db/repositories/output-repository";
+import { CurrentUser } from "@shipwright/shared/middleware";
+import { createUploadSession } from "../../agent/pipelines/create-upload-session";
+import { confirmUploadResults } from "../../agent/pipelines/confirm-upload-results";
+import { retrySession } from "../../agent/pipelines/retry-session";
+import { MessageQueue } from "../../queue/index";
 
 export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
   handlers

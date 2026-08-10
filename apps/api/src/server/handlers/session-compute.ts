@@ -1,23 +1,23 @@
 import { Effect, Option, pipe } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { AgentSessionNotFound, ConfirmAnalysisError } from "@shipwright/shared/domain/errors.js";
-import { MessageQueue } from "../../queue/index.ts";
-import { getOrRestoreActor } from "../../agent/session-actor.ts";
+import { AgentSessionNotFound, ConfirmAnalysisError } from "@shipwright/shared/domain/errors";
+import { MessageQueue } from "../../queue/index";
+import { getOrRestoreActor } from "../../agent/session-actor";
 import {
   GetAgentSessionResponse,
   ConfirmAnalysisResponse,
   GetSessionDebugResponse,
   GetSessionDocumentsResponse,
-} from "@shipwright/shared/schemas/api.js";
-import { Api } from "@shipwright/shared/api.js";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
-import { OutputRepository } from "../../db/repositories/output-repository.ts";
-import { CurrentUser } from "@shipwright/shared/middleware.js";
+} from "@shipwright/shared/schemas/api";
+import { Api } from "@shipwright/shared/api";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { ClarificationRepository } from "../../db/repositories/clarification-repository";
+import { OutputRepository } from "../../db/repositories/output-repository";
+import { CurrentUser } from "@shipwright/shared/middleware";
 import type { Question } from "@shipwright/shared/domain/types";
-import { DB } from "../../db/index.ts";
-import { queueMessages } from "../../queue/index.ts";
+import { DB } from "../../db/index";
+import { queueMessages } from "../../queue/index";
 import { sql } from "drizzle-orm";
 
 export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>

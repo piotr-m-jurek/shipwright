@@ -1,5 +1,5 @@
-import { ConfigService } from "../config/config.js";
-import { relations } from "./schema.js";
+import { ConfigService } from "../config/config";
+import { relations } from "./schema";
 import { Context, Effect, Layer, pipe } from "effect";
 import * as PgDrizzle from "drizzle-orm/effect-postgres";
 import * as PgClientModule from "@effect/sql-pg/PgClient";

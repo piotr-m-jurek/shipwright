@@ -5,19 +5,19 @@ import {
   AnalysisPipelineError,
   RevisionError,
   SessionStateError,
-} from "@shipwright/shared/domain/errors.js";
+} from "@shipwright/shared/domain/errors";
 import {
   PostAgentSessionAnswersResponse,
   GetAgentSessionFinalOutputResponse,
   ReviseResponse,
-} from "@shipwright/shared/schemas/api.js";
-import { Api } from "@shipwright/shared/api.js";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { OutputRepository } from "../../db/repositories/output-repository.ts";
-import { CurrentUser } from "@shipwright/shared/middleware.js";
-import { submitAnswers } from "../../agent/pipelines/submit-answers.js";
-import { startRevision } from "../../agent/pipelines/generation.js";
-import { SessionStateError as ActorSessionStateError } from "../../agent/errors.js";
+} from "@shipwright/shared/schemas/api";
+import { Api } from "@shipwright/shared/api";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { OutputRepository } from "../../db/repositories/output-repository";
+import { CurrentUser } from "@shipwright/shared/middleware";
+import { submitAnswers } from "../../agent/pipelines/submit-answers";
+import { startRevision } from "../../agent/pipelines/generation";
+import { SessionStateError as ActorSessionStateError } from "../../agent/errors";
 
 export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
   handlers

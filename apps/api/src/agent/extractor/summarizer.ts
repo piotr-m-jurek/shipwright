@@ -1,16 +1,16 @@
 import { Effect, Schema, Option, pipe } from "effect";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
-import { Spans } from "../../observability/spans.ts";
+import { Spans } from "../../observability/spans";
 import type { Chunk, SummaryItemType } from "@shipwright/shared/domain/types";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
-import { SummaryRepository } from "../../db/repositories/summary-repository.ts";
-import { TextGenerationError } from "../errors.ts";
-import { estimateTokenCount } from "../lib/estimate-token-count.ts";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { ChunkRepository } from "../../db/repositories/chunk-repository";
+import { SummaryRepository } from "../../db/repositories/summary-repository";
+import { TextGenerationError } from "../errors";
+import { estimateTokenCount } from "../lib/estimate-token-count";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
-import { type DocumentSummaryEffect, DocumentSummaryEffectSchema } from "./schemas.ts";
-import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers.ts";
+import { type DocumentSummaryEffect, DocumentSummaryEffectSchema } from "./schemas";
+import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers";
 
 class ChunksRetrievalError extends Schema.TaggedErrorClass<ChunksRetrievalError>()(
   "ChunksRetrievalError",

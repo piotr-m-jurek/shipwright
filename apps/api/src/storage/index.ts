@@ -1,13 +1,11 @@
 import {
-  CreateBucketCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
-  PutBucketCorsCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { ConfigService } from "../config/config.js";
+import { ConfigService } from "../config/config";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Context, Layer, Schema, Effect, Redacted } from "effect";
 
@@ -74,37 +72,8 @@ export class StorageAdapter extends Context.Service<
         requestChecksumCalculation: "WHEN_REQUIRED",
       });
 
-      // Ensure bucket exists (idempotent — ignore already-exists errors)
-      yield* Effect.tryPromise({
-        try: () => client.send(new CreateBucketCommand({ Bucket: config.storage.bucket })),
-        catch: () => void 0,
-      });
-
-      // Set CORS policy so browsers can PUT presigned URLs directly
-      yield* Effect.tryPromise({
-        try: () =>
-          client.send(
-            new PutBucketCorsCommand({
-              Bucket: config.storage.bucket,
-              CORSConfiguration: {
-                CORSRules: [
-                  {
-                    AllowedOrigins: config.storage.allowedOrigins as string[],
-                    AllowedMethods: ["PUT", "GET", "HEAD"],
-                    AllowedHeaders: ["*"],
-                    ExposeHeaders: ["ETag"],
-                    MaxAgeSeconds: 3600,
-                  },
-                ],
-              },
-            }),
-          ),
-        catch: (cause) => new PresignedUrlError({ cause }),
-      });
-
-      yield* Effect.log("[storage] bucket CORS configured", {
+      yield* Effect.log("[storage] bucket ready", {
         bucket: config.storage.bucket,
-        allowedOrigins: config.storage.allowedOrigins,
       });
 
       const upload = Effect.fn("storage/upload")(function* (key: string, body: Buffer) {

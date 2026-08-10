@@ -4,5 +4,8 @@ node_modules/
 # env files — all packages
 .env
 **/.env
+.env.local
+**/.env.local
 
-/dist
+# compiled output
+**/dist/

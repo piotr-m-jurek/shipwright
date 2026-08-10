@@ -1,4 +1,3 @@
-import type { MigrationConfig } from "drizzle-orm/migrator";
 import { Config, Context, Effect, Layer, Option, Redacted, Schema } from "effect";
 type Interface = {
   server: {
@@ -6,7 +5,6 @@ type Interface = {
   };
   db: {
     url: Redacted.Redacted<string>;
-    migrationConfig: MigrationConfig;
   };
   storage: {
     endpoint: string;
@@ -42,7 +40,6 @@ export class ConfigService extends Context.Service<ConfigService, Interface>()(
 
       const db: Interface["db"] = {
         url: yield* Config.redacted("DATABASE_URL"),
-        migrationConfig: { migrationsFolder: "./src/db/out" },
       };
 
       const server: Interface["server"] = {

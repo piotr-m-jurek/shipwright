@@ -4,13 +4,13 @@ import type {
   DocumentSummarySelect,
   SummaryItemInsert,
   SummaryItemSelect,
-} from "../types.ts";
+} from "../types";
 import type { AgentSessionId, DocumentId, SummaryId } from "@shipwright/shared/domain/ids";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { TokenCount } from "@shipwright/shared/domain/value-objects";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { documentSummaries, summaryItems } from "../schema.ts";
-import { DB } from "../index.ts";
+import { documentSummaries, summaryItems } from "../schema";
+import { DB } from "../index";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
 // ── Helper ────────────────────────────────────────────────────────────────

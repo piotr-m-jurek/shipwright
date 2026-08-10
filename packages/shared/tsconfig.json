@@ -1,14 +1,9 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "moduleResolution": "nodenext",
-    "module": "nodenext",
-    "verbatimModuleSyntax": true,
-    "rewriteRelativeImportExtensions": true,
-    "outDir": "dist",
-    "declaration": true,
-    "declarationMap": true
+    "moduleResolution": "bundler",
+    "module": "esnext"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules"]
 }

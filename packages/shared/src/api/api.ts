@@ -17,7 +17,7 @@ import {
   GetHealthResponse,
   RetrySessionResponse,
   GetSessionDebugResponse,
-} from "../schemas/api.js";
+} from "../schemas/api";
 import {
   CreateAgentSessionError,
   MissingUploads,
@@ -30,9 +30,9 @@ import {
   RevisionError,
   ServiceUnavailableError,
   RetrySessionError,
-} from "../domain/errors.js";
-import { Authorization } from "./middleware.js";
-import { AgentSessionId } from "../domain/ids.ts";
+} from "../domain/errors";
+import { Authorization } from "./middleware";
+import { AgentSessionId } from "../domain/ids";
 
 export class PublicApiGroup extends HttpApiGroup.make("public").add(
   HttpApiEndpoint.get("health", "/health", {

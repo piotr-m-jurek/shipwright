@@ -7,6 +7,6 @@
  *
  * Callers must import only from this file, never from internal modules.
  */
-export { summarizeDocument, summarizeAllDocuments, persistSummary } from "./summarizer.ts";
-export type { DocumentSummaryEffect } from "./schemas.ts";
-export { DocumentSummaryEffectSchema, ItemWithSourceEffectSchema } from "./schemas.ts";
+export { summarizeDocument, summarizeAllDocuments, persistSummary } from "./summarizer";
+export type { DocumentSummaryEffect } from "./schemas";
+export { DocumentSummaryEffectSchema, ItemWithSourceEffectSchema } from "./schemas";

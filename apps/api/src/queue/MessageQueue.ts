@@ -29,8 +29,8 @@
  */
 import { Context, Duration, Effect, Fiber, FiberSet, Layer, Metric, Option, Queue, Schema, pipe } from "effect";
 import { and, eq, isNull, lte, or } from "drizzle-orm";
-import { DB } from "../db/index.js";
-import { type QueueMessagePayload, queueMessages } from "./schema.js";
+import { DB } from "../db/index";
+import { type QueueMessagePayload, queueMessages } from "./schema";
 
 // ─── Backoff ─────────────────────────────────────────────────────────────────
 

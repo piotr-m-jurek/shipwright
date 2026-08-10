@@ -2,15 +2,23 @@
   "name": "shipwright",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "trustedDependencies": [
+    "esbuild",
+    "@effect/tsgo"
+  ],
   "scripts": {
     "prepare": "effect-tsgo patch",
-    "typecheck": "pnpm -r build",
-    "dev": "pnpm --filter \"@shipwright/*\" --parallel dev",
-    "dev:api": "pnpm --filter @shipwright/api dev",
-    "dev:web": "pnpm --filter @shipwright/web dev",
-    "build": "pnpm -r build",
-    "lint": "pnpm -r --parallel lint",
-    "fmt": "pnpm -r --parallel fmt",
+    "typecheck": "bun run --filter '*' build",
+    "dev": "bun run --filter '@shipwright/*' --parallel dev",
+    "dev:api": "bun run --cwd apps/api dev",
+    "dev:web": "bun run --cwd apps/web dev",
+    "build": "bun run --filter '*' build",
+    "lint": "bun run --filter '*' --parallel lint",
+    "fmt": "bun run --filter '*' --parallel fmt",
     "db:reset": "scripts/db-reset.sh",
     "session:requeue": "scripts/session-requeue.sh",
     "docs:effect-update": "git subtree pull --prefix docs/effect-smol effect-smol main --squash",

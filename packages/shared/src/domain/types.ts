@@ -20,8 +20,8 @@ import type {
   OutputId,
   QuestionId,
   SummaryId,
-} from "./ids.ts";
-import type { ChunkIndex, TokenCount } from "./value-objects.ts";
+} from "./ids";
+import type { ChunkIndex, TokenCount } from "./value-objects";
 
 // ── Enums ─────────────────────────────────────────────────────────────────
 

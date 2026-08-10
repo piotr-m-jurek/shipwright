@@ -1,8 +1,8 @@
 import { Context, Effect, Layer, Option } from "effect";
-import { InsertDocument, SelectDocument } from "../types.ts";
+import { InsertDocument, SelectDocument } from "../types";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { DB } from "../index.ts";
-import { documents } from "../schema.ts";
+import { DB } from "../index";
+import { documents } from "../schema";
 import { eq } from "drizzle-orm";
 import { type AgentSessionId, type DocumentId } from "@shipwright/shared/domain/ids";
 import type { TokenCount } from "@shipwright/shared/domain/value-objects";

@@ -11,10 +11,10 @@
 import { Cause, Context, Effect, Option, Queue, Schedule, Stream } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { Sse } from "effect/unstable/encoding";
-import { auth } from "../../auth/auth.ts";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
-import { getOrRestoreActor } from "../../agent/session-actor.ts";
+import { auth } from "../../auth/auth";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { ClarificationRepository } from "../../db/repositories/clarification-repository";
+import { getOrRestoreActor } from "../../agent/session-actor";
 import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
 import type { SessionQuestionsSnapshot } from "@shipwright/shared/schemas/questions";
 

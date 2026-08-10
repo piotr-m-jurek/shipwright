@@ -1,10 +1,10 @@
 import { Effect } from "effect";
-import { getOrRestoreActor } from "../session-actor.js";
+import { getOrRestoreActor } from "../session-actor";
 import type { AgentSessionId, QuestionId } from "@shipwright/shared/domain/ids";
-import { Spans } from "../../observability/spans.js";
-import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
-import { AnalysisPipelineError, SessionStateError } from "../errors.js";
-import { MessageQueue } from "../../queue/index.ts";
+import { Spans } from "../../observability/spans";
+import { ClarificationRepository } from "../../db/repositories/clarification-repository";
+import { AnalysisPipelineError, SessionStateError } from "../errors";
+import { MessageQueue } from "../../queue/index";
 
 export const submitAnswers = Effect.fn("agent/submitAnswers")(
   function* (sessionId: AgentSessionId, rawAnswers: { questionId: QuestionId; text: string }[]) {

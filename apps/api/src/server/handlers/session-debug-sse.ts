@@ -13,15 +13,15 @@
 import { Cause, Context, Effect, Option, Queue, Schedule, Stream } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { Sse } from "effect/unstable/encoding";
-import { auth } from "../../auth/auth.ts";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { ClarificationRepository } from "../../db/repositories/clarification-repository.ts";
-import { OutputRepository } from "../../db/repositories/output-repository.ts";
-import { DB } from "../../db/index.ts";
-import { queueMessages } from "../../queue/index.ts";
+import { auth } from "../../auth/auth";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { ClarificationRepository } from "../../db/repositories/clarification-repository";
+import { OutputRepository } from "../../db/repositories/output-repository";
+import { DB } from "../../db/index";
+import { queueMessages } from "../../queue/index";
 import { sql } from "drizzle-orm";
-import { getOrRestoreActor } from "../../agent/session-actor.ts";
+import { getOrRestoreActor } from "../../agent/session-actor";
 import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
 import type { DebugSnapshot } from "@shipwright/shared/schemas/debug";
 

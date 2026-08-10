@@ -1,7 +1,7 @@
 import { Effect, Ref, Schema, Stream } from "effect";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { Spans } from "../../observability/spans.ts";
+import { Spans } from "../../observability/spans";
 
 type LlmFinishCapture = {
   modelId: string | undefined;
@@ -10,8 +10,8 @@ type LlmFinishCapture = {
   cacheReadTokens: number | undefined;
 };
 import { LanguageModel } from "effect/unstable/ai";
-import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers.ts";
-import { makeWriterToolkitLayer, WriterToolkit } from "./tools/writer-toolkit.ts";
+import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers";
+import { makeWriterToolkitLayer, WriterToolkit } from "./tools/writer-toolkit";
 
 export class RevisionWriterError extends Schema.TaggedErrorClass<RevisionWriterError>()(
   "shipwright/agent/RevisionWriterError",

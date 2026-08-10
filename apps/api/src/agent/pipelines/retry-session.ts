@@ -1,8 +1,8 @@
 import { Array, Effect, Schema, Result, pipe } from "effect";
 import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { MessageQueue } from "../../queue/index.ts";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { MessageQueue } from "../../queue/index";
 
 // ── Reason errors ─────────────────────────────────────────────────────────────
 

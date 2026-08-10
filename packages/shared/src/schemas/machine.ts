@@ -1,6 +1,6 @@
 import { Schema } from "effect";
-import { AgentSessionId, QuestionId, SummaryId } from "../domain/ids.ts";
-import { TokenCount } from "../domain/value-objects.ts";
+import { AgentSessionId, QuestionId, SummaryId } from "../domain/ids";
+import { TokenCount } from "../domain/value-objects";
 
 // Per-document extraction status tracked in the machine.
 // Uses filename (domain concept) not DocumentId (DB concern).

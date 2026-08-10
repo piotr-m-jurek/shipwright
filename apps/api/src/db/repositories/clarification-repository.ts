@@ -1,9 +1,9 @@
 import { Context, Effect, Layer } from "effect";
-import type { QuestionInsert, QuestionSelect, AnswerInsert, AnswerSelect } from "../types.ts";
+import type { QuestionInsert, QuestionSelect, AnswerInsert, AnswerSelect } from "../types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { questions, answers } from "../schema.ts";
-import { DB } from "../index.ts";
+import { questions, answers } from "../schema";
+import { DB } from "../index";
 import { asc, eq } from "drizzle-orm";
 
 interface Interface {

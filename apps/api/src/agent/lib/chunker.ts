@@ -1,6 +1,6 @@
 import { Match, Option, pipe } from "effect";
-import { PDF_PAGES_SEPARATOR } from "../index.ts";
-import type { ParseResult } from "../parsers.ts";
+import { PDF_PAGES_SEPARATOR } from "../index";
+import type { ParseResult } from "../parsers";
 
 type ChunkConfig = {
   chunkSize: number;

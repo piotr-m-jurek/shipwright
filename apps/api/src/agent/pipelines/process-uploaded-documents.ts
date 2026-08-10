@@ -1,19 +1,19 @@
-import { StorageAdapter } from "../../storage/index.ts";
-import { parseDocument, verifyFileMimeType } from "../parsers.ts";
-import { estimateTokenCount } from "../lib/estimate-token-count.ts";
-import { chunkDocument } from "../lib/chunker.ts";
+import { StorageAdapter } from "../../storage/index";
+import { parseDocument, verifyFileMimeType } from "../parsers";
+import { estimateTokenCount } from "../lib/estimate-token-count";
+import { chunkDocument } from "../lib/chunker";
 import { Effect, Exit, Metric, Option, Schema, Array, pipe } from "effect";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository.ts";
-import { DocumentRepository } from "../../db/repositories/document-repository.ts";
-import { ChunkRepository } from "../../db/repositories/chunk-repository.ts";
-import { getOrRestoreActor } from "../session-actor.ts";
-import { MessageQueue } from "../../queue/index.ts";
-import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api.js";
+import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { DocumentRepository } from "../../db/repositories/document-repository";
+import { ChunkRepository } from "../../db/repositories/chunk-repository";
+import { getOrRestoreActor } from "../session-actor";
+import { MessageQueue } from "../../queue/index";
+import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
-import { EmbeddingService, EmbeddingError } from "../embedding-service.js";
-import { documentParseErrorCounter } from "../../observability/metrics.ts";
+import { EmbeddingService, EmbeddingError } from "../embedding-service";
+import { documentParseErrorCounter } from "../../observability/metrics";
 
 // TODO: actually throw those errors, not DB errors
 export class DocumentNotFoundError extends Schema.TaggedErrorClass<DocumentNotFoundError>()(

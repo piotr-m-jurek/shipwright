@@ -1,11 +1,11 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { Delivery, MessageQueue } from "./MessageQueue.ts";
+import { Delivery, MessageQueue } from "./MessageQueue";
 import { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { runSessionWorkflow } from "../agent/pipelines/run-session-workflow.ts";
-import { processUploadedDocuments } from "../agent/pipelines/process-uploaded-documents.ts";
+import { runSessionWorkflow } from "../agent/pipelines/run-session-workflow";
+import { processUploadedDocuments } from "../agent/pipelines/process-uploaded-documents";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas";
-import { runGeneratingPipeline, runRevisionPipeline } from "../agent/pipelines/generation.ts";
-import { Spans } from "../observability/spans.ts";
+import { runGeneratingPipeline, runRevisionPipeline } from "../agent/pipelines/generation";
+import { Spans } from "../observability/spans";
 
 // ---------------------------------------------------------------------------
 // Helpers
