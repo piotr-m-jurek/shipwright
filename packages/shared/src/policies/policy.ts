@@ -1,30 +1,10 @@
 import type { UserId } from "@shipwright/shared/domain/ids";
-import { Context, Effect, pipe, Schema } from "effect";
+import { Context, Effect } from "effect";
 import type { NonEmptyReadonlyArray } from "effect/Array";
 import { HttpApiError } from "effect/unstable/httpapi";
+import { Permission } from "./permission.js";
 
-const permissionAction = ["read", "write", "manage"] as const;
-type PermissionAction = (typeof permissionAction)[number];
-type PermissionConfig = Record<string, ReadonlyArray<PermissionAction>>;
-
-export type InferPermissions<T extends PermissionConfig> = {
-  [K in keyof T]: T[K][number] extends PermissionAction ? `${K & string}:${T[K][number]}` : never;
-}[keyof T];
-
-export const makePermissions = <T extends PermissionConfig>(
-  config: T,
-): Array<InferPermissions<T>> => {
-  return Object.entries(config).flatMap(([domain, actions]) =>
-    actions.map((action) => `${domain}:${action}` as InferPermissions<T>),
-  );
-};
-const permissions = makePermissions({
-  __test: ["manage", "write"],
-  generatedDocuments: ["read"],
-} as const);
-
-const Permission = Schema.Literals([...permissions]).annotate({ identifier: "Permission" });
-type Permission = typeof Permission.Type;
+// DUMMY, for later implementation
 
 interface Interface {
   id: UserId;
@@ -35,15 +15,17 @@ interface Interface {
 
 export class CurrentUser extends Context.Service<CurrentUser, Interface>()("CurrentUser") {}
 
+// DUMMY, for later implementation
+
 type Policy<Error = never, Requirement = never> = Effect.Effect<
   void,
   HttpApiError.Forbidden | Error,
   CurrentUser | Requirement
 >;
 
-export const policy = <E, R>(
-  predicate: (user: CurrentUser["Service"]) => Effect.Effect<boolean, E, R>,
-): Policy<E, R> =>
+export const policy = <Errors, Requirements>(
+  predicate: (user: CurrentUser["Service"]) => Effect.Effect<boolean, Errors, Requirements>,
+): Policy<Errors, Requirements> =>
   Effect.flatMap(CurrentUser, (user) =>
     Effect.flatMap(predicate(user), (result) =>
       result ? Effect.void : Effect.fail(new HttpApiError.Forbidden()),
@@ -61,12 +43,5 @@ export const all = <E, R>(...policies: NonEmptyReadonlyArray<Policy<E, R>>): Pol
 export const any = <E, R>(...policies: NonEmptyReadonlyArray<Policy<E, R>>): Policy<E, R> =>
   Effect.firstSuccessOf(policies);
 
-const permission = (requiredPermission: Permission): Policy =>
+export const permission = (requiredPermission: Permission): Policy =>
   policy((user) => Effect.succeed(user.permissions.has(requiredPermission)));
-
-const program = Effect.fn("program")(
-  function* () {
-    return yield* Effect.succeed("yuhu!" as const);
-  },
-  withPolicy(permission("generatedDocuments:read")),
-);
