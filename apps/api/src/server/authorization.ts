@@ -2,6 +2,7 @@ import { Authorization, CurrentUser, Unauthorized } from "@shipwright/shared/mid
 import { UserId } from "@shipwright/shared/domain/ids";
 import { Effect, Layer, Redacted } from "effect";
 import { auth } from "../auth/auth";
+import { Spans } from "../observability/spans";
 
 export const AuthorizationLayer = Layer.succeed(
   Authorization,
@@ -21,12 +22,18 @@ export const AuthorizationLayer = Layer.succeed(
         if (!session) {
           return yield* new Unauthorized({ message: "Invalid or missing session" });
         }
+        const userId = UserId.make(session.user.id);
+
         yield* Effect.logDebug("auth: providing CurrentUser").pipe(
           Effect.annotateLogs({ userId: session.user.id }),
         );
 
+        // Propagate the authenticated user ID to the current OTLP span so
+        // Langfuse can group cost/latency per user across all HTTP routes.
+        yield* Effect.annotateCurrentSpan(Spans.user(userId));
+
         return yield* Effect.provideService(httpEffect, CurrentUser, {
-          id: UserId.make(session.user.id),
+          id: userId,
           email: session.user.email,
           name: session.user.name,
         });

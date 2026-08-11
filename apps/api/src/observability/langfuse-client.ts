@@ -56,6 +56,26 @@ export class PromptResult extends Schema.Class<PromptResult>("PromptResult")({
   name: PromptName,
 }) {}
 
+// ── Score submission ───────────────────────────────────────────────────────
+
+export class ScoreSubmitError extends Schema.TaggedErrorClass<ScoreSubmitError>()(
+  "shipwright/observability/ScoreSubmitError",
+  { traceId: Schema.String, name: Schema.String, cause: Schema.Defect() },
+) {}
+
+export interface ScoreInput {
+  /** The OTLP trace ID to attach the score to. */
+  readonly traceId: string;
+  /** Score name — e.g. "faithfulness", "completeness". */
+  readonly name: string;
+  /** Numeric score value. */
+  readonly value: number;
+  /** Optional human-readable comment. */
+  readonly comment?: string;
+  /** Optional observation ID for span-level scores. */
+  readonly observationId?: string;
+}
+
 // ── Service ────────────────────────────────────────────────────────────────
 
 interface Interface {
@@ -68,6 +88,15 @@ interface Interface {
    * should use their hardcoded fallback when they receive Option.none().
    */
   getPrompt: (name: PromptName) => Effect.Effect<Option.Option<PromptResult>>;
+
+  /**
+   * Submit a numeric score to Langfuse against a specific trace (and
+   * optionally a specific observation/span).
+   *
+   * No-ops silently when Langfuse is not configured. Logs and swallows
+   * errors so score failures never break the calling pipeline.
+   */
+  submitScore: (input: ScoreInput) => Effect.Effect<void>;
 }
 
 export class LangfuseClient extends Context.Service<LangfuseClient, Interface>()(
@@ -88,6 +117,7 @@ export class LangfuseClient extends Context.Service<LangfuseClient, Interface>()
             Effect.logDebug(
               `[LangfuseClient] skipping prompt fetch for "${name}" — no Langfuse config`,
             ).pipe(Effect.as(Option.none())),
+          submitScore: (_input) => Effect.void,
         });
       }
 
@@ -165,7 +195,50 @@ export class LangfuseClient extends Context.Service<LangfuseClient, Interface>()
           }),
         );
 
-      return LangfuseClient.of({ getPrompt });
+      const submitScore = (input: ScoreInput): Effect.Effect<void> =>
+        Effect.gen(function* () {
+          const url = `${baseUrl}/api/public/scores`;
+          const body = JSON.stringify({
+            traceId: input.traceId,
+            name: input.name,
+            value: input.value,
+            dataType: "NUMERIC",
+            ...(input.comment !== undefined ? { comment: input.comment } : {}),
+            ...(input.observationId !== undefined ? { observationId: input.observationId } : {}),
+          });
+
+          yield* Effect.logDebug(`[LangfuseClient] submitting score "${input.name}"`).pipe(
+            Effect.annotateLogs({ scoreName: input.name, traceId: input.traceId, value: input.value }),
+          );
+
+          const response = yield* HttpClientRequest.post(url).pipe(
+            HttpClientRequest.setHeader("Authorization", `Basic ${auth}`),
+            HttpClientRequest.setHeader("Content-Type", "application/json"),
+            HttpClientRequest.bodyText(body),
+            http.execute,
+            Effect.mapError((cause) => new ScoreSubmitError({ traceId: input.traceId, name: input.name, cause })),
+          );
+
+          if (response.status < 200 || response.status >= 300) {
+            yield* Effect.logWarning(
+              `[LangfuseClient] score submission for "${input.name}" returned HTTP ${response.status}`,
+            ).pipe(Effect.annotateLogs({ scoreName: input.name, traceId: input.traceId, status: response.status }));
+          } else {
+            yield* Effect.logDebug(
+              `[LangfuseClient] score "${input.name}" submitted (value=${input.value})`,
+            ).pipe(Effect.annotateLogs({ scoreName: input.name, traceId: input.traceId }));
+          }
+        }).pipe(
+          Effect.catchTags({
+            "shipwright/observability/ScoreSubmitError": (err: ScoreSubmitError) =>
+              Effect.logError(
+                `[LangfuseClient] network error submitting score "${input.name}"`,
+                err.cause,
+              ).pipe(Effect.annotateLogs({ scoreName: input.name, traceId: input.traceId })),
+          }),
+        );
+
+      return LangfuseClient.of({ getPrompt, submitScore });
     }),
   );
 }

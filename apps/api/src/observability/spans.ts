@@ -1,5 +1,5 @@
 import { Option } from "effect";
-import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
+import type { AgentSessionId, DocumentId, UserId } from "@shipwright/shared/domain/ids";
 
 /** Spread an optional value as `{ [key]: value }` or `{}`. */
 const optionalAttr = <K extends string, V>(key: K, value: V | undefined): Record<K, V> | {} =>
@@ -9,6 +9,11 @@ const optionalAttr = <K extends string, V>(key: K, value: V | undefined): Record
   });
 
 export const Spans = {
+  user: (userId: UserId) => ({
+    "langfuse.user.id": userId,
+    "shipwright.user.id": userId,
+  }),
+
   session: (sessionId: AgentSessionId) => ({
     "langfuse.session.id": sessionId,
     "shipwright.session.id": sessionId,

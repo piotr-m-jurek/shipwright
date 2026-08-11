@@ -9,6 +9,11 @@ import { randomUUID } from "node:crypto";
  *  - Attaches it to every downstream log line via `Effect.annotateLogs`
  *  - Attaches it as a span attribute
  *  - Logs method, path, status, and durationMs on completion
+ *
+ * Session ID propagation is intentionally absent here. The HTTP trace span
+ * is a short-lived trigger; all meaningful work (LLM calls, extraction,
+ * writing) runs in queue jobs where Spans.session() is already applied via
+ * withJobSpan in job-handlers.ts.
  */
 const requestLoggingMiddleware = <E, R>(
   httpApp: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R | HttpServerRequest.HttpServerRequest>,

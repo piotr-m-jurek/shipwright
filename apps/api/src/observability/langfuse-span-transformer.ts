@@ -9,6 +9,10 @@
  * The SpanTransformer hook fires at the end of every LanguageModel.streamText /
  * generateObject call with the full prompt and response. We extract the text
  * and set the Langfuse attributes directly on the span.
+ *
+ * Token cost fix: Langfuse's self-hosted model cost table may not include
+ * newer Claude model IDs. We set langfuse.usage.* explicitly so Langfuse
+ * can compute cost from the span without a model table lookup.
  */
 
 import { Layer } from "effect";
@@ -64,6 +68,22 @@ const transformer: Telemetry.SpanTransformer = ({ prompt, response, span }) => {
         ? outputText.slice(0, MAX_OUTPUT_CHARS) + "…"
         : outputText,
     );
+  }
+
+  // ── Token usage: set langfuse.usage.* directly so Langfuse can compute
+  //    cost without a model table lookup. The gen_ai.usage.* OTel attributes
+  //    are already emitted by @effect/ai-anthropic; these Langfuse-specific
+  //    attributes are the fallback path when the model ID is not in the
+  //    self-hosted Langfuse model cost table.
+  const usage = response.find(
+    (part): part is Response.FinishPart => part.type === "finish",
+  )?.usage;
+  if (usage !== undefined) {
+    const inputTokens = usage.inputTokens.total;
+    const outputTokens = usage.outputTokens.total;
+    if (inputTokens !== undefined) span.attribute("langfuse.usage.input", inputTokens);
+    if (outputTokens !== undefined) span.attribute("langfuse.usage.output", outputTokens);
+    span.attribute("langfuse.usage.unit", "TOKENS");
   }
 };
 
