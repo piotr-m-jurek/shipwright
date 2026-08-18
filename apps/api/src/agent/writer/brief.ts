@@ -1,4 +1,4 @@
-import { Array, Effect, Filter, Option, pipe, Schema } from "effect";
+import { Array, Effect, Filter, Layer, Option, pipe, Schema } from "effect";
 import { Spans } from "../../observability/spans";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
@@ -7,6 +7,7 @@ import { Chat } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers";
 import { runAgenticLoop } from "./agentic-loop";
 import { LangfuseClient } from "../../observability/langfuse-client";
+import { forkFaithfulnessJudge } from "./judge";
 
 export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(
   "shipwright/agent/BriefWriterError",
@@ -64,7 +65,7 @@ function formatSummariesForBrief(
       pipe(
         Option.fromNullishOr(answers.find((a) => a.questionId === q.id)),
         Option.map((answer) => `Q: ${q.text}\nA: ${answer.text}`),
-      )
+      ),
     ),
   ).join("\n\n");
 
@@ -139,8 +140,16 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
       }),
     );
 
+    // Fire-and-forget faithfulness eval — does the Brief hallucinate anything
+    // not present in the source summaries? Never blocks the session pipeline.
+    const span = yield* Effect.currentSpan;
+    yield* forkFaithfulnessJudge({
+      output: result.text,
+      sourceContext: userContent,
+      traceId: span.traceId,
+    });
+
     return result.text;
   },
-  Effect.provide(AnthropicSonnetModelLayer),
-  Effect.provide(AnthropicClientLayer),
+  Effect.provide(Layer.provideMerge(AnthropicSonnetModelLayer, AnthropicClientLayer)),
 );

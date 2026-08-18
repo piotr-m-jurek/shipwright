@@ -7,6 +7,7 @@ import { Chat } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers";
 import { runAgenticLoop } from "./agentic-loop";
 import { LangfuseClient } from "../../observability/langfuse-client";
+import { forkCompletenessJudge } from "./judge";
 
 export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()(
   "shipwright/agent/PrdWriterError",
@@ -160,6 +161,15 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
         cacheReadTokens: result.cacheReadTokens,
       }),
     );
+
+    // Fire-and-forget completeness eval — did the PRD drop any requirement
+    // from the source summaries or resolved Q&A? Never blocks the session pipeline.
+    const span = yield* Effect.currentSpan;
+    yield* forkCompletenessJudge({
+      output: result.text,
+      sourceContext: userContent,
+      traceId: span.traceId,
+    });
 
     return result.text;
   },
