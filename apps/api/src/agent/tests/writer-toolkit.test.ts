@@ -11,9 +11,9 @@
 
 import { describe, it, expect } from "vitest";
 import { Effect, Layer, Option, Schema, Stream } from "effect";
-import { DocumentRepository } from "../../db/repositories/document-repository";
-import { SummaryRepository } from "../../db/repositories/summary-repository";
-import { ChunkRepository } from "../../db/repositories/chunk-repository";
+import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
+import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
+import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { EmbeddingService } from "../embedding-service";
 import { StorageAdapter } from "../../storage/index";
 import { makeWriterToolkitLayer, WriterToolkit } from "../writer/tools/writer-toolkit";

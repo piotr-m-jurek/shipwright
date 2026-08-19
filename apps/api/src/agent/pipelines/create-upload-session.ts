@@ -1,5 +1,5 @@
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
-import { DocumentRepository } from "../../db/repositories/document-repository";
+import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
+import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { CreateAgentSessionRequest } from "@shipwright/shared/schemas/api";
 import type { UserId } from "@shipwright/shared/domain/ids";
 import { StorageAdapter } from "../../storage/index";

@@ -2,9 +2,9 @@ import { Array, Effect, Layer, pipe, Schema } from "effect";
 import { LanguageModel, Prompt, Tool, Toolkit } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../../providers";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { ChunkRepository } from "../../../db/repositories/chunk-repository";
-import { DocumentRepository } from "../../../db/repositories/document-repository";
-import { SummaryRepository } from "../../../db/repositories/summary-repository";
+import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
+import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
+import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import { EmbeddingService } from "../../embedding-service";
 import { StorageAdapter } from "../../../storage/index";
 

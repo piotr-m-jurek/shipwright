@@ -19,18 +19,18 @@ import {
   questions as questionsTable,
   answers as answersTable,
   users,
-} from "../../db/schema";
+} from "@shipwright/db/schema";
 import { eq, count } from "drizzle-orm";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
-import { DocumentRepository } from "../../db/repositories/document-repository";
-import { ChunkRepository } from "../../db/repositories/chunk-repository";
-import { DB, AppDBLiveLayer } from "../../db/index";
+import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
+import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
+import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
+import { DB, AppDBLiveLayer } from "@shipwright/db";
 import { parseDocument } from "../parsers";
 import { estimateTokenCount } from "../lib/estimate-token-count";
 import { Effect, Layer, ManagedRuntime, pipe } from "effect";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { StorageAdapter } from "../../storage/index";
-import { ConfigService } from "../../config/config";
+import { ConfigService } from "@shipwright/config";
 
 const runtime = ManagedRuntime.make(
   pipe(

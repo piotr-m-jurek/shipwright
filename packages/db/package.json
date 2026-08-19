@@ -1,0 +1,29 @@
+{
+  "name": "@shipwright/db",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./types": "./src/types.ts",
+    "./repositories/*": "./src/repositories/*.ts"
+  },
+  "dependencies": {
+    "@shipwright/config": "workspace:*",
+    "@shipwright/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "@effect/sql-pg": "4.0.0-beta.103",
+    "drizzle-orm": "1.0.0-rc.4",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@effect/sql-pg": "4.0.0-beta.103",
+    "@types/pg": "^8.20.0",
+    "drizzle-orm": "1.0.0-rc.4",
+    "pg": "^8.22.0"
+  }
+}

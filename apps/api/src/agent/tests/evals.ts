@@ -33,8 +33,8 @@ const REPO_ROOT = resolve(__dirname, "../../../../../");
 
 import { Effect, Layer, ManagedRuntime, Option, pipe } from "effect";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
-import { DB, AppDBLiveLayer } from "../../db/index";
-import { users } from "../../db/schema";
+import { DB, AppDBLiveLayer } from "@shipwright/db";
+import { users } from "@shipwright/db/schema";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers";
 
@@ -42,19 +42,19 @@ import { runChallenger } from "../challenger/index";
 import { parseDocument } from "../parsers";
 import { summarizeAllDocuments } from "../extractor/index";
 import { estimateTokenCount } from "../lib/estimate-token-count";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
-import { DocumentRepository } from "../../db/repositories/document-repository";
-import { ChunkRepository } from "../../db/repositories/chunk-repository";
-import { SummaryRepository } from "../../db/repositories/summary-repository";
-import { OutputRepository } from "../../db/repositories/output-repository";
-import { ClarificationRepository } from "../../db/repositories/clarification-repository";
+import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
+import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
+import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
+import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
+import { OutputRepository } from "@shipwright/db/repositories/output-repository";
+import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { StorageAdapter } from "../../storage/index";
 import { LangfuseClient } from "../../observability/langfuse-client";
 import { FetchHttpClient } from "effect/unstable/http";
-import { ConfigService } from "../../config/config";
+import { ConfigService } from "@shipwright/config";
 import type { GapReportEffect } from "../challenger/index";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
-import type { QuestionSelect, AnswerSelect } from "../../db/types";
+import type { QuestionSelect, AnswerSelect } from "@shipwright/db/types";
 import { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 import {

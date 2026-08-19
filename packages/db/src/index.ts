@@ -1,4 +1,4 @@
-import { ConfigService } from "../config/config";
+import { ConfigService } from "@shipwright/config";
 import { relations } from "./schema";
 import { Context, Effect, Layer, pipe } from "effect";
 import * as PgDrizzle from "drizzle-orm/effect-postgres";

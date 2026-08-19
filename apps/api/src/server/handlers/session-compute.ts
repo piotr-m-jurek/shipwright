@@ -10,13 +10,13 @@ import {
   GetSessionDocumentsResponse,
 } from "@shipwright/shared/schemas/api";
 import { Api } from "@shipwright/shared/api";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
-import { DocumentRepository } from "../../db/repositories/document-repository";
-import { ClarificationRepository } from "../../db/repositories/clarification-repository";
-import { OutputRepository } from "../../db/repositories/output-repository";
+import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
+import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
+import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
+import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { CurrentUser } from "@shipwright/shared/middleware";
 import type { Question } from "@shipwright/shared/domain/types";
-import { DB } from "../../db/index";
+import { DB } from "@shipwright/db";
 import { queueMessages } from "../../queue/index";
 import { sql } from "drizzle-orm";
 

@@ -14,15 +14,15 @@ import { readFile } from "fs/promises";
 import { Effect, Layer, ManagedRuntime, pipe } from "effect";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { StorageAdapter } from "../../storage/index";
-import { DB, AppDBLiveLayer } from "../../db/index";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
-import { DocumentRepository } from "../../db/repositories/document-repository";
-import { ChunkRepository } from "../../db/repositories/chunk-repository";
-import { outputs, users } from "../../db/schema";
+import { DB, AppDBLiveLayer } from "@shipwright/db";
+import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
+import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
+import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
+import { outputs, users } from "@shipwright/db/schema";
 import { eq } from "drizzle-orm";
 import { parseDocument } from "../parsers";
 import { estimateTokenCount } from "../lib/estimate-token-count";
-import { ConfigService } from "../../config/config";
+import { ConfigService } from "@shipwright/config";
 
 const runtime = ManagedRuntime.make(
   pipe(

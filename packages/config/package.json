@@ -1,0 +1,11 @@
+{
+  "name": "@shipwright/config",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
+  "exports": {
+    ".": "./src/config.ts"
+  }
+}

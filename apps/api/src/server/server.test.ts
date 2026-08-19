@@ -3,13 +3,13 @@ import { Effect, Layer, Option, pipe } from "effect";
 import { HttpRouter } from "effect/unstable/http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { S3Client, PutObjectCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
-import { ConfigService } from "../config/config";
+import { ConfigService } from "@shipwright/config";
 import { StorageAdapter } from "../storage/index";
 import { ApiLayer } from "./server";
-import { AgentSessionRepository } from "../db/repositories/agent-session-repository";
-import { DocumentRepository } from "../db/repositories/document-repository";
-import { ChunkRepository } from "../db/repositories/chunk-repository";
-import { AppDBLiveLayer } from "../db/index";
+import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
+import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
+import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
+import { AppDBLiveLayer } from "@shipwright/db";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 // ---------------------------------------------------------------------------

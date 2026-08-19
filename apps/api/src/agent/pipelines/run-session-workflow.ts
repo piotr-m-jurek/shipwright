@@ -1,15 +1,15 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Clock, Effect, Exit, Metric, Option, pipe } from "effect";
 import { sessionErrorCounter, pipelineDurationHistogram } from "../../observability/metrics";
-import { SummaryRepository } from "../../db/repositories/summary-repository";
-import { ClarificationRepository } from "../../db/repositories/clarification-repository";
-import { DocumentRepository } from "../../db/repositories/document-repository";
+import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
+import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
+import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { getOrRestoreActor } from "../session-actor";
 import { summarizeDocument } from "../extractor/index";
 import { runChallenger, runQuestionGenerator } from "../challenger/index";
 import { AnalysisPipelineError, AllExtractionsFailedError } from "../errors";
 import { Spans } from "../../observability/spans";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
+import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 
 const runSessionWorkflowInner = Effect.fn("agent/runSessionWorkflow")(function* (
   sessionId: AgentSessionId,

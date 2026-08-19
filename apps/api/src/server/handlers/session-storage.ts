@@ -16,8 +16,8 @@ import {
   RetrySessionResponse,
 } from "@shipwright/shared/schemas/api";
 import { Api } from "@shipwright/shared/api";
-import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
-import { OutputRepository } from "../../db/repositories/output-repository";
+import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
+import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { CurrentUser } from "@shipwright/shared/middleware";
 import { createUploadSession } from "../../agent/pipelines/create-upload-session";
 import { confirmUploadResults } from "../../agent/pipelines/confirm-upload-results";

@@ -1,5 +1,5 @@
 import { Effect, Layer, Option, Redacted } from "effect";
-import { ConfigService } from "../config/config";
+import { ConfigService } from "@shipwright/config";
 import { OtlpMetrics, OtlpSerialization, OtlpTracer } from "effect/unstable/observability";
 
 /**

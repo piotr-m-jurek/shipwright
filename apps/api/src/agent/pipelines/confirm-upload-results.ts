@@ -10,11 +10,7 @@ export const confirmUploadResults = Effect.fn("agent/confirmUploadResults")(func
   return yield* pipe(
     uploads,
     Effect.forEach(
-      ({ s3Key }) =>
-        pipe(
-          storage.headObject(s3Key),
-          Effect.map((exists) => ({ s3Key, exists })),
-        ),
+      ({ s3Key }) => storage.headObject(s3Key).pipe(Effect.map((exists) => ({ s3Key, exists }))),
       { concurrency: 10 },
     ),
   );

@@ -1,4 +1,6 @@
 import {
+  boolean,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -34,22 +36,102 @@ import {
 } from "@shipwright/shared/domain/types";
 import type { ChunkIndex, TokenCount } from "@shipwright/shared/domain/value-objects";
 
-import { queueMessages } from "../queue/schema";
-export { queueMessages, queueMessageStatusEnum } from "../queue/schema";
-
 // NOTE: pgEnum requires a non-empty tuple [string, ...string[]]. The *_VALUES
 // arrays imported from @shipwright/shared/domain/types are `as const` readonly
 // tuples — Drizzle accepts these. If you ever add a new enum, ensure the array
 // has at least one element; an empty array will fail at runtime, not compile time.
 
 // ── Better Auth tables ────────────────────────────────────────────────────
-// Moved to @shipwright/auth/schema (SHIP-115 / SHIP-156) so apps/mcp can
-// validate the same session tokens without a duplicate betterAuth() config.
-// Re-exported here so existing relations (agentSessions.userId FK, etc.)
-// and importers of "../db/schema" keep working unchanged.
+// This is the single owner of the full relational schema for this database.
+// Auth tables live here (not in @shipwright/auth) because agentSessions.userId
+// is a live foreign key into `users` — tables joined by a literal .references()
+// call must be defined in the same schema-owning package as everything else
+// they're related to via defineRelations(). Splitting FK-coupled tables across
+// packages requires the exact same physical object identity for the reference
+// to resolve correctly, which is fragile (see the drizzle-orm peer-dependency
+// instance-fragmentation issue this project already hit once).
+//
+// @shipwright/auth imports these table definitions FROM here to build its
+// drizzleAdapter — the dependency points auth -> db, never the reverse.
+//
+// queue_messages is NOT part of this schema: it has zero .references() into
+// this relational graph (sessionId lives inside a jsonb payload column, not a
+// SQL FK), so it safely stays independently owned and migrated in
+// apps/api/src/queue/schema.ts. That is the correct exception to this rule —
+// tables with no foreign-key coupling to the shared graph don't need to share
+// an owner.
 
-import { accounts, sessions, users, verifications } from "@shipwright/auth/schema";
-export { accounts, sessions, users, verifications } from "@shipwright/auth/schema";
+export const users = pgTable("users", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").default(false).notNull(),
+  image: text("image"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    expiresAt: timestamp("expires_at").notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => new Date())
+      .notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("sessions_userId_idx").on(table.userId)],
+);
+
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at"),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("accounts_userId_idx").on(table.userId)],
+);
+
+export const verifications = pgTable(
+  "verifications",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("verifications_identifier_idx").on(table.identifier)],
+);
 
 export const sessionStatusEnum = pgEnum("session_status", SESSION_STATUS_VALUES);
 
@@ -248,7 +330,6 @@ export const relations = defineRelations(
     questions,
     answers,
     outputs,
-    queueMessages,
   },
   (r) => ({
     users: {

@@ -8,7 +8,7 @@ import {
   HttpClientRequest,
   HttpClientResponse,
 } from "effect/unstable/http";
-import { ConfigService } from "../config/config";
+import { ConfigService } from "@shipwright/config";
 
 export const AnthropicClientLayer = pipe(
   ConfigService,

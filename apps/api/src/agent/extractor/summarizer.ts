@@ -1,11 +1,11 @@
-import { Effect, Schema, Option, pipe } from "effect";
+import { Effect, Schema, Option, pipe, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
 import { Spans } from "../../observability/spans";
 import type { Chunk, SummaryItemType } from "@shipwright/shared/domain/types";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
-import { DocumentRepository } from "../../db/repositories/document-repository";
-import { ChunkRepository } from "../../db/repositories/chunk-repository";
-import { SummaryRepository } from "../../db/repositories/summary-repository";
+import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
+import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
+import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import { TextGenerationError } from "../errors";
 import { estimateTokenCount } from "../lib/estimate-token-count";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
@@ -234,8 +234,7 @@ export const runReducePass = Effect.fn("agent/runReducePass")(
 
     return response.value;
   },
-  Effect.provide(AnthropicHaikuModelLayer),
-  Effect.provide(AnthropicClientLayer),
+  Effect.provide(Layer.provideMerge(AnthropicHaikuModelLayer, AnthropicClientLayer)),
 );
 
 const formatChunk = (

@@ -29,7 +29,7 @@
  */
 import { Context, Duration, Effect, Fiber, FiberSet, Layer, Metric, Option, Queue, Schema, pipe } from "effect";
 import { and, eq, isNull, lte, or } from "drizzle-orm";
-import { DB } from "../db/index";
+import { DB } from "@shipwright/db";
 import { type QueueMessagePayload, queueMessages } from "./schema";
 
 // ─── Backoff ─────────────────────────────────────────────────────────────────

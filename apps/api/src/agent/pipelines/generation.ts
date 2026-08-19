@@ -1,10 +1,10 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Effect, Option, pipe } from "effect";
 import { Spans } from "../../observability/spans";
-import { SummaryRepository } from "../../db/repositories/summary-repository";
+import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
-import { ClarificationRepository } from "../../db/repositories/clarification-repository";
-import { OutputRepository } from "../../db/repositories/output-repository";
+import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
+import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { StorageAdapter } from "../../storage/index";
 import { runBriefWriter, runPrdWriter, runRevisionBriefWriter, runRevisionPrdWriter } from "../writer/index";
 import { getOrRestoreActor } from "../session-actor";
