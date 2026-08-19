@@ -13,7 +13,8 @@
 import { Cause, Context, Effect, Option, Queue, Schedule, Stream } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { Sse } from "effect/unstable/encoding";
-import { auth } from "../../auth/auth";
+import { auth } from "@shipwright/auth/auth";
+import { extractSessionToken, sessionCookieHeader } from "@shipwright/shared/api/session-cookie";
 import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
 import { DocumentRepository } from "../../db/repositories/document-repository";
 import { ClarificationRepository } from "../../db/repositories/clarification-repository";
@@ -41,20 +42,11 @@ type DebugServices =
 // ---------------------------------------------------------------------------
 
 async function resolveUserId(cookieHeader: string | undefined): Promise<string | null> {
-  if (!cookieHeader) return null;
-
-  const token = cookieHeader
-    .split(";")
-    .map((s) => s.trim())
-    .find((s) => s.startsWith("better-auth.session_token="))
-    ?.slice("better-auth.session_token=".length);
-
-  if (!token) return null;
+  const token = extractSessionToken(cookieHeader);
+  if (Option.isNone(token)) return null;
 
   try {
-    const session = await auth.api.getSession({
-      headers: new Headers({ cookie: `better-auth.session_token=${token}` }),
-    });
+    const session = await auth.api.getSession({ headers: sessionCookieHeader(token.value) });
     return session?.user.id ?? null;
   } catch {
     return null;
@@ -65,7 +57,9 @@ async function resolveUserId(cookieHeader: string | undefined): Promise<string |
 // Build the full debug payload from the DB (same logic as the REST handler)
 // ---------------------------------------------------------------------------
 
-const buildDebugPayload = (sessionId: AgentSessionId): Effect.Effect<DebugSnapshot, never, DebugServices> =>
+const buildDebugPayload = (
+  sessionId: AgentSessionId,
+): Effect.Effect<DebugSnapshot, never, DebugServices> =>
   Effect.gen(function* () {
     const agentSessionDb = yield* AgentSessionRepository;
     const documentDb = yield* DocumentRepository;

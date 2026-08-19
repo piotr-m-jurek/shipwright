@@ -1,7 +1,7 @@
 import { BunHttpServerRequest } from "@effect/platform-bun";
 import { Effect } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
-import { auth } from "../../auth/auth";
+import { auth } from "@shipwright/auth/auth";
 
 export const AuthRouteLayer = HttpRouter.add("*", "/api/auth/*", (req) =>
   Effect.gen(function* () {

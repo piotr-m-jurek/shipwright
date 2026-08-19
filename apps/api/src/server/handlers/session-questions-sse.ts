@@ -11,7 +11,8 @@
 import { Cause, Context, Effect, Option, Queue, Schedule, Stream } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { Sse } from "effect/unstable/encoding";
-import { auth } from "../../auth/auth";
+import { auth } from "@shipwright/auth/auth";
+import { extractSessionToken, sessionCookieHeader } from "@shipwright/shared/api/session-cookie";
 import { AgentSessionRepository } from "../../db/repositories/agent-session-repository";
 import { ClarificationRepository } from "../../db/repositories/clarification-repository";
 import { getOrRestoreActor } from "../../agent/session-actor";
@@ -29,20 +30,11 @@ type QuestionsServices = AgentSessionRepository | ClarificationRepository;
 // ---------------------------------------------------------------------------
 
 async function resolveUserId(cookieHeader: string | undefined): Promise<string | null> {
-  if (!cookieHeader) return null;
-
-  const token = cookieHeader
-    .split(";")
-    .map((s) => s.trim())
-    .find((s) => s.startsWith("better-auth.session_token="))
-    ?.slice("better-auth.session_token=".length);
-
-  if (!token) return null;
+  const token = extractSessionToken(cookieHeader);
+  if (Option.isNone(token)) return null;
 
   try {
-    const session = await auth.api.getSession({
-      headers: new Headers({ cookie: `better-auth.session_token=${token}` }),
-    });
+    const session = await auth.api.getSession({ headers: sessionCookieHeader(token.value) });
     return session?.user.id ?? null;
   } catch {
     return null;
@@ -117,7 +109,9 @@ export const SessionQuestionsSseLayer = HttpRouter.add(
     Effect.gen(function* () {
       // --- Auth ---
       const cookieHeader = req.headers["cookie"] as string | undefined;
-      yield* Effect.logDebug("[questions-sse] cookie header", { cookie: cookieHeader?.slice(0, 60) });
+      yield* Effect.logDebug("[questions-sse] cookie header", {
+        cookie: cookieHeader?.slice(0, 60),
+      });
       const userId = yield* Effect.promise(() => resolveUserId(cookieHeader));
       yield* Effect.logDebug("[questions-sse] resolved userId", { userId });
 

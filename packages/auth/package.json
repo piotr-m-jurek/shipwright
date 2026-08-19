@@ -1,0 +1,25 @@
+{
+  "name": "@shipwright/auth",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
+  "exports": {
+    "./auth": "./src/auth.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "dependencies": {
+    "@better-auth/drizzle-adapter": "1.7.0-rc.1",
+    "better-auth": "1.7.0-rc.1"
+  },
+  "peerDependencies": {
+    "drizzle-orm": "1.0.0-rc.4",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0",
+    "drizzle-orm": "1.0.0-rc.4",
+    "pg": "^8.22.0"
+  }
+}

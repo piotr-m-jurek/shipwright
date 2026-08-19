@@ -1,7 +1,8 @@
 import { Authorization, CurrentUser, Unauthorized } from "@shipwright/shared/middleware";
 import { UserId } from "@shipwright/shared/domain/ids";
-import { Effect, Layer, Redacted } from "effect";
-import { auth } from "../auth/auth";
+import { sessionCookieHeader } from "@shipwright/shared/api/session-cookie";
+import { Effect, Layer } from "effect";
+import { auth } from "@shipwright/auth/auth";
 import { Spans } from "../observability/spans";
 
 export const AuthorizationLayer = Layer.succeed(
@@ -10,12 +11,7 @@ export const AuthorizationLayer = Layer.succeed(
     cookie: (httpEffect, { credential }) =>
       Effect.gen(function* () {
         const session = yield* Effect.tryPromise({
-          try: () =>
-            auth.api.getSession({
-              headers: new Headers({
-                cookie: `better-auth.session_token=${Redacted.value(credential)}`,
-              }),
-            }),
+          try: () => auth.api.getSession({ headers: sessionCookieHeader(credential) }),
           catch: () => new Unauthorized({ message: "Session lookup failed" }),
         });
 

@@ -7,6 +7,7 @@
     "exactOptionalPropertyTypes": true,
     "noUnusedLocals": true,
     "noImplicitOverride": true,
+    "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
     "plugins": [{ "name": "@effect/language-service" }]

@@ -16,6 +16,7 @@
     "dev": "bun run --filter '@shipwright/*' --parallel dev",
     "dev:api": "bun run --cwd apps/api dev",
     "dev:web": "bun run --cwd apps/web dev",
+    "dev:mcp": "bun run --cwd apps/mcp dev",
     "build": "bun run --filter '*' build",
     "lint": "bun run --filter '*' --parallel lint",
     "fmt": "bun run --filter '*' --parallel fmt",

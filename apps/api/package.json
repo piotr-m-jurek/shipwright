@@ -29,6 +29,7 @@
     "@effect/ai-openai": "4.0.0-beta.103",
     "@effect/platform-bun": "4.0.0-beta.103",
     "@effect/sql-pg": "4.0.0-beta.103",
+    "@shipwright/auth": "workspace:*",
     "@shipwright/shared": "workspace:*",
     "better-auth": "1.7.0-rc.1",
     "drizzle-orm": "1.0.0-rc.4",
