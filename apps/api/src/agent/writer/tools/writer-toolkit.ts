@@ -6,7 +6,7 @@ import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import { EmbeddingService } from "../../embedding-service";
-import { StorageAdapter } from "../../../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 

@@ -18,7 +18,7 @@ import { SummaryRepository } from "@shipwright/db/repositories/summary-repositor
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
-import { StorageAdapter } from "../../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { EmbeddingService } from "../../agent/embedding-service";
 import { MessageQueue } from "@shipwright/queue";
 import { persistSummary } from "../../agent/extractor/index";

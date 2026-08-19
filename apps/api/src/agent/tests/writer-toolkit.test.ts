@@ -15,7 +15,7 @@ import { DocumentRepository } from "@shipwright/db/repositories/document-reposit
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { EmbeddingService } from "../embedding-service";
-import { StorageAdapter } from "../../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { makeWriterToolkitLayer, WriterToolkit } from "../writer/tools/writer-toolkit";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { TokenCount } from "@shipwright/shared/domain/value-objects";

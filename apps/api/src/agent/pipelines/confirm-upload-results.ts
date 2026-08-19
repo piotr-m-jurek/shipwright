@@ -1,5 +1,5 @@
 import { Effect, pipe } from "effect";
-import { StorageAdapter } from "../../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api";
 
 export const confirmUploadResults = Effect.fn("agent/confirmUploadResults")(function* (

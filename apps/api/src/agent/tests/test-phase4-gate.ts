@@ -29,7 +29,7 @@ import { parseDocument } from "../parsers";
 import { estimateTokenCount } from "../lib/estimate-token-count";
 import { Effect, Layer, ManagedRuntime, pipe } from "effect";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
-import { StorageAdapter } from "../../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { ConfigService } from "@shipwright/config";
 
 const runtime = ManagedRuntime.make(

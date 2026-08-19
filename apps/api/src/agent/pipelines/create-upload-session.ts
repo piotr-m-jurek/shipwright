@@ -2,7 +2,7 @@ import { AgentSessionRepository } from "@shipwright/db/repositories/agent-sessio
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { CreateAgentSessionRequest } from "@shipwright/shared/schemas/api";
 import type { UserId } from "@shipwright/shared/domain/ids";
-import { StorageAdapter } from "../../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { Effect, Metric } from "effect";
 import { sessionCreatedCounter } from "../../observability/metrics";
 

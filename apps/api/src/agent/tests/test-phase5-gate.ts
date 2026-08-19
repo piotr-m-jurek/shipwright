@@ -13,7 +13,7 @@ const REPO_ROOT = resolve(__dirname, "../../../../../");
 import { readFile } from "fs/promises";
 import { Effect, Layer, ManagedRuntime, pipe } from "effect";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
-import { StorageAdapter } from "../../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { DB, AppDBLiveLayer } from "@shipwright/db";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";

@@ -2,7 +2,7 @@ import { Effect, Layer, pipe } from "effect";
 import { FetchHttpClient, HttpRouter } from "effect/unstable/http";
 import { HttpApiBuilder, HttpApiScalar } from "effect/unstable/httpapi";
 import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
-import { StorageAdapter } from "../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { Api } from "@shipwright/shared/api";
 import { SessionCompute } from "./handlers/session-compute";
 import { ConfigService } from "@shipwright/config";

@@ -1,4 +1,4 @@
-import { StorageAdapter } from "../../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { parseDocument, verifyFileMimeType } from "../parsers";
 import { estimateTokenCount } from "../lib/estimate-token-count";
 import { chunkDocument } from "../lib/chunker";

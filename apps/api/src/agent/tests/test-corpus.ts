@@ -37,7 +37,7 @@ import { AgentSessionRepository } from "@shipwright/db/repositories/agent-sessio
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
-import { StorageAdapter } from "../../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { ConfigService } from "@shipwright/config";
 import { AnthropicClientLayer } from "../providers";
 import { LangfuseClient } from "../../observability/langfuse-client";

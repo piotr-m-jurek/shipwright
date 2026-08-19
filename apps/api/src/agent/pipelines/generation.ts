@@ -5,7 +5,7 @@ import { SummaryRepository } from "@shipwright/db/repositories/summary-repositor
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
-import { StorageAdapter } from "../../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { runBriefWriter, runPrdWriter, runRevisionBriefWriter, runRevisionPrdWriter } from "../writer/index";
 import { getOrRestoreActor } from "../session-actor";
 import { AnalysisPipelineError, SessionStateError } from "../errors";

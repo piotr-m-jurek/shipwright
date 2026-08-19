@@ -48,7 +48,7 @@ import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
-import { StorageAdapter } from "../../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { LangfuseClient } from "../../observability/langfuse-client";
 import { FetchHttpClient } from "effect/unstable/http";
 import { ConfigService } from "@shipwright/config";

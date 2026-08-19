@@ -1,5 +1,5 @@
 import { Effect, Option, pipe } from "effect";
-import { StorageAdapter } from "../../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import {
   AgentSessionNotFound,

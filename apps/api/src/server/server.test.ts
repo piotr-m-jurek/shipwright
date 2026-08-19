@@ -4,7 +4,7 @@ import { HttpRouter } from "effect/unstable/http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { S3Client, PutObjectCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
 import { ConfigService } from "@shipwright/config";
-import { StorageAdapter } from "../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 import { ApiLayer } from "./server";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";

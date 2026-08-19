@@ -4,7 +4,7 @@ import { extractRawText } from "mammoth";
 import path from "node:path";
 import { PDF_PAGES_SEPARATOR } from "./index";
 import { Effect, Match, pipe, Schema } from "effect";
-import { StorageAdapter } from "../storage/index";
+import { StorageAdapter } from "@shipwright/storage";
 
 export type ParsedFileType = "markdown" | "pdf" | "plain-text" | "docx";
 
