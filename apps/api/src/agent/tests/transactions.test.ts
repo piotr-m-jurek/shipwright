@@ -19,7 +19,7 @@ import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { StorageAdapter } from "@shipwright/storage";
-import { EmbeddingService } from "../../agent/embedding-service";
+import { EmbeddingService } from "@shipwright/embedding";
 import { MessageQueue } from "@shipwright/queue";
 import { persistSummary } from "../../agent/extractor/index";
 import { processUploadedDocuments } from "../../agent/pipelines/process-uploaded-documents";

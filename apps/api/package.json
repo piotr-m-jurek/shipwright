@@ -25,6 +25,7 @@
     "@shipwright/auth": "workspace:*",
     "@shipwright/config": "workspace:*",
     "@shipwright/db": "workspace:*",
+    "@shipwright/embedding": "workspace:*",
     "@shipwright/queue": "workspace:*",
     "@shipwright/shared": "workspace:*",
     "@shipwright/storage": "workspace:*",

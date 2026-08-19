@@ -5,7 +5,7 @@ import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
-import { EmbeddingService } from "../../embedding-service";
+import { EmbeddingService } from "@shipwright/embedding";
 import { StorageAdapter } from "@shipwright/storage";
 
 // ── Errors ────────────────────────────────────────────────────────────────────

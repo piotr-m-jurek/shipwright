@@ -22,6 +22,7 @@
         "@shipwright/auth": "workspace:*",
         "@shipwright/config": "workspace:*",
         "@shipwright/db": "workspace:*",
+        "@shipwright/embedding": "workspace:*",
         "@shipwright/queue": "workspace:*",
         "@shipwright/shared": "workspace:*",
         "@shipwright/storage": "workspace:*",
@@ -52,6 +53,7 @@
         "@shipwright/auth": "workspace:*",
         "@shipwright/config": "workspace:*",
         "@shipwright/db": "workspace:*",
+        "@shipwright/embedding": "workspace:*",
         "@shipwright/shared": "workspace:*",
         "@shipwright/storage": "workspace:*",
         "drizzle-orm": "1.0.0-rc.4",
@@ -153,6 +155,13 @@
         "@effect/sql-pg": "4.0.0-beta.103",
         "drizzle-orm": "1.0.0-rc.4",
         "pg": "^8.22.0",
+      },
+    },
+    "packages/embedding": {
+      "name": "@shipwright/embedding",
+      "version": "1.0.0",
+      "dependencies": {
+        "@shipwright/config": "workspace:*",
       },
     },
     "packages/queue": {
@@ -643,6 +652,8 @@
     "@shipwright/config": ["@shipwright/config@workspace:packages/config"],
 
     "@shipwright/db": ["@shipwright/db@workspace:packages/db"],
+
+    "@shipwright/embedding": ["@shipwright/embedding@workspace:packages/embedding"],
 
     "@shipwright/mcp": ["@shipwright/mcp@workspace:apps/mcp"],
 

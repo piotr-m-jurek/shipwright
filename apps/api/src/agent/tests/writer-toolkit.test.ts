@@ -14,7 +14,7 @@ import { Effect, Layer, Option, Schema, Stream } from "effect";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
-import { EmbeddingService } from "../embedding-service";
+import { EmbeddingService } from "@shipwright/embedding";
 import { StorageAdapter } from "@shipwright/storage";
 import { makeWriterToolkitLayer, WriterToolkit } from "../writer/tools/writer-toolkit";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";

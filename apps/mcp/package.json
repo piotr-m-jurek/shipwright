@@ -14,6 +14,7 @@
     "@shipwright/auth": "workspace:*",
     "@shipwright/config": "workspace:*",
     "@shipwright/db": "workspace:*",
+    "@shipwright/embedding": "workspace:*",
     "@shipwright/shared": "workspace:*",
     "@shipwright/storage": "workspace:*",
     "drizzle-orm": "1.0.0-rc.4",

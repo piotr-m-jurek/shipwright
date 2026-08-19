@@ -1,0 +1,14 @@
+{
+  "name": "@shipwright/embedding",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@shipwright/config": "workspace:*"
+  }
+}

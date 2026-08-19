@@ -12,7 +12,7 @@ import { MessageQueue } from "@shipwright/queue";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
-import { EmbeddingService, EmbeddingError } from "../embedding-service";
+import { EmbeddingService, EmbeddingError } from "@shipwright/embedding";
 import { documentParseErrorCounter } from "../../observability/metrics";
 
 // TODO: actually throw those errors, not DB errors

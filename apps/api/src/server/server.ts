@@ -17,11 +17,8 @@ import { ClarificationRepository } from "@shipwright/db/repositories/clarificati
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { AppDBLiveLayer } from "@shipwright/db";
 import { AuthorizationLayer } from "./authorization";
-import { EmbeddingService } from "../agent/embedding-service";
-import {
-  AnthropicClientLayer,
-  HuggingFaceTeiEmbeddingModelLayerProvided,
-} from "../agent/providers";
+import { EmbeddingService, HuggingFaceTeiEmbeddingModelLayerProvided } from "@shipwright/embedding";
+import { AnthropicClientLayer } from "../agent/providers";
 import { AuthRouteLayer } from "./handlers/auth";
 import { SessionStorage } from "./handlers/session-storage";
 import { SessionResults } from "./handlers/session-results";
