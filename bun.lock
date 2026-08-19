@@ -122,7 +122,9 @@
         "better-auth": "1.7.0-rc.1",
       },
       "devDependencies": {
+        "@effect/sql-pg": "4.0.0-beta.103",
         "@types/pg": "^8.20.0",
+        "bun-types": "^1.3.14",
         "drizzle-orm": "1.0.0-rc.4",
         "pg": "^8.22.0",
       },
@@ -174,6 +176,7 @@
       "devDependencies": {
         "@effect/sql-pg": "4.0.0-beta.103",
         "@types/pg": "^8.20.0",
+        "bun-types": "^1.3.14",
         "drizzle-orm": "1.0.0-rc.4",
         "pg": "^8.22.0",
       },
