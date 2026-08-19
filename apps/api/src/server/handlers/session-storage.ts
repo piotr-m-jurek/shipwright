@@ -22,7 +22,7 @@ import { CurrentUser } from "@shipwright/shared/middleware";
 import { createUploadSession } from "../../agent/pipelines/create-upload-session";
 import { confirmUploadResults } from "../../agent/pipelines/confirm-upload-results";
 import { retrySession } from "../../agent/pipelines/retry-session";
-import { MessageQueue } from "../../queue/index";
+import { MessageQueue } from "@shipwright/queue";
 
 export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
   handlers

@@ -20,7 +20,7 @@ import { DocumentRepository } from "@shipwright/db/repositories/document-reposit
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { DB } from "@shipwright/db";
-import { queueMessages } from "../../queue/index";
+import { queueMessages } from "@shipwright/queue";
 import { sql } from "drizzle-orm";
 import { getOrRestoreActor } from "../../agent/session-actor";
 import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";

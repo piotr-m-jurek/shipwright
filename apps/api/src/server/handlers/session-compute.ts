@@ -1,7 +1,7 @@
 import { Effect, Option, pipe } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { AgentSessionNotFound, ConfirmAnalysisError } from "@shipwright/shared/domain/errors";
-import { MessageQueue } from "../../queue/index";
+import { MessageQueue } from "@shipwright/queue";
 import { getOrRestoreActor } from "../../agent/session-actor";
 import {
   GetAgentSessionResponse,
@@ -17,7 +17,7 @@ import { OutputRepository } from "@shipwright/db/repositories/output-repository"
 import { CurrentUser } from "@shipwright/shared/middleware";
 import type { Question } from "@shipwright/shared/domain/types";
 import { DB } from "@shipwright/db";
-import { queueMessages } from "../../queue/index";
+import { queueMessages } from "@shipwright/queue";
 import { sql } from "drizzle-orm";
 
 export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>

@@ -10,7 +10,7 @@ import { runBriefWriter, runPrdWriter, runRevisionBriefWriter, runRevisionPrdWri
 import { getOrRestoreActor } from "../session-actor";
 import { AnalysisPipelineError, SessionStateError } from "../errors";
 import type { MachineContext } from "@shipwright/shared/schemas/machine";
-import { MessageQueue } from "../../queue/index";
+import { MessageQueue } from "@shipwright/queue";
 
 export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
   function* (sessionId: AgentSessionId) {

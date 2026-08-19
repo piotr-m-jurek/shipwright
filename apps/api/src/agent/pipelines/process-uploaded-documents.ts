@@ -8,7 +8,7 @@ import { AgentSessionRepository } from "@shipwright/db/repositories/agent-sessio
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { getOrRestoreActor } from "../session-actor";
-import { MessageQueue } from "../../queue/index";
+import { MessageQueue } from "@shipwright/queue";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";

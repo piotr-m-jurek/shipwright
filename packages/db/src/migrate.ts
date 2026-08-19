@@ -12,7 +12,7 @@ await client.connect();
 const db = drizzle({ client });
 
 // import.meta.dir is Bun-native and resolves correctly regardless of CWD
-const migrationsFolder = path.join(import.meta.dir, "out");
+const migrationsFolder = path.join(import.meta.dir, "../migrations");
 
 console.log("Running migrations from:", migrationsFolder);
 await migrate(db, { migrationsFolder });

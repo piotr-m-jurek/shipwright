@@ -24,6 +24,7 @@
         "@shipwright/auth": "workspace:*",
         "@shipwright/config": "workspace:*",
         "@shipwright/db": "workspace:*",
+        "@shipwright/queue": "workspace:*",
         "@shipwright/shared": "workspace:*",
         "drizzle-orm": "1.0.0-rc.4",
         "file-type": "22.0.1",
@@ -36,7 +37,6 @@
       "devDependencies": {
         "@types/pg": "^8.20.0",
         "bun-types": "^1.3.14",
-        "drizzle-kit": "1.0.0-rc.4",
         "oxfmt": "^0.58.0",
         "oxlint": "^1.73.0",
         "vitest": "4.1.8",
@@ -139,6 +139,28 @@
       "version": "1.0.0",
       "dependencies": {
         "@shipwright/config": "workspace:*",
+        "@shipwright/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@effect/sql-pg": "4.0.0-beta.103",
+        "@types/pg": "^8.20.0",
+        "bun-types": "^1.3.14",
+        "dotenv": "^17.4.2",
+        "drizzle-kit": "1.0.0-rc.4",
+        "drizzle-orm": "1.0.0-rc.4",
+        "pg": "^8.22.0",
+      },
+      "peerDependencies": {
+        "@effect/sql-pg": "4.0.0-beta.103",
+        "drizzle-orm": "1.0.0-rc.4",
+        "pg": "^8.22.0",
+      },
+    },
+    "packages/queue": {
+      "name": "@shipwright/queue",
+      "version": "1.0.0",
+      "dependencies": {
+        "@shipwright/db": "workspace:*",
         "@shipwright/shared": "workspace:*",
       },
       "devDependencies": {
@@ -612,6 +634,8 @@
     "@shipwright/db": ["@shipwright/db@workspace:packages/db"],
 
     "@shipwright/mcp": ["@shipwright/mcp@workspace:apps/mcp"],
+
+    "@shipwright/queue": ["@shipwright/queue@workspace:packages/queue"],
 
     "@shipwright/shared": ["@shipwright/shared@workspace:packages/shared"],
 
@@ -1806,6 +1830,8 @@
     "@effect/sql-pg/pg-types": ["pg-types@4.1.0", "", { "dependencies": { "pg-int8": "1.0.1", "pg-numeric": "1.0.2", "postgres-array": "~3.0.1", "postgres-bytea": "~3.0.0", "postgres-date": "~2.1.0", "postgres-interval": "^3.0.0", "postgres-range": "^1.1.1" } }, "sha512-o2XFanIMy/3+mThw69O8d4n1E5zsLhdO+OPqswezu7Z5ekP4hYDqlDjlmOpYMbzY2Br0ufCwJLdDIXeNVwcWFg=="],
 
     "@reduxjs/toolkit/immer": ["immer@11.1.18", "", {}, "sha512-EQyQtLiYW029lyoczMl/Hh4Xu7cDecSc58JRYpHyL4tIAu3eqd1yJzQX04d2BZHDkzFFvm6qJEJWOtfDSWAXbQ=="],
+
+    "@reduxjs/toolkit/reselect": ["reselect@5.2.0", "", {}, "sha512-AgZ3UOZm3YndfrJ4OYjgrT7bmCm/1iqkjvEfH/oYjzh6PD2qw4QuT3jjnXIrpdt4MTpMXclMT3lXbmRY+XRakw=="],
 
     "@tailwindcss/node/lightningcss": ["lightningcss@1.32.0", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.32.0", "lightningcss-darwin-arm64": "1.32.0", "lightningcss-darwin-x64": "1.32.0", "lightningcss-freebsd-x64": "1.32.0", "lightningcss-linux-arm-gnueabihf": "1.32.0", "lightningcss-linux-arm64-gnu": "1.32.0", "lightningcss-linux-arm64-musl": "1.32.0", "lightningcss-linux-x64-gnu": "1.32.0", "lightningcss-linux-x64-musl": "1.32.0", "lightningcss-win32-arm64-msvc": "1.32.0", "lightningcss-win32-x64-msvc": "1.32.0" } }, "sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ=="],
 

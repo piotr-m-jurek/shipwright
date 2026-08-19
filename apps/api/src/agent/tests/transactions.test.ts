@@ -20,7 +20,7 @@ import { DocumentRepository } from "@shipwright/db/repositories/document-reposit
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { StorageAdapter } from "../../storage/index";
 import { EmbeddingService } from "../../agent/embedding-service";
-import { MessageQueue } from "../../queue/index";
+import { MessageQueue } from "@shipwright/queue";
 import { persistSummary } from "../../agent/extractor/index";
 import { processUploadedDocuments } from "../../agent/pipelines/process-uploaded-documents";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";

@@ -38,7 +38,7 @@ cp apps/api/.env.example apps/api/.env
 # fill in OPENAI_API_KEY and ANTHROPIC_API_KEY
 
 # 4. Apply DB schema
-pnpm --filter @shipwright/api db:push
+bun run --cwd packages/db db:push
 
 # 5. Start
 pnpm dev                          # both api + web (concurrently)

@@ -26,7 +26,7 @@ import { AuthRouteLayer } from "./handlers/auth";
 import { SessionStorage } from "./handlers/session-storage";
 import { SessionResults } from "./handlers/session-results";
 import { PublicApi } from "./handlers/public";
-import { MessageQueue } from "../queue/index";
+import { MessageQueue } from "@shipwright/queue";
 import { JobHandlers } from "../queue/job-handlers";
 import { RequestLoggingMiddlewareLayer } from "../observability/http-middleware";
 import { SessionDebugSseLayer } from "./handlers/session-debug-sse";

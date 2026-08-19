@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { Delivery, MessageQueue } from "./MessageQueue";
+import { Delivery, MessageQueue } from "@shipwright/queue";
 import { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { runSessionWorkflow } from "../agent/pipelines/run-session-workflow";
 import { processUploadedDocuments } from "../agent/pipelines/process-uploaded-documents";

@@ -4,7 +4,7 @@ import type { AgentSessionId, QuestionId } from "@shipwright/shared/domain/ids";
 import { Spans } from "../../observability/spans";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { AnalysisPipelineError, SessionStateError } from "../errors";
-import { MessageQueue } from "../../queue/index";
+import { MessageQueue } from "@shipwright/queue";
 
 export const submitAnswers = Effect.fn("agent/submitAnswers")(
   function* (sessionId: AgentSessionId, rawAnswers: { questionId: QuestionId; text: string }[]) {

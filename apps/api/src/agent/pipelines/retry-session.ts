@@ -2,7 +2,7 @@ import { Array, Effect, Schema, Result, pipe } from "effect";
 import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
-import { MessageQueue } from "../../queue/index";
+import { MessageQueue } from "@shipwright/queue";
 
 // ── Reason errors ─────────────────────────────────────────────────────────────
 

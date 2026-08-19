@@ -28,7 +28,7 @@ until docker exec shipwright-postgres-1 pg_isready -U shipwright -d shipwright -
 done
 
 echo "==> Pushing schema..."
-(cd "$REPO_ROOT/apps/api" && pnpm db:push)
+(cd "$REPO_ROOT/packages/db" && bun run db:push)
 
 echo "==> Done. Connect with:"
 echo "    psql $DB_URL"
