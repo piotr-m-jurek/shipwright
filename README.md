@@ -26,6 +26,8 @@ Linear workspace: https://linear.app/shipwright-ai
 
 ## Local setup
 
+We run containers via [OrbStack](https://orbstack.dev/) rather than Docker Desktop — `docker compose` commands work unchanged against it.
+
 ```bash
 # 1. Infra
 docker compose up -d
