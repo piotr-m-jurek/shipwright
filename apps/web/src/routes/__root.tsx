@@ -1,6 +1,8 @@
-import * as React from "react";
 import { Outlet, createRootRoute, redirect } from "@tanstack/react-router";
 import { authClient } from "../lib/auth-client";
+import { ThemeProvider } from "../components/theme-provider";
+import { ModeToggle } from "../components/mode-toggle";
+import { Toaster } from "../components/ui/sonner";
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
@@ -18,8 +20,12 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   return (
-    <React.Fragment>
+    <ThemeProvider>
+      <div className="fixed top-3 right-3 z-50">
+        <ModeToggle />
+      </div>
       <Outlet />
-    </React.Fragment>
+      <Toaster />
+    </ThemeProvider>
   );
 }
