@@ -15,6 +15,7 @@ import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
+import { McpTokenRepository } from "@shipwright/db/repositories/mcp-token-repository";
 import { AppDBLiveLayer } from "@shipwright/db";
 import { AuthorizationLayer } from "./authorization";
 import { EmbeddingService, HuggingFaceTeiEmbeddingModelLayerProvided } from "@shipwright/embedding";
@@ -23,6 +24,7 @@ import { AuthRouteLayer } from "./handlers/auth";
 import { SessionStorage } from "./handlers/session-storage";
 import { SessionResults } from "./handlers/session-results";
 import { PublicApi } from "./handlers/public";
+import { McpToken } from "./handlers/mcp-token";
 import { MessageQueue } from "@shipwright/queue";
 import { JobHandlers } from "../queue/job-handlers";
 import { RequestLoggingMiddlewareLayer } from "../observability/http-middleware";
@@ -34,6 +36,7 @@ export const ApiGroupsLayer = Layer.provide([
   SessionCompute,
   SessionResults,
   PublicApi,
+  McpToken,
 ]);
 
 export const RepositoriesLayer = Layer.provide([
@@ -43,6 +46,7 @@ export const RepositoriesLayer = Layer.provide([
   SummaryRepository.layer,
   ClarificationRepository.layer,
   OutputRepository.layer,
+  McpTokenRepository.layer,
 ]);
 
 export const ApiLayer = pipe(
@@ -121,6 +125,7 @@ const ServiceLayer = pipe(
     SummaryRepository.layer,
     ClarificationRepository.layer,
     OutputRepository.layer,
+    McpTokenRepository.layer,
     EmbeddingServiceLayer,
     AnthropicClientLayer,
     StorageAdapter.layer,

@@ -18,6 +18,7 @@ import type {
   AnswerId,
   ChunkId,
   DocumentId,
+  McpTokenId,
   MessageId,
   OutputId,
   QuestionId,
@@ -315,6 +316,30 @@ export const outputs = pgTable("outputs", {
   s3Key: text("s3_key"),
 });
 
+// One active MCP token per user (SHIP-115 Step 6) — not the better-auth
+// session_token. session_token is HttpOnly and shared across every apps/api
+// endpoint the browser can reach; this is a separate, purpose-scoped
+// credential so a leak only grants MCP access, and it's independently
+// revocable without touching the browser session. `userId` is `.unique()`
+// (not the primary key) so "generate" can upsert on conflict, replacing any
+// existing token for that user rather than accumulating rows.
+export const mcpTokens = pgTable("mcp_tokens", {
+  id: uuid("id").primaryKey().defaultRandom().notNull().$type<McpTokenId>(),
+  userId: text("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  // Never store the raw token — only its SHA-256 hash, same practice as
+  // password/API-key storage. The raw value is shown to the user exactly
+  // once, at generation time, and is not recoverable after that.
+  tokenHash: text("token_hash").notNull().unique(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Not written to in v1 (see Stack doc / SHIP-115) — reserved for a future
+  // "last used" UI affordance without a schema change.
+  lastUsedAt: timestamp("last_used_at"),
+  revokedAt: timestamp("revoked_at"),
+});
+
 export const relations = defineRelations(
   {
     users,
@@ -330,12 +355,17 @@ export const relations = defineRelations(
     questions,
     answers,
     outputs,
+    mcpTokens,
   },
   (r) => ({
     users: {
       agentSessions: r.many.agentSessions(),
       sessions: r.many.sessions(),
       accounts: r.many.accounts(),
+      mcpToken: r.one.mcpTokens(),
+    },
+    mcpTokens: {
+      user: r.one.users({ from: r.mcpTokens.userId, to: r.users.id }),
     },
     sessions: {
       user: r.one.users({ from: r.sessions.userId, to: r.users.id }),

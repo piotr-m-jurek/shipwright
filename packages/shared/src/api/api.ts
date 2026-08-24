@@ -17,6 +17,9 @@ import {
   GetHealthResponse,
   RetrySessionResponse,
   GetSessionDebugResponse,
+  McpTokenGenerateResponse,
+  McpTokenStatusResponse,
+  McpTokenRevokeResponse,
 } from "../schemas/api";
 import {
   CreateAgentSessionError,
@@ -116,10 +119,25 @@ export class SessionResultsApi extends HttpApiGroup.make("results")
   )
   .middleware(Authorization) {}
 
+export class McpTokenApi extends HttpApiGroup.make("mcp-token")
+  .add(
+    HttpApiEndpoint.post("generateMcpToken", "/mcp-token", {
+      success: McpTokenGenerateResponse,
+    }),
+    HttpApiEndpoint.get("getMcpTokenStatus", "/mcp-token", {
+      success: McpTokenStatusResponse,
+    }),
+    HttpApiEndpoint.delete("revokeMcpToken", "/mcp-token", {
+      success: McpTokenRevokeResponse,
+    }),
+  )
+  .middleware(Authorization) {}
+
 export class Api extends HttpApi.make("api")
   .add(PublicApiGroup)
   .add(SessionStorageApi)
   .add(SessionComputationApi)
   .add(SessionResultsApi)
+  .add(McpTokenApi)
   .prefix("/api")
   .annotateMerge(OpenApi.annotations({ title: "Shipwright API" })) {}

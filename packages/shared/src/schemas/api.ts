@@ -48,6 +48,27 @@ export class OutputDownloadUrlResponse extends Schema.Class<
   { readonly brand: unique symbol }
 >("OutputDownloadUrlResponse")({ url: Schema.String }) {}
 
+// SHIP-115 Step 6 — MCP token (separate from the better-auth session_token,
+// see packages/auth/src/mcp-token.ts for why).
+export class McpTokenGenerateResponse extends Schema.Class<
+  McpTokenGenerateResponse,
+  { readonly brand: unique symbol }
+>("McpTokenGenerateResponse")({
+  // The raw token, returned exactly once. Never retrievable again after this
+  // response — only its hash is persisted.
+  token: Schema.String,
+}) {}
+
+export class McpTokenStatusResponse extends Schema.Class<
+  McpTokenStatusResponse,
+  { readonly brand: unique symbol }
+>("McpTokenStatusResponse")({ hasActiveToken: Schema.Boolean }) {}
+
+export class McpTokenRevokeResponse extends Schema.Class<
+  McpTokenRevokeResponse,
+  { readonly brand: unique symbol }
+>("McpTokenRevokeResponse")({ revoked: Schema.Boolean }) {}
+
 export class ReviseRequest extends Schema.Class<ReviseRequest, { readonly brand: unique symbol }>(
   "ReviseRequest",
 )({ feedback: Schema.String }) {}
@@ -140,46 +161,58 @@ export class GetSessionDebugResponse extends Schema.Class<
     createdAt: Schema.DateFromString,
     updatedAt: Schema.DateFromString,
   }),
-  xstate: Schema.NullOr(Schema.Struct({
-    value: Schema.String,
-    round: Schema.Int,
-    inputMode: Schema.Literals(["context", "retrieval"]),
-    outputVersion: Schema.Int,
-    documentSummaryCount: Schema.Int,
-    questionCount: Schema.Int,
-    answerCount: Schema.Int,
-    revisionFeedback: Schema.NullOr(Schema.String),
-    raw: Schema.Unknown,
-  })),
-  queue: Schema.Array(Schema.Struct({
-    queue: Schema.String,
-    status: Schema.String,
-    attempts: Schema.Int,
-    maxAttempts: Schema.Int,
-    createdAt: Schema.DateFromString,
-  })),
-  documents: Schema.Array(Schema.Struct({
-    id: Schema.String,
-    filename: Schema.String,
-    status: Schema.String,
-    mimeType: Schema.String,
-    sizeBytes: Schema.Int,
-    tokenCount: Schema.NullOr(Schema.Int),
-  })),
-  questions: Schema.Array(Schema.Struct({
-    id: Schema.String,
-    text: Schema.String,
-    orderIndex: Schema.Int,
-  })),
-  answers: Schema.Array(Schema.Struct({
-    questionId: Schema.String,
-    text: Schema.String,
-    round: Schema.Int,
-  })),
-  outputs: Schema.Array(Schema.Struct({
-    type: Schema.String,
-    version: Schema.NullOr(Schema.Int),
-    createdAt: Schema.DateFromString,
-    contentLength: Schema.Int,
-  })),
+  xstate: Schema.NullOr(
+    Schema.Struct({
+      value: Schema.String,
+      round: Schema.Int,
+      inputMode: Schema.Literals(["context", "retrieval"]),
+      outputVersion: Schema.Int,
+      documentSummaryCount: Schema.Int,
+      questionCount: Schema.Int,
+      answerCount: Schema.Int,
+      revisionFeedback: Schema.NullOr(Schema.String),
+      raw: Schema.Unknown,
+    }),
+  ),
+  queue: Schema.Array(
+    Schema.Struct({
+      queue: Schema.String,
+      status: Schema.String,
+      attempts: Schema.Int,
+      maxAttempts: Schema.Int,
+      createdAt: Schema.DateFromString,
+    }),
+  ),
+  documents: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      filename: Schema.String,
+      status: Schema.String,
+      mimeType: Schema.String,
+      sizeBytes: Schema.Int,
+      tokenCount: Schema.NullOr(Schema.Int),
+    }),
+  ),
+  questions: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      text: Schema.String,
+      orderIndex: Schema.Int,
+    }),
+  ),
+  answers: Schema.Array(
+    Schema.Struct({
+      questionId: Schema.String,
+      text: Schema.String,
+      round: Schema.Int,
+    }),
+  ),
+  outputs: Schema.Array(
+    Schema.Struct({
+      type: Schema.String,
+      version: Schema.NullOr(Schema.Int),
+      createdAt: Schema.DateFromString,
+      contentLength: Schema.Int,
+    }),
+  ),
 }) {}

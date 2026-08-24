@@ -6,7 +6,8 @@
     "build": "tsc --noEmit"
   },
   "exports": {
-    "./auth": "./src/auth.ts"
+    "./auth": "./src/auth.ts",
+    "./mcp-token": "./src/mcp-token.ts"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.0-rc.1",

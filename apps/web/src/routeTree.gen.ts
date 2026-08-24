@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SessionsSessionIdQuestionsRouteImport } from './routes/sessions/$sessionId/questions'
@@ -16,6 +17,11 @@ import { Route as SessionsSessionIdOutputRouteImport } from './routes/sessions/$
 import { Route as SessionsSessionIdDebugRouteImport } from './routes/sessions/$sessionId/debug'
 import { Route as SessionsSessionIdConfirmRouteImport } from './routes/sessions/$sessionId/confirm'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -52,6 +58,7 @@ const SessionsSessionIdConfirmRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
   '/sessions/$sessionId/confirm': typeof SessionsSessionIdConfirmRoute
   '/sessions/$sessionId/debug': typeof SessionsSessionIdDebugRoute
   '/sessions/$sessionId/output': typeof SessionsSessionIdOutputRoute
@@ -60,6 +67,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
   '/sessions/$sessionId/confirm': typeof SessionsSessionIdConfirmRoute
   '/sessions/$sessionId/debug': typeof SessionsSessionIdDebugRoute
   '/sessions/$sessionId/output': typeof SessionsSessionIdOutputRoute
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
   '/sessions/$sessionId/confirm': typeof SessionsSessionIdConfirmRoute
   '/sessions/$sessionId/debug': typeof SessionsSessionIdDebugRoute
   '/sessions/$sessionId/output': typeof SessionsSessionIdOutputRoute
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/settings'
     | '/sessions/$sessionId/confirm'
     | '/sessions/$sessionId/debug'
     | '/sessions/$sessionId/output'
@@ -87,6 +97,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/settings'
     | '/sessions/$sessionId/confirm'
     | '/sessions/$sessionId/debug'
     | '/sessions/$sessionId/output'
@@ -95,6 +106,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/login'
+    | '/settings'
     | '/sessions/$sessionId/confirm'
     | '/sessions/$sessionId/debug'
     | '/sessions/$sessionId/output'
@@ -104,6 +116,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  SettingsRoute: typeof SettingsRoute
   SessionsSessionIdConfirmRoute: typeof SessionsSessionIdConfirmRoute
   SessionsSessionIdDebugRoute: typeof SessionsSessionIdDebugRoute
   SessionsSessionIdOutputRoute: typeof SessionsSessionIdOutputRoute
@@ -112,6 +125,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -160,6 +180,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  SettingsRoute: SettingsRoute,
   SessionsSessionIdConfirmRoute: SessionsSessionIdConfirmRoute,
   SessionsSessionIdDebugRoute: SessionsSessionIdDebugRoute,
   SessionsSessionIdOutputRoute: SessionsSessionIdOutputRoute,

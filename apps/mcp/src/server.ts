@@ -9,6 +9,7 @@ import { AppDBLiveLayer } from "@shipwright/db";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
+import { McpTokenRepository } from "@shipwright/db/repositories/mcp-token-repository";
 import { EmbeddingService, HuggingFaceTeiEmbeddingModelLayerProvided } from "@shipwright/embedding";
 import { HttpMiddleware, HttpRouter } from "effect/unstable/http";
 
@@ -48,11 +49,15 @@ const EmbeddingServiceLayer = EmbeddingService.layer.pipe(
 );
 
 // AppDBLiveLayer already provides ConfigService internally -- nothing else
-// here needs it supplied separately.
+// here needs it supplied separately. McpTokenRepository is needed by
+// McpAuthMiddlewareLayer (auth.ts), not by the capabilities -- it still
+// belongs here since this is the one shared "infra" bag the whole
+// AllRoutesLayer merge draws from (see ServiceLayer/FullyComposedLayer below).
 const InfraLayer = Layer.mergeAll(
   AgentSessionRepository.layer,
   ChunkRepository.layer,
   OutputRepository.layer,
+  McpTokenRepository.layer,
   EmbeddingServiceLayer,
 ).pipe(Layer.provideMerge(AppDBLiveLayer));
 

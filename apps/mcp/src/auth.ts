@@ -1,11 +1,15 @@
 /**
  * Global auth middleware for the MCP server.
  *
- * MCP clients authenticate with `Authorization: Bearer <better-auth-session-token>`
- * instead of a cookie (there is no browser here). We translate the Bearer token
- * into the cookie header shape better-auth expects, then call the same
- * auth.api.getSession() used by apps/api/src/server/authorization.ts — both
- * apps validate against the same @shipwright/auth singleton and DB.
+ * SHIP-115 Step 6: this validates a purpose-scoped MCP token (`mcp_tokens`
+ * table via `McpTokenRepository`), NOT the better-auth `session_token`
+ * cookie. The two are deliberately separate credentials — see
+ * packages/auth/src/mcp-token.ts for why (session_token is HttpOnly and
+ * authenticates every apps/api endpoint the browser can reach; reusing it
+ * here would have exposed a full-account-privilege credential outside
+ * HttpOnly protection). Minted/revoked via apps/api's `POST/GET/DELETE
+ * /api/mcp-token` (apps/api/src/server/handlers/mcp-token.ts), surfaced to
+ * the user via apps/web's Settings page.
  *
  * Wraps the entire router (global: true) — MCP session negotiation
  * (`initialize`) also requires a valid token. No anonymous access.
@@ -14,18 +18,12 @@
  * HTTP 401 response (not a JSON-RPC error) — this is transport-level auth,
  * handled before any MCP method dispatch.
  */
-import { auth } from "@shipwright/auth/auth";
+import { McpTokenRepository } from "@shipwright/db/repositories/mcp-token-repository";
+import { hashMcpToken } from "@shipwright/auth/mcp-token";
 import { CurrentUser } from "@shipwright/shared/middleware";
-import { UserId } from "@shipwright/shared/domain/ids";
-import { sessionCookieHeader } from "@shipwright/shared/api/session-cookie";
-import { Effect, flow, pipe, Predicate, Redacted, Schema, String } from "effect";
+import { Effect, flow, pipe, Redacted, String } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder, HttpApiSecurity } from "effect/unstable/httpapi";
-
-class FailedToGetSessionError extends Schema.TaggedErrorClass<FailedToGetSessionError>()(
-  "FailedToGetSessionError",
-  {},
-) {}
 
 export const McpAuthMiddlewareLayer = HttpRouter.middleware<{
   provides: CurrentUser;
@@ -36,38 +34,34 @@ export const McpAuthMiddlewareLayer = HttpRouter.middleware<{
       Effect.filterOrFail(flow(Redacted.value, String.isNonEmpty)),
 
       Effect.flatMap((token) =>
-        Effect.tryPromise({
-          try: () => auth.api.getSession({ headers: sessionCookieHeader(token) }),
-          catch: () => new FailedToGetSessionError(),
-        }).pipe(Effect.filterOrFail(Predicate.isNotNullish)),
+        Effect.gen(function* () {
+          const tokenRepo = yield* McpTokenRepository;
+          const tokenHash = hashMcpToken(Redacted.value(token));
+          const owner = yield* tokenRepo.findActiveOwnerByHash(tokenHash).pipe(Effect.orDie);
+          return yield* Effect.fromOption(owner);
+        }),
       ),
 
-      Effect.flatMap((session) =>
+      Effect.flatMap((owner) =>
         Effect.gen(function* () {
           yield* Effect.logDebug("mcp auth: providing CurrentUser").pipe(
-            Effect.annotateLogs({ userId: session.user.id }),
+            Effect.annotateLogs({ userId: owner.userId }),
           );
 
           return yield* Effect.provideService(httpEffect, CurrentUser, {
-            id: UserId.make(session.user.id),
-            email: session.user.email,
-            name: session.user.name,
+            id: owner.userId,
+            email: owner.email,
+            name: owner.name,
           });
         }),
       ),
 
-      Effect.catchTags({
-        NoSuchElementError: () =>
-          Effect.gen(function* () {
-            yield* Effect.logDebug("mcp auth: invalid or expired session token");
-            return HttpServerResponse.empty({ status: 401 });
-          }),
-        FailedToGetSessionError: () =>
-          Effect.gen(function* () {
-            yield* Effect.logDebug("mcp auth: unable to call auth service to retrieve session");
-            return HttpServerResponse.empty({ status: 401 });
-          }),
-      }),
+      Effect.catchTag("NoSuchElementError", () =>
+        Effect.gen(function* () {
+          yield* Effect.logDebug("mcp auth: invalid, missing, or revoked MCP token");
+          return HttpServerResponse.empty({ status: 401 });
+        }),
+      ),
     ),
   { global: true },
 );

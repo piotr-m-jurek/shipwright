@@ -4,6 +4,7 @@ import type {
   chunks,
   documents,
   documentSummaries,
+  mcpTokens,
   outputs,
   questions,
   summaryItems,
@@ -34,3 +35,6 @@ export type QuestionInsert = typeof questions.$inferInsert;
 export type QuestionSelect = typeof questions.$inferSelect;
 export type AnswerInsert = typeof answers.$inferInsert;
 export type AnswerSelect = typeof answers.$inferSelect;
+
+export type McpTokenInsert = typeof mcpTokens.$inferInsert;
+export type McpTokenSelect = typeof mcpTokens.$inferSelect;
