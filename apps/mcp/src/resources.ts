@@ -25,7 +25,7 @@ import { Spans } from "@shipwright/observability";
 
 const sessionIdParam = McpSchema.param("sessionId", AgentSessionId);
 
-const readOutput = (type: OutputType) => (_uri: string, sessionId: AgentSessionId) =>
+const readOutput = (type: OutputType) => (uri: string, sessionId: AgentSessionId) =>
   Effect.gen(function* () {
     yield* Effect.annotateCurrentSpan({
       ...Spans.session(sessionId),
@@ -53,7 +53,18 @@ const readOutput = (type: OutputType) => (_uri: string, sessionId: AgentSessionI
       return yield* new McpSchema.InternalError({ message: "Output not ready" });
     }
 
-    return output.value.content;
+    // SHIP-158: returning a bare string here (relying on the registration-level
+    // `mimeType` option below) silently drops mimeType from the actual
+    // ReadResourceResult. Root-caused in effect's McpServer.ts source:
+    // resolveResourceContent's string branch builds `{ uri, text: content }`
+    // with no mimeType field at all — `options.mimeType` is only attached to
+    // the resource's *listing* metadata (resources/list), never plumbed into
+    // the resources/read response. Returning the full ReadResourceResult shape
+    // ourselves bypasses that branch entirely (resolveResourceContent returns
+    // non-string/Uint8Array content as-is).
+    return {
+      contents: [{ uri, mimeType: "text/plain", text: output.value.content }],
+    };
   }).pipe(
     // McpServer.resource converts *any* failure or defect that escapes here
     // into an InternalError using the underlying message verbatim.
