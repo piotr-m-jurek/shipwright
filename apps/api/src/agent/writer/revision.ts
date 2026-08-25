@@ -1,7 +1,7 @@
 import { Effect, Ref, Schema, Stream } from "effect";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { Spans } from "../../observability/spans";
+import { Spans } from "@shipwright/observability";
 
 type LlmFinishCapture = {
   modelId: string | undefined;
@@ -12,6 +12,7 @@ type LlmFinishCapture = {
 import { LanguageModel } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers";
 import { makeWriterToolkitLayer, WriterToolkit } from "./tools/writer-toolkit";
+import { forkFaithfulnessJudge, forkCompletenessJudge } from "./judge";
 
 export class RevisionWriterError extends Schema.TaggedErrorClass<RevisionWriterError>()(
   "shipwright/agent/RevisionWriterError",
@@ -142,7 +143,7 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
         (acc, delta) => acc + delta,
       ),
       Effect.tap((text) =>
-        Effect.annotateCurrentSpan({ "shipwright.output.chars": text.length }),
+        Effect.annotateCurrentSpan(Spans.output({ chars: text.length })),
       ),
       Effect.tap(() =>
         Effect.flatMap(Ref.get(finishRef), (finish) =>
@@ -156,6 +157,18 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
                 }),
               )
             : Effect.void,
+        ),
+      ),
+      // Fire-and-forget faithfulness eval — same as the initial Brief generation
+      // pass (brief.ts) — does the revised Brief hallucinate anything not in the
+      // source summaries/original documents/feedback? Never blocks the pipeline.
+      Effect.tap((text) =>
+        Effect.flatMap(Effect.currentSpan, (span) =>
+          forkFaithfulnessJudge({
+            output: text,
+            sourceContext: userContent,
+            traceId: span.traceId,
+          }),
         ),
       ),
       Effect.mapError((cause) => new RevisionWriterError({ cause })),
@@ -220,7 +233,7 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
         (acc, delta) => acc + delta,
       ),
       Effect.tap((text) =>
-        Effect.annotateCurrentSpan({ "shipwright.output.chars": text.length }),
+        Effect.annotateCurrentSpan(Spans.output({ chars: text.length })),
       ),
       Effect.tap(() =>
         Effect.flatMap(Ref.get(finishRef), (finish) =>
@@ -234,6 +247,18 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
                 }),
               )
             : Effect.void,
+        ),
+      ),
+      // Fire-and-forget completeness eval — same as the initial PRD generation
+      // pass (prd.ts) — did the revised PRD drop any requirement from the
+      // source summaries/original documents/feedback? Never blocks the pipeline.
+      Effect.tap((text) =>
+        Effect.flatMap(Effect.currentSpan, (span) =>
+          forkCompletenessJudge({
+            output: text,
+            sourceContext: userContent,
+            traceId: span.traceId,
+          }),
         ),
       ),
       Effect.mapError((cause) => new RevisionWriterError({ cause })),
