@@ -14,6 +14,7 @@ import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { EmbeddingService, EmbeddingError } from "@shipwright/embedding";
 import { documentParseErrorCounter } from "../../observability/metrics";
+import { Spans } from "@shipwright/observability";
 
 // TODO: actually throw those errors, not DB errors
 export class DocumentNotFoundError extends Schema.TaggedErrorClass<DocumentNotFoundError>()(
@@ -39,8 +40,8 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
   sessionId: AgentSessionId;
 }) {
   yield* Effect.annotateCurrentSpan({
-    "shipwright.session.id": sessionId,
-    "shipwright.upload.count": uploads.length,
+    ...Spans.session(sessionId),
+    ...Spans.uploadCount(uploads.length),
   });
   yield* Effect.logInfo(`[processUploadedDocuments] starting — ${uploads.length} document(s)`).pipe(
     Effect.annotateLogs({ sessionId, uploadCount: uploads.length }),
@@ -141,9 +142,8 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
           ),
           Effect.withSpan("agent/process-document", {
             attributes: {
-              "shipwright.document.id": doc.id,
-              "shipwright.document.filename": doc.filename,
-              "shipwright.session.id": sessionId,
+              ...Spans.document({ filename: doc.filename, id: doc.id }),
+              ...Spans.session(sessionId),
             },
           }),
           // Swallow per-document errors so forEach continues with remaining

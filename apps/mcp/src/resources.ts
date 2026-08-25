@@ -21,12 +21,20 @@ import { AgentSessionId } from "@shipwright/shared/domain/ids";
 import type { OutputType } from "@shipwright/shared/domain/types";
 import { Effect, Option } from "effect";
 import { McpSchema, McpServer } from "effect/unstable/ai";
+import { Spans } from "@shipwright/observability";
 
 const sessionIdParam = McpSchema.param("sessionId", AgentSessionId);
 
 const readOutput = (type: OutputType) => (_uri: string, sessionId: AgentSessionId) =>
   Effect.gen(function* () {
+    yield* Effect.annotateCurrentSpan({
+      ...Spans.session(sessionId),
+      ...Spans.mcpResourceType(type),
+    });
+
     const user = yield* CurrentUser;
+    yield* Effect.annotateCurrentSpan(Spans.user(user.id));
+
     const sessionRepo = yield* AgentSessionRepository;
     const outputRepo = yield* OutputRepository;
 
@@ -54,6 +62,7 @@ const readOutput = (type: OutputType) => (_uri: string, sessionId: AgentSessionI
     Effect.catchTag("EffectDrizzleQueryError", () =>
       Effect.fail(new McpSchema.InternalError({ message: "Internal error" })),
     ),
+    Effect.withSpan("mcp/resources/read"),
   );
 
 export const BriefResource = McpServer.resource`shipwright://session/${sessionIdParam}/brief`({

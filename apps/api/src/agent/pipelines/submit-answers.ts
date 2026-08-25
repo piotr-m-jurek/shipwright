@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { getOrRestoreActor } from "../session-actor";
 import type { AgentSessionId, QuestionId } from "@shipwright/shared/domain/ids";
-import { Spans } from "../../observability/spans";
+import { Spans } from "@shipwright/observability";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { AnalysisPipelineError, SessionStateError } from "../errors";
 import { MessageQueue } from "@shipwright/queue";

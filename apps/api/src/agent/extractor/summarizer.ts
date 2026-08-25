@@ -1,6 +1,6 @@
 import { Effect, Schema, Option, pipe, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
-import { Spans } from "../../observability/spans";
+import { Spans } from "@shipwright/observability";
 import type { Chunk, SummaryItemType } from "@shipwright/shared/domain/types";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
@@ -126,7 +126,7 @@ export const persistSummary = Effect.fn("persistSummary")(
     version: number;
   }) {
     yield* Effect.annotateCurrentSpan({
-      "shipwright.session.id": sessionId,
+      ...Spans.session(sessionId),
       "shipwright.document.id": documentId,
       "shipwright.summary.type": summaryType,
       "shipwright.summary.version": version,

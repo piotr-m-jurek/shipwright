@@ -8,7 +8,7 @@ import { DocumentRepository } from "@shipwright/db/repositories/document-reposit
 import { getOrRestoreActor } from "../session-actor";
 import { runChallenger, runQuestionGenerator } from "../challenger/index";
 import { AnalysisPipelineError, AllExtractionsFailedError } from "../errors";
-import { Spans } from "../../observability/spans";
+import { Spans } from "@shipwright/observability";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 
 const runSessionWorkflowInner = Effect.fn("agent/runSessionWorkflow")(function* (

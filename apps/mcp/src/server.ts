@@ -1,5 +1,6 @@
 import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
 import { CurrentUser } from "@shipwright/shared/middleware";
+import { ConfigService } from "@shipwright/config";
 import { Effect, Layer, pipe } from "effect";
 import { BriefResource, PrdResource } from "./resources";
 import { QuerySessionToolkitLayer } from "./tools";
@@ -11,7 +12,17 @@ import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { McpTokenRepository } from "@shipwright/db/repositories/mcp-token-repository";
 import { EmbeddingService, HuggingFaceTeiEmbeddingModelLayerProvided } from "@shipwright/embedding";
-import { HttpMiddleware, HttpRouter } from "effect/unstable/http";
+import { OtlpLayer } from "@shipwright/observability";
+import { FetchHttpClient, HttpMiddleware, HttpRouter } from "effect/unstable/http";
+
+// Same derivation as apps/api/src/server/server.ts's OtlpLayerProvided —
+// OtlpLayer itself only requires ConfigService; OtlpTracer/OtlpMetrics need
+// an HttpClient under the hood to actually send to Langfuse's OTLP endpoint.
+const OtlpLayerProvided = pipe(
+  OtlpLayer,
+  Layer.provide(ConfigService.layer),
+  Layer.provide(FetchHttpClient.layer),
+);
 
 // StorageAdapter/S3 is not needed here: resources.ts reads outputs.content
 // directly from Postgres (see Stack doc, Section 8).
@@ -62,7 +73,7 @@ const InfraLayer = Layer.mergeAll(
 ).pipe(Layer.provideMerge(AppDBLiveLayer));
 
 const ServiceLayer = pipe(
-  BunHttpServer.layer({ port: 3002, hostname: "0.0.0.0" }),
+  Layer.mergeAll(OtlpLayerProvided, BunHttpServer.layer({ port: 3002, hostname: "0.0.0.0" })),
   Layer.provideMerge(InfraLayer),
 );
 

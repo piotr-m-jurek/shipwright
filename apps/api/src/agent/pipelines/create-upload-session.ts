@@ -5,14 +5,15 @@ import type { UserId } from "@shipwright/shared/domain/ids";
 import { StorageAdapter } from "@shipwright/storage";
 import { Effect, Metric } from "effect";
 import { sessionCreatedCounter } from "../../observability/metrics";
+import { Spans } from "@shipwright/observability";
 
 export const createUploadSession = Effect.fn("agent/createUploadSession")(function* (payload: {
   userId: UserId;
   files: CreateAgentSessionRequest["files"];
 }) {
   yield* Effect.annotateCurrentSpan({
-    "shipwright.user.id": payload.userId,
-    "shipwright.upload.count": payload.files.length,
+    ...Spans.user(payload.userId),
+    ...Spans.uploadCount(payload.files.length),
   });
   const agentSessionDb = yield* AgentSessionRepository;
   const documentDb = yield* DocumentRepository;

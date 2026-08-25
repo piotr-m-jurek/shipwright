@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from "effect";
+import { Spans } from "@shipwright/observability";
 import type { InsertChunk, SelectChunk } from "../types";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
@@ -50,13 +51,13 @@ export class ChunkRepository extends Context.Service<ChunkRepository, Interface>
           .from(chunks)
           .where(eq(chunks.documentId, documentId))
           .orderBy(asc(chunks.chunkIndex));
-        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        yield* Effect.annotateCurrentSpan(Spans.dbRowCount(rows.length));
         return rows;
       });
 
       const getChunksBySessionId = Effect.fn("db/getChunksBySessionId")(function* (sessionId: AgentSessionId) {
         const rows = yield* db.select().from(chunks).where(eq(chunks.sessionId, sessionId));
-        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        yield* Effect.annotateCurrentSpan(Spans.dbRowCount(rows.length));
         return rows;
       });
 
@@ -81,7 +82,7 @@ export class ChunkRepository extends Context.Service<ChunkRepository, Interface>
           .where(and(gt(similarity, 0.5), eq(chunks.sessionId, sessionId)))
           .orderBy((t) => desc(t.similarity))
           .limit(limit);
-        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        yield* Effect.annotateCurrentSpan(Spans.dbRowCount(rows.length));
         return rows;
       });
 

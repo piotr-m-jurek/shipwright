@@ -1,5 +1,5 @@
 import { Effect, pipe } from "effect";
-import { Spans } from "../../observability/spans";
+import { Spans } from "@shipwright/observability";
 import { ClarifyingQuestionsEffectSchema, type GapReportEffect } from "./schemas";
 import { TextGenerationError } from "../errors";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";

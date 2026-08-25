@@ -6,7 +6,7 @@ import { StorageAdapter } from "@shipwright/storage";
 import { Api } from "@shipwright/shared/api";
 import { SessionCompute } from "./handlers/session-compute";
 import { ConfigService } from "@shipwright/config";
-import { OtlpLayer } from "../observability/observability";
+import { OtlpLayer } from "@shipwright/observability";
 import { LangfuseClient } from "../observability/langfuse-client";
 import { LangfuseSpanTransformerLayer } from "../observability/langfuse-span-transformer";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";

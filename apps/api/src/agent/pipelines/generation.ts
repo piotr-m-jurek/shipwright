@@ -1,6 +1,6 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Effect, Option, pipe } from "effect";
-import { Spans } from "../../observability/spans";
+import { Spans } from "@shipwright/observability";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
@@ -58,7 +58,7 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
         return briefText;
       }).pipe(
         Effect.withSpan("agent/generate-brief", {
-          attributes: { "shipwright.session.id": sessionId },
+          attributes: Spans.session(sessionId),
         }),
       );
     });
@@ -100,7 +100,7 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
         return prdText;
       }).pipe(
         Effect.withSpan("agent/generate-prd", {
-          attributes: { "shipwright.session.id": sessionId },
+          attributes: Spans.session(sessionId),
         }),
       );
     });
@@ -203,7 +203,7 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
         return newBriefText;
       }).pipe(
         Effect.withSpan("agent/revise-brief", {
-          attributes: { "shipwright.session.id": sessionId },
+          attributes: Spans.session(sessionId),
         }),
       );
     });
@@ -250,7 +250,7 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
         return newPrdText;
       }).pipe(
         Effect.withSpan("agent/revise-prd", {
-          attributes: { "shipwright.session.id": sessionId },
+          attributes: Spans.session(sessionId),
         }),
       );
     });

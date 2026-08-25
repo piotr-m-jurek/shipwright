@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@shipwright/config": "workspace:*",
+    "@shipwright/observability": "workspace:*",
     "@shipwright/shared": "workspace:*"
   },
   "peerDependencies": {

@@ -1,5 +1,5 @@
 {
-  "name": "@shipwright/embedding",
+  "name": "@shipwright/observability",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -10,6 +10,6 @@
   },
   "dependencies": {
     "@shipwright/config": "workspace:*",
-    "@shipwright/observability": "workspace:*"
+    "@shipwright/shared": "workspace:*"
   }
 }

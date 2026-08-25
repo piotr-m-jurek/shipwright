@@ -26,6 +26,7 @@
     "@shipwright/config": "workspace:*",
     "@shipwright/db": "workspace:*",
     "@shipwright/embedding": "workspace:*",
+    "@shipwright/observability": "workspace:*",
     "@shipwright/queue": "workspace:*",
     "@shipwright/shared": "workspace:*",
     "@shipwright/storage": "workspace:*",

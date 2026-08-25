@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from "effect";
+import { Spans } from "@shipwright/observability";
 import type { QuestionInsert, QuestionSelect, AnswerInsert, AnswerSelect } from "../types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
@@ -41,7 +42,7 @@ export class ClarificationRepository extends Context.Service<ClarificationReposi
           .from(questions)
           .where(eq(questions.sessionId, sessionId))
           .orderBy(asc(questions.orderIndex));
-        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        yield* Effect.annotateCurrentSpan(Spans.dbRowCount(rows.length));
         return rows;
       });
 
@@ -52,7 +53,7 @@ export class ClarificationRepository extends Context.Service<ClarificationReposi
 
       const getAnswersBySessionId = Effect.fn("db/getAnswersBySessionId")(function* (sessionId: AgentSessionId) {
         const rows = yield* db.select().from(answers).where(eq(answers.sessionId, sessionId));
-        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        yield* Effect.annotateCurrentSpan(Spans.dbRowCount(rows.length));
         return rows;
       });
 

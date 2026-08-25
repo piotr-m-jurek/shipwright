@@ -23,6 +23,7 @@
         "@shipwright/config": "workspace:*",
         "@shipwright/db": "workspace:*",
         "@shipwright/embedding": "workspace:*",
+        "@shipwright/observability": "workspace:*",
         "@shipwright/queue": "workspace:*",
         "@shipwright/shared": "workspace:*",
         "@shipwright/storage": "workspace:*",
@@ -54,6 +55,7 @@
         "@shipwright/config": "workspace:*",
         "@shipwright/db": "workspace:*",
         "@shipwright/embedding": "workspace:*",
+        "@shipwright/observability": "workspace:*",
         "@shipwright/shared": "workspace:*",
         "@shipwright/storage": "workspace:*",
         "drizzle-orm": "1.0.0-rc.4",
@@ -142,6 +144,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@shipwright/config": "workspace:*",
+        "@shipwright/observability": "workspace:*",
         "@shipwright/shared": "workspace:*",
       },
       "devDependencies": {
@@ -164,6 +167,15 @@
       "version": "1.0.0",
       "dependencies": {
         "@shipwright/config": "workspace:*",
+        "@shipwright/observability": "workspace:*",
+      },
+    },
+    "packages/observability": {
+      "name": "@shipwright/observability",
+      "version": "1.0.0",
+      "dependencies": {
+        "@shipwright/config": "workspace:*",
+        "@shipwright/shared": "workspace:*",
       },
     },
     "packages/queue": {
@@ -659,6 +671,8 @@
     "@shipwright/embedding": ["@shipwright/embedding@workspace:packages/embedding"],
 
     "@shipwright/mcp": ["@shipwright/mcp@workspace:apps/mcp"],
+
+    "@shipwright/observability": ["@shipwright/observability@workspace:packages/observability"],
 
     "@shipwright/queue": ["@shipwright/queue@workspace:packages/queue"],
 

@@ -3,7 +3,7 @@ import { UserId } from "@shipwright/shared/domain/ids";
 import { sessionCookieHeader } from "@shipwright/shared/api/session-cookie";
 import { Effect, Layer } from "effect";
 import { auth } from "@shipwright/auth/auth";
-import { Spans } from "../observability/spans";
+import { Spans } from "@shipwright/observability";
 
 export const AuthorizationLayer = Layer.succeed(
   Authorization,

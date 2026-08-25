@@ -59,4 +59,49 @@ export const Spans = {
     ...optionalAttr("shipwright.gap.gaps", opts.gaps),
     ...optionalAttr("shipwright.gap.ambiguities", opts.ambiguities),
   }),
+
+  output: (opts: { chars: number }) => ({
+    "shipwright.output.chars": opts.chars,
+  }),
+
+  /** A prompt fetched from the Langfuse prompt registry (vs. hardcoded fallback). */
+  prompt: (opts: { name: string; version: number }) => ({
+    "langfuse.observation.prompt.name": opts.name,
+    "langfuse.observation.prompt.version": opts.version,
+  }),
+
+  /** Row count returned by a DB repository query. */
+  dbRowCount: (count: number) => ({
+    "db.row_count": count,
+  }),
+
+  uploadCount: (count: number) => ({
+    "shipwright.upload.count": count,
+  }),
+
+  mcpResourceType: (type: string) => ({
+    "shipwright.mcp.resource.type": type,
+  }),
+
+  mcpResultCount: (count: number) => ({
+    "shipwright.mcp.result_count": count,
+  }),
+
+  mcpAuthOutcome: (outcome: "success" | "invalid_token") => ({
+    "shipwright.mcp.auth.outcome": outcome,
+  }),
+
+  embedding: (opts: {
+    provider: string;
+    chunkCount?: number;
+    textLength?: number;
+    vectorDimensions?: number;
+    inputTokens?: number | undefined;
+  }) => ({
+    "shipwright.embedding.provider": opts.provider,
+    ...optionalAttr("shipwright.embedding.chunk_count", opts.chunkCount),
+    ...optionalAttr("shipwright.embedding.text_length", opts.textLength),
+    ...optionalAttr("shipwright.embedding.vector_dimensions", opts.vectorDimensions),
+    ...optionalAttr("shipwright.embedding.input_tokens", opts.inputTokens),
+  }),
 } as const;

@@ -1,4 +1,5 @@
 import { ConfigService } from "@shipwright/config";
+import { Spans } from "@shipwright/observability";
 import { Context, Effect, Layer, pipe, Schema } from "effect";
 import { AiError, EmbeddingModel } from "effect/unstable/ai";
 import {
@@ -77,6 +78,14 @@ export class EmbeddingService extends Context.Service<EmbeddingService, Interfac
           model.embedMany(chunks),
           Effect.mapError((cause) => new EmbeddingError({ cause })),
         );
+        yield* Effect.annotateCurrentSpan(
+          Spans.embedding({
+            provider: "huggingface-tei",
+            chunkCount: chunks.length,
+            vectorDimensions: res.embeddings[0]?.vector.length ?? 0,
+            inputTokens: res.usage.inputTokens,
+          }),
+        );
         return res.embeddings.map(({ vector }) => vector);
       });
 
@@ -84,6 +93,13 @@ export class EmbeddingService extends Context.Service<EmbeddingService, Interfac
         const res = yield* pipe(
           model.embed(text),
           Effect.mapError((cause) => new EmbeddingError({ cause })),
+        );
+        yield* Effect.annotateCurrentSpan(
+          Spans.embedding({
+            provider: "huggingface-tei",
+            textLength: text.length,
+            vectorDimensions: res.vector.length,
+          }),
         );
         return res.vector;
       });

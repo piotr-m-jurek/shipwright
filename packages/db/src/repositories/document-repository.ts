@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Option } from "effect";
+import { Spans } from "@shipwright/observability";
 import { InsertDocument, SelectDocument } from "../types";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { DB } from "../index";
@@ -54,7 +55,7 @@ export class DocumentRepository extends Context.Service<DocumentRepository, Inte
 
       const getDocumentsBySessionId = Effect.fn("db/getDocumentsBySessionId")(function* (sessionId: AgentSessionId) {
         const rows = yield* db.select().from(documents).where(eq(documents.sessionId, sessionId));
-        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        yield* Effect.annotateCurrentSpan(Spans.dbRowCount(rows.length));
         return rows;
       });
 

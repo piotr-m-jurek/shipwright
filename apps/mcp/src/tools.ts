@@ -35,6 +35,7 @@ import { CurrentUser } from "@shipwright/shared/middleware";
 import { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Effect, Layer, Option, pipe, Schema } from "effect";
 import { McpServer, Tool, Toolkit } from "effect/unstable/ai";
+import { Spans } from "@shipwright/observability";
 
 class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()(
   "shipwright/mcp/SessionNotFoundError",
@@ -90,6 +91,11 @@ const QuerySessionHandlersLayer = QuerySessionToolkit.toLayer(
         const user = yield* CurrentUser;
         const limit = rawLimit ?? 5;
 
+        yield* Effect.annotateCurrentSpan({
+          ...Spans.session(sessionId),
+          ...Spans.user(user.id),
+        });
+
         const session = yield* sessionRepo
           .getAgentSessionByIdForUser({ sessionId, userId: user.id })
           .pipe(Effect.orDie);
@@ -124,6 +130,8 @@ const QuerySessionHandlersLayer = QuerySessionToolkit.toLayer(
               ),
             ),
           );
+
+        yield* Effect.annotateCurrentSpan(Spans.mcpResultCount(results.length));
 
         return { results };
       }),

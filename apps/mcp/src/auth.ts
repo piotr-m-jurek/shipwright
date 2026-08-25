@@ -24,6 +24,7 @@ import { CurrentUser } from "@shipwright/shared/middleware";
 import { Effect, flow, pipe, Redacted, String } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder, HttpApiSecurity } from "effect/unstable/httpapi";
+import { Spans } from "@shipwright/observability";
 
 export const McpAuthMiddlewareLayer = HttpRouter.middleware<{
   provides: CurrentUser;
@@ -47,6 +48,10 @@ export const McpAuthMiddlewareLayer = HttpRouter.middleware<{
           yield* Effect.logDebug("mcp auth: providing CurrentUser").pipe(
             Effect.annotateLogs({ userId: owner.userId }),
           );
+          yield* Effect.annotateCurrentSpan({
+            ...Spans.user(owner.userId),
+            ...Spans.mcpAuthOutcome("success"),
+          });
 
           return yield* Effect.provideService(httpEffect, CurrentUser, {
             id: owner.userId,
@@ -59,6 +64,7 @@ export const McpAuthMiddlewareLayer = HttpRouter.middleware<{
       Effect.catchTag("NoSuchElementError", () =>
         Effect.gen(function* () {
           yield* Effect.logDebug("mcp auth: invalid, missing, or revoked MCP token");
+          yield* Effect.annotateCurrentSpan(Spans.mcpAuthOutcome("invalid_token"));
           return HttpServerResponse.empty({ status: 401 });
         }),
       ),

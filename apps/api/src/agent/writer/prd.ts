@@ -1,5 +1,5 @@
 import { Array, Effect, Filter, Layer, Option, pipe, Schema } from "effect";
-import { Spans } from "../../observability/spans";
+import { Spans } from "@shipwright/observability";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine";
@@ -125,10 +125,7 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
     yield* Option.match(promptResult, {
       onNone: () => Effect.void,
       onSome: (p) =>
-        Effect.annotateCurrentSpan({
-          "langfuse.observation.prompt.name": p.name,
-          "langfuse.observation.prompt.version": p.version,
-        }),
+        Effect.annotateCurrentSpan(Spans.prompt({ name: p.name, version: p.version })),
     });
 
     const chat = yield* Chat.empty;
@@ -152,7 +149,7 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
       sessionId,
     }).pipe(Effect.mapError((cause) => new PrdWriterError({ cause })));
 
-    yield* Effect.annotateCurrentSpan({ "shipwright.output.chars": result.text.length });
+    yield* Effect.annotateCurrentSpan(Spans.output({ chars: result.text.length }));
     yield* Effect.annotateCurrentSpan(
       Spans.llm({
         model: result.modelId,

@@ -1,5 +1,5 @@
 import { Effect, Option, pipe } from "effect";
-import { Spans } from "../../observability/spans";
+import { Spans } from "@shipwright/observability";
 import { TextGenerationError } from "../errors";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { GapReportEffectSchema } from "./schemas";
@@ -46,10 +46,7 @@ export const runChallenger = Effect.fn("agent/run-challenger")(function* (
   yield* Option.match(promptResult, {
     onNone: () => Effect.void,
     onSome: (p) =>
-      Effect.annotateCurrentSpan({
-        "langfuse.observation.prompt.name": p.name,
-        "langfuse.observation.prompt.version": p.version,
-      }),
+      Effect.annotateCurrentSpan(Spans.prompt({ name: p.name, version: p.version })),
   });
 
   const response = yield* pipe(

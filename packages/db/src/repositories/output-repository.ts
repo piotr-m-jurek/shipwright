@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Option } from "effect";
+import { Spans } from "@shipwright/observability";
 import type { OutputInsert, OutputSelect } from "../types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
@@ -38,7 +39,7 @@ export class OutputRepository extends Context.Service<OutputRepository, Interfac
           .from(outputs)
           .where(eq(outputs.sessionId, sessionId))
           .orderBy(desc(outputs.version));
-        yield* Effect.annotateCurrentSpan({ "db.row_count": rows.length });
+        yield* Effect.annotateCurrentSpan(Spans.dbRowCount(rows.length));
         return rows;
       });
 

@@ -5,7 +5,7 @@ import { runSessionWorkflow } from "../agent/pipelines/run-session-workflow";
 import { processUploadedDocuments } from "../agent/pipelines/process-uploaded-documents";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas";
 import { runGeneratingPipeline, runRevisionPipeline } from "../agent/pipelines/generation";
-import { Spans } from "../observability/spans";
+import { Spans } from "@shipwright/observability";
 
 // ---------------------------------------------------------------------------
 // Helpers

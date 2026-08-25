@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from "effect";
+import { Spans } from "@shipwright/observability";
 import type {
   DocumentSummaryInsert,
   DocumentSummarySelect,
@@ -157,7 +158,7 @@ export class SummaryRepository extends Context.Service<SummaryRepository, Interf
           .orderBy(asc(summaryItems.summaryId), asc(summaryItems.orderIndex));
 
         const result = reconstructSummaries(summaryRows, itemRows);
-        yield* Effect.annotateCurrentSpan({ "db.row_count": result.length });
+        yield* Effect.annotateCurrentSpan(Spans.dbRowCount(result.length));
         return result;
       });
 
