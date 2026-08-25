@@ -3,6 +3,7 @@ import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { MessageQueue } from "@shipwright/queue";
+import { Spans } from "@shipwright/observability";
 
 // ── Reason errors ─────────────────────────────────────────────────────────────
 
@@ -45,6 +46,8 @@ export const retrySession = Effect.fn("agent/retrySession")(function* (
   sessionId: AgentSessionId,
   userId: UserId,
 ) {
+  yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
+
   const agentSessionDb = yield* AgentSessionRepository;
   const documentDb = yield* DocumentRepository;
   const mq = yield* MessageQueue;
