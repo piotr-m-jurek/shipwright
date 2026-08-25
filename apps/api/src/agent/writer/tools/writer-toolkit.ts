@@ -7,6 +7,7 @@ import { DocumentRepository } from "@shipwright/db/repositories/document-reposit
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import { EmbeddingService } from "@shipwright/embedding";
 import { StorageAdapter } from "@shipwright/storage";
+import { Spans } from "@shipwright/observability";
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 
@@ -271,6 +272,16 @@ Respond with JSON:
           }).pipe(
             Effect.provide(Layer.provideMerge(AnthropicHaikuModelLayer, AnthropicClientLayer)),
             Effect.orDie,
+          );
+
+          const modelId = response.content.find((p) => p.type === "response-metadata")?.modelId;
+          yield* Effect.annotateCurrentSpan(
+            Spans.llm({
+              model: modelId,
+              inputTokens: response.usage.inputTokens.total,
+              outputTokens: response.usage.outputTokens.total,
+              cacheReadTokens: response.usage.inputTokens.cacheRead,
+            }),
           );
 
           return response.value;
