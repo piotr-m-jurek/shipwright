@@ -254,6 +254,10 @@ describe("processUploadedDocuments — transaction behaviour", () => {
   it("calls createChunks and updateDocument on success", async () => {
     const { layer: chunkLayer, calls: chunkCalls } = makeChunkRepositoryLayer({});
     const { layer: docLayer, calls: docCalls } = makeDocumentRepositoryLayer({});
+    // getOrRestoreActor now requires SummaryRepository too (DocumentExtractionServices,
+    // for summarizeDocumentActor — SHIP-111). Not exercised by this test's assertions,
+    // but must be provided for the Layer graph to resolve.
+    const { layer: summaryLayer } = makeSummaryRepositoryLayer({});
     const sqlLayer = makeSqlClientLayer();
 
     const program = processUploadedDocuments({
@@ -265,6 +269,7 @@ describe("processUploadedDocuments — transaction behaviour", () => {
       program.pipe(
         Effect.provide(chunkLayer),
         Effect.provide(docLayer),
+        Effect.provide(summaryLayer),
         Effect.provide(agentSessionRepositoryLayer),
         Effect.provide(storageAdapterLayer),
         Effect.provide(embeddingServiceLayer),
@@ -282,6 +287,8 @@ describe("processUploadedDocuments — transaction behaviour", () => {
       onCreateChunks: () => Effect.fail(new Error("chunk insert failed")),
     });
     const { layer: docLayer, calls: docCalls } = makeDocumentRepositoryLayer({});
+    // See note above — getOrRestoreActor now requires SummaryRepository too.
+    const { layer: summaryLayer } = makeSummaryRepositoryLayer({});
     const sqlLayer = makeSqlClientLayer((inner) =>
       inner.pipe(Effect.catch(() => Effect.succeed(null))),
     );
@@ -296,6 +303,7 @@ describe("processUploadedDocuments — transaction behaviour", () => {
         Effect.ignore,
         Effect.provide(chunkLayer),
         Effect.provide(docLayer),
+        Effect.provide(summaryLayer),
         Effect.provide(agentSessionRepositoryLayer),
         Effect.provide(storageAdapterLayer),
         Effect.provide(embeddingServiceLayer),

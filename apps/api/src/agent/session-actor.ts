@@ -1,5 +1,10 @@
-import { Effect, Option, Schema } from "effect";
-import { createAgentActor, restoreAgentActor, type AgentActor } from "./machine";
+import { Context, Effect, Option, Schema } from "effect";
+import {
+  createAgentActor,
+  restoreAgentActor,
+  type AgentActor,
+  type DocumentExtractionServices,
+} from "./machine";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
@@ -47,6 +52,14 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
     return existing;
   }
 
+  // Captured once per actor construction and threaded into both the machine
+  // (summarizeDocumentActor) and the snapshot-persistence subscriber below —
+  // see machine.ts createAgentMachine's doc comment for the full rationale.
+  // Typed concretely (not `never`): this makes getOrRestoreActor itself
+  // require DocumentExtractionServices, so its whole caller chain up to
+  // wherever the app Layer is provided is compiler-checked, not trusted.
+  const services = yield* Effect.context<DocumentExtractionServices>();
+
   const session = yield* db.getAgentSessionById({ sessionId }).pipe(
     Effect.flatMap(
       Option.match({
@@ -56,27 +69,26 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
     ),
   );
 
-  const actor: AgentActor = session.xstateSnapshot == null
-    // No snapshot yet — new session, create a fresh actor.
-    ? createAgentActor({ sessionId })
-    : yield* restoreAgentActor(session.xstateSnapshot).pipe(
-        Effect.tapErrorTag("SnapshotValidationError", (err) =>
-          // Snapshot schema mismatch — typically caused by a breaking change to
-          // MachineContextEffectSchema (e.g. removing a field, changing a type).
-          // Old sessions with the prior shape cannot be rehydrated. Mark them as
-          // error in the DB so the user sees a clear failed state instead of a
-          // silently broken fresh actor with empty context.
-          Effect.logWarning(
-            `[session-actor] Snapshot validation failed for ${sessionId} — marking session as error`,
-            err.cause,
-          ).pipe(
-            Effect.andThen(db.updateAgentSession(sessionId, "error")),
+  const actor: AgentActor =
+    session.xstateSnapshot == null
+      ? // No snapshot yet — new session, create a fresh actor.
+        createAgentActor(services, { sessionId })
+      : yield* restoreAgentActor(services, session.xstateSnapshot).pipe(
+          Effect.tapErrorTag("SnapshotValidationError", (err) =>
+            // Snapshot schema mismatch — typically caused by a breaking change to
+            // MachineContextEffectSchema (e.g. removing a field, changing a type).
+            // Old sessions with the prior shape cannot be rehydrated. Mark them as
+            // error in the DB so the user sees a clear failed state instead of a
+            // silently broken fresh actor with empty context.
+            Effect.logWarning(
+              `[session-actor] Snapshot validation failed for ${sessionId} — marking session as error`,
+              err.cause,
+            ).pipe(Effect.andThen(db.updateAgentSession(sessionId, "error"))),
           ),
-        ),
-        Effect.mapError(() => new SessionNotFoundError()),
-      );
+          Effect.mapError(() => new SessionNotFoundError()),
+        );
 
-  yield* wireSnapshotPersistence(actor, sessionId);
+  yield* wireSnapshotPersistence(actor, sessionId, services);
   actor.start();
   registry.set(sessionId, actor);
   return actor;
@@ -85,9 +97,9 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
 const wireSnapshotPersistence = Effect.fn("agent/wireSnapshotPersistence")(function* (
   actor: AgentActor,
   sessionId: AgentSessionId,
+  services: Context.Context<DocumentExtractionServices>,
 ) {
   const db = yield* AgentSessionRepository;
-  const services = yield* Effect.context<never>();
 
   actor.subscribe((snapshot) => {
     const xstateState = resolveDbStatus(snapshot.value);

@@ -1,11 +1,11 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { Clock, Effect, Exit, Metric, Option, pipe } from "effect";
+import { Clock, Effect, Exit, Metric, Option } from "effect";
+import { waitFor } from "xstate";
 import { sessionErrorCounter, pipelineDurationHistogram } from "../../observability/metrics";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { getOrRestoreActor } from "../session-actor";
-import { summarizeDocument } from "../extractor/index";
 import { runChallenger, runQuestionGenerator } from "../challenger/index";
 import { AnalysisPipelineError, AllExtractionsFailedError } from "../errors";
 import { Spans } from "../../observability/spans";
@@ -25,37 +25,27 @@ const runSessionWorkflowInner = Effect.fn("agent/runSessionWorkflow")(function* 
   // Fetch documents for this session (DB concern — stays out of machine context).
   const docs = yield* documentDb.getDocumentsBySessionId(sessionId);
 
-  // Initialise per-doc tracking in the machine (filenames only, no DB IDs).
-  actor.send({ type: "EXTRACTION_STARTED", filenames: docs.map((d) => d.filename) });
+  // Hand off to the machine: EXTRACTION_STARTED spawns one summarizeDocumentActor
+  // per document (see machine.ts's spawnDocumentActors / summarizeDocumentActor).
+  // documentId travels in the event only — the machine never stores it in context.
+  actor.send({
+    type: "EXTRACTION_STARTED",
+    documents: docs.map((d) => ({ filename: d.filename, documentId: d.id })),
+  });
   yield* Effect.logInfo(`[runSessionWorkflow] extraction started — ${docs.length} documents`).pipe(
     Effect.annotateLogs({ sessionId, documentCount: docs.length }),
   );
 
-  // Run one fiber per document. Each reports its outcome to the machine individually.
-  // A failing document does NOT abort sibling fibers.
-  yield* Effect.forEach(
-    docs,
-    (doc) =>
-      pipe(
-        summarizeDocument(doc.id, sessionId, doc.filename),
-        Effect.andThen(() => {
-          actor.send({ type: "DOCUMENT_EXTRACTED", filename: doc.filename, status: "done" });
-          return Effect.logInfo(`[runSessionWorkflow] extracted: ${doc.filename}`).pipe(
-            Effect.annotateLogs({ sessionId, filename: doc.filename }),
-          );
-        }),
-        Effect.catch((err) => {
-          actor.send({ type: "DOCUMENT_EXTRACTED", filename: doc.filename, status: "failed" });
-          return Effect.logError(
-            `[runSessionWorkflow] extraction failed: ${doc.filename}`,
-            err,
-          ).pipe(Effect.annotateLogs({ sessionId, filename: doc.filename }));
-        }),
-      ),
-    { concurrency: 2 },
+  // Wait for the machine to settle all spawned actors. A failing document does
+  // NOT abort siblings — that isolation now lives in the machine (each spawned
+  // actor is independent), not in an Effect.forEach here.
+  // NOTE: no timeout — a hung document actor blocks this indefinitely, same
+  // risk profile as the previous Effect.forEach (no regression, not yet fixed).
+  yield* Effect.promise(() =>
+    waitFor(actor, (snapshot) => snapshot.matches("processing") || snapshot.matches("summarizing_error")),
   );
 
-  // All fibers settled. Check if machine transitioned to summarizing_error (all failed).
+  // All actors settled. Check if machine transitioned to summarizing_error (all failed).
   const stateAfterExtraction = actor.getSnapshot().value as string;
   if (stateAfterExtraction === "summarizing_error") {
     return yield* new AllExtractionsFailedError();

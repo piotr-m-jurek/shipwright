@@ -8,18 +8,25 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { Cause, Effect, Exit, Schema } from "effect";
-import { restoreAgentActor, createAgentActor } from "../machine";
+import { Cause, Context, Effect, Exit, Schema } from "effect";
+import { restoreAgentActor, createAgentActor, type DocumentExtractionServices } from "../machine";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 const sessionId = Schema.decodeSync(
   Schema.String.pipe(Schema.brand("AgentSessionId")),
 )("session-snapshot-test") as AgentSessionId;
 
+// None of these tests reach EXTRACTION_STARTED, so summarizeDocumentActor is
+// never invoked — this Context genuinely has none of DocumentExtractionServices
+// present. Casting rather than constructing fake ChunkRepository/SummaryRepository/
+// SqlClient instances for code these tests never execute (same narrowly-scoped
+// cast convention as dischargeCurrentUserRequirement in apps/mcp/src/server.ts).
+const services = Context.empty() as unknown as Context.Context<DocumentExtractionServices>;
+
 // ── Valid snapshot — produced by a real actor so XState accepts it ─────────
 
 function makeValidSnapshot() {
-  const actor = createAgentActor({ sessionId });
+  const actor = createAgentActor(services, { sessionId });
   actor.start();
   const snap = actor.getSnapshot();
   actor.stop();
@@ -31,7 +38,7 @@ function makeValidSnapshot() {
 describe("restoreAgentActor", () => {
   it("succeeds with a valid snapshot", async () => {
     const snapshot = makeValidSnapshot();
-    const actor = await Effect.runPromise(restoreAgentActor(snapshot));
+    const actor = await Effect.runPromise(restoreAgentActor(services, snapshot));
     expect(actor).toBeDefined();
     actor.start();
     expect(actor.getSnapshot().context.sessionId).toBe(sessionId);
@@ -40,7 +47,7 @@ describe("restoreAgentActor", () => {
 
   it("fails with SnapshotValidationError when context is missing", async () => {
     const exit = await Effect.runPromiseExit(
-      restoreAgentActor({ value: "idle", status: "active" }),
+      restoreAgentActor(services, { value: "idle", status: "active" }),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
@@ -56,7 +63,7 @@ describe("restoreAgentActor", () => {
       status: "active",
     };
 
-    const exit = await Effect.runPromiseExit(restoreAgentActor(badSnapshot));
+    const exit = await Effect.runPromiseExit(restoreAgentActor(services, badSnapshot));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const err = Cause.squash(exit.cause) as any;
@@ -80,7 +87,7 @@ describe("restoreAgentActor", () => {
       },
     };
 
-    const exit = await Effect.runPromiseExit(restoreAgentActor(badSnapshot));
+    const exit = await Effect.runPromiseExit(restoreAgentActor(services, badSnapshot));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const err = Cause.squash(exit.cause) as any;
@@ -91,7 +98,7 @@ describe("restoreAgentActor", () => {
 
 describe("getOrRestoreActor fallback behaviour", () => {
   it("createAgentActor produces a usable fresh actor", () => {
-    const actor = createAgentActor({ sessionId });
+    const actor = createAgentActor(services, { sessionId });
     actor.start();
     expect(actor.getSnapshot().value).toBe("idle");
     actor.stop();
