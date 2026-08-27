@@ -1,10 +1,11 @@
-import { Effect, pipe } from "effect";
+import { Effect, Option, pipe } from "effect";
 import { Spans } from "@shipwright/observability";
 import { ClarifyingQuestionsEffectSchema, type GapReportEffect } from "./schemas";
 import { TextGenerationError } from "../errors";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers";
+import { LangfuseClient } from "../../observability/langfuse-client";
 
 const QuestionGeneratorSystemPrompt = `You are a requirements analyst preparing clarifying questions for a project team.
 
@@ -34,11 +35,25 @@ export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(
         ambiguities: gapReport.ambiguities.length,
       }),
     });
+
+    // Fetch prompt from Langfuse registry; fall back to hardcoded if unavailable.
+    const langfuse = yield* LangfuseClient;
+    const promptResult = yield* langfuse.getPrompt("shipwright-question-generator");
+    const systemPrompt = Option.match(promptResult, {
+      onNone: () => QuestionGeneratorSystemPrompt,
+      onSome: (p) => p.text,
+    });
+    yield* Option.match(promptResult, {
+      onNone: () => Effect.void,
+      onSome: (p) =>
+        Effect.annotateCurrentSpan(Spans.prompt({ name: p.name, version: p.version })),
+    });
+
     const response = yield* pipe(
       LanguageModel.generateObject({
         schema: ClarifyingQuestionsEffectSchema,
         prompt: Prompt.make([
-          { role: "system", content: QuestionGeneratorSystemPrompt },
+          { role: "system", content: systemPrompt },
           { role: "user", content: formatInput(gapReport, summaries) },
         ]),
       }),

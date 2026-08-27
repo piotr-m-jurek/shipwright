@@ -1,4 +1,4 @@
-import { Array, Effect, Layer, pipe, Schema } from "effect";
+import { Array, Effect, Layer, Option, pipe, Schema } from "effect";
 import { LanguageModel, Prompt, Tool, Toolkit } from "effect/unstable/ai";
 import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../../providers";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
@@ -8,6 +8,7 @@ import { SummaryRepository } from "@shipwright/db/repositories/summary-repositor
 import { EmbeddingService } from "@shipwright/embedding";
 import { StorageAdapter } from "@shipwright/storage";
 import { Spans } from "@shipwright/observability";
+import { LangfuseClient } from "../../../observability/langfuse-client";
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 

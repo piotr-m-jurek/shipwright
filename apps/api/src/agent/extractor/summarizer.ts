@@ -11,6 +11,7 @@ import { estimateTokenCount } from "../lib/estimate-token-count";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { type DocumentSummaryEffect, DocumentSummaryEffectSchema } from "./schemas";
 import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers";
+import { LangfuseClient } from "../../observability/langfuse-client";
 
 class ChunksRetrievalError extends Schema.TaggedErrorClass<ChunksRetrievalError>()(
   "ChunksRetrievalError",
@@ -71,6 +72,21 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
     Effect.annotateLogs({ documentId, sessionId, filename }),
   );
 
+  // Fetch prompt from Langfuse registry once per document (not per chunk —
+  // runReducePass runs in a loop below, and our LangfuseClient has no
+  // client-side caching, so fetching inside that loop would add a network
+  // round-trip per chunk). Fall back to hardcoded if unavailable.
+  const langfuse = yield* LangfuseClient;
+  const promptResult = yield* langfuse.getPrompt("shipwright-summarizer");
+  const systemPrompt = Option.match(promptResult, {
+    onNone: () => MapReduceSystemPrompt,
+    onSome: (p) => p.text,
+  });
+  yield* Option.match(promptResult, {
+    onNone: () => Effect.void,
+    onSome: (p) => Effect.annotateCurrentSpan(Spans.prompt({ name: p.name, version: p.version })),
+  });
+
   const currentHighestVersion = yield* pipe(
     summaryDb.getCurrentDocumentSummaryVersion({ documentId, sessionId }),
     Effect.mapError((cause) => new DocumentSummaryReadError({ cause })),
@@ -81,7 +97,7 @@ export const summarizeDocument = Effect.fn("agent/summarizeDocument")(function* 
     yield* Effect.logInfo(
       `[summarizeDocument] chunk ${chunk.chunkIndex + 1}/${chunks.length}`,
     ).pipe(Effect.annotateLogs({ documentId, sessionId, chunkIndex: chunk.chunkIndex }));
-    const summary = yield* runReducePass(current, chunk, filename);
+    const summary = yield* runReducePass(current, chunk, filename, systemPrompt);
     yield* persistSummary({
       summary,
       summaryType: "map_intermediate",
@@ -204,7 +220,12 @@ When a running summary is present: the new chunk is additional evidence, not a r
   `;
 
 export const runReducePass = Effect.fn("agent/runReducePass")(
-  function* (current: Option.Option<DocumentSummaryEffect>, chunk: Chunk, sourceDocument: string) {
+  function* (
+    current: Option.Option<DocumentSummaryEffect>,
+    chunk: Chunk,
+    sourceDocument: string,
+    systemPrompt: string = MapReduceSystemPrompt,
+  ) {
     yield* Effect.annotateCurrentSpan({
       ...Spans.document({ filename: sourceDocument }),
       ...Spans.chunk(chunk.chunkIndex),
@@ -215,7 +236,7 @@ export const runReducePass = Effect.fn("agent/runReducePass")(
       LanguageModel.generateObject({
         schema: DocumentSummaryEffectSchema,
         prompt: Prompt.make([
-          { role: "system", content: MapReduceSystemPrompt },
+          { role: "system", content: systemPrompt },
           { role: "user", content: userContent },
         ]),
       }),

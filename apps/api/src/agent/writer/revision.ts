@@ -1,7 +1,8 @@
-import { Effect, Ref, Schema, Stream } from "effect";
+import { Effect, Option, Ref, Schema, Stream } from "effect";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { Spans } from "@shipwright/observability";
+import { LangfuseClient } from "../../observability/langfuse-client";
 
 type LlmFinishCapture = {
   modelId: string | undefined;
@@ -103,10 +104,23 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
     const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
     const finishRef = yield* Ref.make<LlmFinishCapture | undefined>(undefined);
 
+    // Fetch prompt from Langfuse registry; fall back to hardcoded if unavailable.
+    const langfuse = yield* LangfuseClient;
+    const promptResult = yield* langfuse.getPrompt("shipwright-revision-brief");
+    const systemPrompt = Option.match(promptResult, {
+      onNone: () => RevisionBriefSystemPrompt,
+      onSome: (p) => p.text,
+    });
+    yield* Option.match(promptResult, {
+      onNone: () => Effect.void,
+      onSome: (p) =>
+        Effect.annotateCurrentSpan(Spans.prompt({ name: p.name, version: p.version })),
+    });
+
     return yield* LanguageModel.streamText({
       toolkit: WriterToolkit,
       prompt: [
-        { role: "system", content: RevisionBriefSystemPrompt },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
           content: [
@@ -193,10 +207,23 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
     const userContent = formatRevisionInput(summaries, existingBrief, existingPrd, feedback);
     const finishRef = yield* Ref.make<LlmFinishCapture | undefined>(undefined);
 
+    // Fetch prompt from Langfuse registry; fall back to hardcoded if unavailable.
+    const langfuse = yield* LangfuseClient;
+    const promptResult = yield* langfuse.getPrompt("shipwright-revision-prd");
+    const systemPrompt = Option.match(promptResult, {
+      onNone: () => RevisionPrdSystemPrompt,
+      onSome: (p) => p.text,
+    });
+    yield* Option.match(promptResult, {
+      onNone: () => Effect.void,
+      onSome: (p) =>
+        Effect.annotateCurrentSpan(Spans.prompt({ name: p.name, version: p.version })),
+    });
+
     return yield* LanguageModel.streamText({
       toolkit: WriterToolkit,
       prompt: [
-        { role: "system", content: RevisionPrdSystemPrompt },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
           content: [

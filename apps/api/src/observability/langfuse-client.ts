@@ -23,6 +23,11 @@ export const PROMPT_NAMES = [
   "shipwright-challenger",
   "shipwright-brief",
   "shipwright-prd",
+  "shipwright-summarizer",
+  "shipwright-question-generator",
+  "shipwright-revision-brief",
+  "shipwright-revision-prd",
+  "shipwright-score-completeness",
 ] as const;
 
 export const PromptName = Schema.Literals(PROMPT_NAMES);
