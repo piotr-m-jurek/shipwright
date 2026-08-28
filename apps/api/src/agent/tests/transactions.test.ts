@@ -21,6 +21,7 @@ import { AgentSessionRepository } from "@shipwright/db/repositories/agent-sessio
 import { StorageAdapter } from "@shipwright/storage";
 import { EmbeddingService } from "@shipwright/embedding";
 import { MessageQueue } from "@shipwright/queue";
+import { LangfuseClient } from "../../observability/langfuse-client";
 import { persistSummary } from "../../agent/extractor/index";
 import { processUploadedDocuments } from "../../agent/pipelines/process-uploaded-documents";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
@@ -174,6 +175,13 @@ const messageQueueLayer = Layer.succeed(MessageQueue, {
   publish: () => Effect.succeed(undefined),
 } as any);
 
+// ── Mock LangfuseClient ───────────────────────────────────────────────────
+
+const langfuseClientLayer = Layer.succeed(LangfuseClient, {
+  getPrompt: () => Effect.succeed(Option.none()),
+  submitScore: () => Effect.succeed(undefined),
+} as any);
+
 // ── Test fixtures ─────────────────────────────────────────────────────────
 
 const testSummary: DocumentSummaryEffect = {
@@ -274,6 +282,7 @@ describe("processUploadedDocuments — transaction behaviour", () => {
         Effect.provide(storageAdapterLayer),
         Effect.provide(embeddingServiceLayer),
         Effect.provide(messageQueueLayer),
+        Effect.provide(langfuseClientLayer),
         Effect.provide(sqlLayer),
       ),
     );
@@ -308,6 +317,7 @@ describe("processUploadedDocuments — transaction behaviour", () => {
         Effect.provide(storageAdapterLayer),
         Effect.provide(embeddingServiceLayer),
         Effect.provide(messageQueueLayer),
+        Effect.provide(langfuseClientLayer),
         Effect.provide(sqlLayer),
       ),
     );

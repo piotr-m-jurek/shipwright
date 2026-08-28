@@ -16,6 +16,7 @@ import { SummaryRepository } from "@shipwright/db/repositories/summary-repositor
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { EmbeddingService } from "@shipwright/embedding";
 import { StorageAdapter } from "@shipwright/storage";
+import { LangfuseClient } from "../../observability/langfuse-client";
 import { makeWriterToolkitLayer, WriterToolkit } from "../writer/tools/writer-toolkit";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { TokenCount } from "@shipwright/shared/domain/value-objects";
@@ -104,6 +105,12 @@ const makeStorageAdapterLayer = (content = "full document text") =>
     downloadPartialObject: () => Effect.succeed(Buffer.from(content)),
   } as any);
 
+const makeLangfuseClientLayer = () =>
+  Layer.succeed(LangfuseClient, {
+    getPrompt: () => Effect.succeed(Option.none()),
+    submitScore: () => Effect.succeed(undefined),
+  } as any);
+
 // ── Helper: build toolkit layer and run a program against it ─────────────────
 
 function makeTestLayer(overrides: {
@@ -118,6 +125,7 @@ function makeTestLayer(overrides: {
     Layer.provide(makeChunkRepositoryLayer(overrides.chunks ?? [])),
     Layer.provide(makeEmbeddingServiceLayer()),
     Layer.provide(makeStorageAdapterLayer(overrides.fileContent ?? "full document text")),
+    Layer.provide(makeLangfuseClientLayer()),
   );
 }
 
@@ -133,7 +141,12 @@ function callTool<Name extends "query-chunks" | "get-document" | "get-document-s
       const stream = yield* toolkit.handle(name, params);
       const last = yield* Stream.runLast(stream);
       return Option.getOrThrow(last);
-    }).pipe(Effect.provide(makeTestLayer(overrides))),
+      // `Name` is a union of literal tool names, not a single literal — TS can't
+      // distribute `Tool.HandlerServices<Tools[Name]>` over the union at this
+      // generic call site, so it fails to resolve to `never` even though each
+      // member of the union genuinely requires no extra services. Pre-existing
+      // TS/effect limitation, not a real missing dependency.
+    }).pipe(Effect.provide(makeTestLayer(overrides))) as Effect.Effect<any, any, never>,
   );
 }
 

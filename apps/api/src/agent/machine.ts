@@ -9,6 +9,7 @@ import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { summarizeDocument } from "./extractor/index";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
+import { LangfuseClient } from "../observability/langfuse-client";
 
 // The real Effect requirements summarizeDocumentActor needs from `services`.
 // Unlike wireSnapshotPersistence's Context.Context<never> (which runs an
@@ -17,7 +18,11 @@ import { SummaryRepository } from "@shipwright/db/repositories/summary-repositor
 // this concretely (not `never`) means the compiler verifies end-to-end that
 // getOrRestoreActor's caller chain actually provides them — no runtime trust
 // required, unlike the `never` escape hatch used elsewhere in this file.
-export type DocumentExtractionServices = ChunkRepository | SummaryRepository | SqlClient;
+export type DocumentExtractionServices =
+  | ChunkRepository
+  | SummaryRepository
+  | SqlClient
+  | LangfuseClient;
 
 export class SnapshotValidationError extends Schema.TaggedErrorClass<SnapshotValidationError>()(
   "SnapshotValidationError",

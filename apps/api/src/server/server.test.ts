@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll, vi } from "vitest";
 import { Effect, Layer, Option, pipe } from "effect";
 import { HttpRouter } from "effect/unstable/http";
-import { NodeHttpServer } from "@effect/platform-node";
+import { BunHttpServer } from "@effect/platform-bun";
 import { S3Client, PutObjectCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
 import { ConfigService } from "@shipwright/config";
 import { StorageAdapter } from "@shipwright/storage";
@@ -35,7 +35,7 @@ const DbLayer = pipe(
 
 const TestRoutes = pipe(
   ApiLayer,
-  Layer.provide(NodeHttpServer.layerHttpServices),
+  Layer.provide(BunHttpServer.layerHttpServices),
   Layer.provide(StorageAdapter.layer),
   Layer.provide(ConfigService.layer),
 );

@@ -153,6 +153,7 @@ export const makeWriterToolkitLayer = (sessionId: AgentSessionId) =>
       const summaryDb = yield* SummaryRepository;
       const embedder = yield* EmbeddingService;
       const storage = yield* StorageAdapter;
+      const langfuse = yield* LangfuseClient;
 
       return WriterToolkit.of({
         "query-chunks": Effect.fn("tools/query-chunks")(function* ({ query, limit: rawLimit }) {
@@ -257,6 +258,18 @@ Respond with JSON:
   "pass": true/false
 }`;
 
+          // Fetch prompt from Langfuse registry; fall back to hardcoded if unavailable.
+          const promptResult = yield* langfuse.getPrompt("shipwright-score-completeness");
+          const systemPrompt = Option.match(promptResult, {
+            onNone: () => judgePrompt,
+            onSome: (p) => p.text,
+          });
+          yield* Option.match(promptResult, {
+            onNone: () => Effect.void,
+            onSome: (p) =>
+              Effect.annotateCurrentSpan(Spans.prompt({ name: p.name, version: p.version })),
+          });
+
           const userContent = `## Section: ${sectionName}\n\n${sectionContent}\n\n## Source Context\n\n${sourceSummaryContext}`;
 
           const response = yield* LanguageModel.generateObject({
@@ -267,7 +280,7 @@ Respond with JSON:
               pass: Schema.Boolean,
             }),
             prompt: Prompt.make([
-              { role: "system", content: judgePrompt },
+              { role: "system", content: systemPrompt },
               { role: "user", content: userContent },
             ]),
           }).pipe(

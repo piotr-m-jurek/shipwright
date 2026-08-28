@@ -21,6 +21,7 @@ import { waitFor } from "xstate";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
+import { LangfuseClient } from "../../observability/langfuse-client";
 import { createAgentActor, type DocumentExtractionServices } from "../machine";
 
 const sessionId = Schema.decodeSync(
@@ -41,9 +42,10 @@ const chunkLayer = Layer.succeed(ChunkRepository, {
 // still names it — provide a layer so the Context can be built.
 const summaryLayer = Layer.succeed(SummaryRepository, {} as any);
 const sqlLayer = Layer.succeed(SqlClient, {} as any);
+const langfuseLayer = Layer.succeed(LangfuseClient, {} as any);
 
 function makeServices(): Context.Context<DocumentExtractionServices> {
-  const layer = Layer.mergeAll(chunkLayer, summaryLayer, sqlLayer);
+  const layer = Layer.mergeAll(chunkLayer, summaryLayer, sqlLayer, langfuseLayer);
   return Effect.runSync(Effect.scoped(Layer.build(layer)));
 }
 
