@@ -1,14 +1,10 @@
 import { Effect, Layer, pipe } from "effect";
-import { FetchHttpClient, HttpRouter } from "effect/unstable/http";
+import { HttpRouter } from "effect/unstable/http";
 import { HttpApiBuilder, HttpApiScalar } from "effect/unstable/httpapi";
-import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
 import { StorageAdapter } from "@shipwright/storage";
 import { Api } from "@shipwright/shared/api";
 import { SessionCompute } from "./handlers/session-compute";
 import { ConfigService } from "@shipwright/config";
-import { OtlpLayer } from "@shipwright/observability";
-import { LangfuseClient } from "../observability/langfuse-client";
-import { LangfuseSpanTransformerLayer } from "../observability/langfuse-span-transformer";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
@@ -18,18 +14,23 @@ import { OutputRepository } from "@shipwright/db/repositories/output-repository"
 import { McpTokenRepository } from "@shipwright/db/repositories/mcp-token-repository";
 import { AppDBLiveLayer } from "@shipwright/db";
 import { AuthorizationLayer } from "./authorization";
-import { EmbeddingService, HuggingFaceTeiEmbeddingModelLayerProvided } from "@shipwright/embedding";
-import { AnthropicClientLayer } from "../agent/providers";
 import { AuthRouteLayer } from "./handlers/auth";
 import { SessionStorage } from "./handlers/session-storage";
 import { SessionResults } from "./handlers/session-results";
 import { PublicApi } from "./handlers/public";
 import { McpToken } from "./handlers/mcp-token";
-import { MessageQueue } from "@shipwright/queue";
-import { JobHandlers } from "../queue/job-handlers";
 import { RequestLoggingMiddlewareLayer } from "../observability/http-middleware";
 import { SessionDebugSseLayer } from "./handlers/session-debug-sse";
 import { SessionQuestionsSseLayer } from "./handlers/session-questions-sse";
+
+// This file defines routes and the API layer only — no infrastructure
+// wiring (DB pool sizing aside, StorageAdapter/DB/repos are provided here
+// only because ApiLayer needs them to be self-contained), no OTLP/Langfuse/
+// job-handler composition, and no runtime bootstrap. That's main.ts's job.
+// Keeping the two separate means this module has no @effect/platform-bun
+// dependency anywhere in its import graph, so server.test.ts can import
+// ApiLayer/AllRoutesLayer directly — vitest's test workers don't run
+// inside the actual Bun binary and crash on Bun-only top-level imports.
 
 export const ApiGroupsLayer = Layer.provide([
   SessionStorage,
@@ -71,7 +72,7 @@ const CorsLayer = pipe(
   Layer.provide(ConfigService.layer),
 );
 
-const AllRoutesLayer = Layer.mergeAll(
+export const AllRoutesLayer = Layer.mergeAll(
   AuthRouteLayer,
   SessionDebugSseLayer,
   SessionQuestionsSseLayer,
@@ -80,76 +81,3 @@ const AllRoutesLayer = Layer.mergeAll(
   CorsLayer,
   RequestLoggingMiddlewareLayer,
 );
-
-const OtlpLayerProvided = pipe(
-  OtlpLayer,
-  Layer.provide(ConfigService.layer),
-  Layer.provide(FetchHttpClient.layer),
-);
-
-const EmbeddingServiceLayer = EmbeddingService.layer.pipe(
-  Layer.provideMerge(HuggingFaceTeiEmbeddingModelLayerProvided),
-);
-
-const LangfuseClientLayer = LangfuseClient.layer.pipe(
-  Layer.provide(ConfigService.layer),
-  Layer.provide(FetchHttpClient.layer),
-);
-
-const JobHandlersLayer = pipe(
-  JobHandlers.layer,
-  Layer.provide([
-    AgentSessionRepository.layer,
-    DocumentRepository.layer,
-    ChunkRepository.layer,
-    SummaryRepository.layer,
-    ClarificationRepository.layer,
-    OutputRepository.layer,
-    OtlpLayerProvided,
-    EmbeddingServiceLayer,
-    AnthropicClientLayer,
-    StorageAdapter.layer,
-    MessageQueue.layer,
-    LangfuseClientLayer,
-    LangfuseSpanTransformerLayer,
-  ]),
-  Layer.provide(AppDBLiveLayer),
-);
-
-const ServiceLayer = pipe(
-  Layer.mergeAll(OtlpLayerProvided, BunHttpServer.layer({ port: 3000, hostname: "0.0.0.0" })),
-  Layer.provideMerge([
-    AgentSessionRepository.layer,
-    DocumentRepository.layer,
-    ChunkRepository.layer,
-    SummaryRepository.layer,
-    ClarificationRepository.layer,
-    OutputRepository.layer,
-    McpTokenRepository.layer,
-    EmbeddingServiceLayer,
-    AnthropicClientLayer,
-    StorageAdapter.layer,
-    LangfuseClientLayer,
-  ]),
-  Layer.provideMerge(JobHandlersLayer),
-  Layer.provideMerge(MessageQueue.layer),
-  Layer.provideMerge(AppDBLiveLayer),
-);
-
-const StartupLayer = Layer.effectDiscard(
-  Effect.gen(function* () {
-    yield* Effect.logInfo("Server starting").pipe(
-      Effect.annotateLogs({ port: 3000, env: process.env.NODE_ENV ?? "development" }),
-    );
-    yield* Effect.addFinalizer(() => Effect.logInfo("Server shutting down"));
-  }),
-);
-
-pipe(
-  HttpRouter.serve(Layer.merge(AllRoutesLayer, StartupLayer)),
-  Layer.provideMerge(ServiceLayer),
-  Layer.launch,
-  BunRuntime.runMain,
-);
-
-// Effect.Effect<Value, Error, Requirements>

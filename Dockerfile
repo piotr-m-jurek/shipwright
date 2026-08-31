@@ -20,4 +20,4 @@ COPY apps/api/src/db/out ./apps/api/src/db/out
 EXPOSE 3000
 ENV NODE_ENV=production
 
-CMD ["bun", "apps/api/src/server/server.ts"]
+CMD ["bun", "apps/api/src/server/main.ts"]
