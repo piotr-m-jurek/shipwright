@@ -22,6 +22,10 @@ type Interface = {
     publicKey: Redacted.Redacted<string>;
     secretKey: Redacted.Redacted<string>;
   }>;
+  auth: {
+    github: Option.Option<{ clientId: string; clientSecret: Redacted.Redacted<string> }>;
+    google: Option.Option<{ clientId: string; clientSecret: Redacted.Redacted<string> }>;
+  };
 };
 
 export class ConfigService extends Context.Service<ConfigService, Interface>()(
@@ -59,12 +63,28 @@ export class ConfigService extends Context.Service<ConfigService, Interface>()(
         anthropicApiKey: yield* Config.redacted("ANTHROPIC_API_KEY"),
       };
 
+      const auth: Interface["auth"] = {
+        github: yield* Config.option(
+          Config.all({
+            clientId: Config.string("GITHUB_CLIENT_ID"),
+            clientSecret: Config.redacted("GITHUB_CLIENT_SECRET"),
+          }),
+        ),
+        google: yield* Config.option(
+          Config.all({
+            clientId: Config.string("GOOGLE_CLIENT_ID"),
+            clientSecret: Config.redacted("GOOGLE_CLIENT_SECRET"),
+          }),
+        ),
+      };
+
       return {
         server,
         db,
         storage,
         ai,
         observability,
+        auth,
       };
     }),
   );

@@ -121,6 +121,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@better-auth/drizzle-adapter": "1.7.0-rc.1",
+        "@shipwright/config": "workspace:*",
         "@shipwright/db": "workspace:*",
         "better-auth": "1.7.0-rc.1",
       },

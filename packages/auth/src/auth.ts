@@ -1,9 +1,11 @@
 /**
- * Shared Better Auth singleton — used by both @shipwright/api and
- * @shipwright/mcp so a session token issued by one is valid on the other
- * without a second betterAuth() config or a duplicate DB connection.
+ * Better Auth instance factory.
  *
- * Moved from apps/api/src/auth/auth.ts (SHIP-115 / SHIP-156).
+ * Wrapped by AuthService (auth-service.ts) as a Context.Service — nothing
+ * outside this package should call makeAuth or read process.env directly.
+ * All configuration is passed in explicitly (sourced from ConfigService by
+ * AuthService's layer), so this module has no env reads and no side effects
+ * at import time.
  *
  * Auth table definitions (users, sessions, accounts, verifications) live in
  * @shipwright/db/schema, not here — that package is the single owner of the
@@ -12,25 +14,35 @@
  * This dependency points auth -> db, never the reverse. Extra unrelated
  * tables in the imported namespace (agentSessions, documents, etc.) are
  * harmless — drizzleAdapter only looks up the table names it needs.
+ *
+ * makeAuth opens its own dedicated Postgres connection (via drizzle-orm's
+ * plain node-postgres adapter, not the Effect-wrapped DB service) because
+ * better-auth's drizzleAdapter calls it directly as promises, with no Effect
+ * awareness — it can't consume the effect-postgres-flavored DB service.
  */
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@shipwright/db/schema";
 
-const authDb = drizzle({ connection: process.env.DATABASE_URL! });
+export interface AuthConfig {
+  readonly databaseUrl: string;
+  readonly allowedOrigins: readonly string[];
+  readonly github?: { readonly clientId: string; readonly clientSecret: string } | undefined;
+  readonly google?: { readonly clientId: string; readonly clientSecret: string } | undefined;
+}
 
-export const auth = betterAuth({
-  trustedOrigins: [process.env.ALLOWED_ORIGINS!],
-  database: drizzleAdapter(authDb, { provider: "pg", usePlural: true, schema }),
-  socialProviders: {
-    github: {
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+export const makeAuth = (config: AuthConfig) => {
+  const authDb = drizzle({ connection: config.databaseUrl });
+
+  return betterAuth({
+    trustedOrigins: [...config.allowedOrigins],
+    database: drizzleAdapter(authDb, { provider: "pg", usePlural: true, schema }),
+    socialProviders: {
+      ...(config.github !== undefined ? { github: config.github } : {}),
+      ...(config.google !== undefined ? { google: config.google } : {}),
     },
-    google: {
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    },
-  },
-});
+  });
+};
+
+export type Auth = ReturnType<typeof makeAuth>;

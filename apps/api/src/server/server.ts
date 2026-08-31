@@ -13,6 +13,7 @@ import { ClarificationRepository } from "@shipwright/db/repositories/clarificati
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { McpTokenRepository } from "@shipwright/db/repositories/mcp-token-repository";
 import { AppDBLiveLayer } from "@shipwright/db";
+import { AuthService } from "@shipwright/auth/auth-service";
 import { AuthorizationLayer } from "./authorization";
 import { AuthRouteLayer } from "./handlers/auth";
 import { SessionStorage } from "./handlers/session-storage";
@@ -57,7 +58,11 @@ export const RepositoriesLayer = Layer.mergeAll(
 // instead of re-listing the same layers — Effect dedups by reference
 // identity, so reusing the reference is what actually guarantees a single
 // DB pool/StorageAdapter instance, not just convention.
-export const InfrastructureLayer = Layer.mergeAll(RepositoriesLayer, StorageAdapter.layer).pipe(
+export const InfrastructureLayer = Layer.mergeAll(
+  RepositoriesLayer,
+  StorageAdapter.layer,
+  AuthService.layer,
+).pipe(
   Layer.provide(AppDBLiveLayer),
   Layer.provide(ConfigService.layer),
 );

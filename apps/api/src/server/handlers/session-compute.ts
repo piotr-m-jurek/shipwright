@@ -16,9 +16,6 @@ import { ClarificationRepository } from "@shipwright/db/repositories/clarificati
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { CurrentUser } from "@shipwright/shared/middleware";
 import type { Question } from "@shipwright/shared/domain/types";
-import { DB } from "@shipwright/db";
-import { queueMessages } from "@shipwright/queue";
-import { sql } from "drizzle-orm";
 
 export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
   handlers
@@ -89,7 +86,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const documentDb = yield* DocumentRepository;
         const clarificationDb = yield* ClarificationRepository;
         const outputDb = yield* OutputRepository;
-        const db = yield* DB;
+        const messageQueue = yield* MessageQueue;
         const user = yield* CurrentUser;
 
         // Ownership check — 404 for unknown or other user's session
@@ -101,19 +98,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
             Effect.catchTag("NoSuchElementError", () => new AgentSessionNotFound()),
           );
 
-        // Queue messages — filter by sessionId inside JSONB payload
-        const queueRows = yield* db
-          .select({
-            queue: queueMessages.queue,
-            status: queueMessages.status,
-            attempts: queueMessages.attempts,
-            maxAttempts: queueMessages.maxAttempts,
-            createdAt: queueMessages.createdAt,
-          })
-          .from(queueMessages)
-          .where(sql`${queueMessages.payload}->>'sessionId' = ${sessionId}`)
-          .orderBy(queueMessages.createdAt)
-          .pipe(Effect.orDie);
+        const queueRows = yield* messageQueue.listBySession(sessionId);
 
         const documents = yield* documentDb.getDocumentsBySessionId(sessionId).pipe(Effect.orDie);
         const questions = yield* clarificationDb

@@ -13,15 +13,13 @@
 import { Cause, Context, Effect, Option, Queue, Schedule, Stream } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { Sse } from "effect/unstable/encoding";
-import { auth } from "@shipwright/auth/auth";
+import { AuthService } from "@shipwright/auth/auth-service";
 import { extractSessionToken, sessionCookieHeader } from "@shipwright/shared/api/session-cookie";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
-import { DB } from "@shipwright/db";
-import { queueMessages } from "@shipwright/queue";
-import { sql } from "drizzle-orm";
+import { MessageQueue } from "@shipwright/queue";
 import { getOrRestoreActor } from "../../agent/session-actor";
 import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
 import type { DebugSnapshot } from "@shipwright/shared/schemas/debug";
@@ -35,23 +33,25 @@ type DebugServices =
   | DocumentRepository
   | ClarificationRepository
   | OutputRepository
-  | DB;
+  | MessageQueue;
 
 // ---------------------------------------------------------------------------
 // Auth helper
 // ---------------------------------------------------------------------------
 
-async function resolveUserId(cookieHeader: string | undefined): Promise<string | null> {
-  const token = extractSessionToken(cookieHeader);
-  if (Option.isNone(token)) return null;
+const resolveUserId = (
+  cookieHeader: string | undefined,
+): Effect.Effect<string | null, never, AuthService> =>
+  Effect.gen(function* () {
+    const token = extractSessionToken(cookieHeader);
+    if (Option.isNone(token)) return null;
 
-  try {
-    const session = await auth.api.getSession({ headers: sessionCookieHeader(token.value) });
+    const authService = yield* AuthService;
+    const session = yield* authService
+      .getSession({ headers: sessionCookieHeader(token.value) })
+      .pipe(Effect.catch(() => Effect.succeed(null)));
     return session?.user.id ?? null;
-  } catch {
-    return null;
-  }
-}
+  });
 
 // ---------------------------------------------------------------------------
 // Build the full debug payload from the DB (same logic as the REST handler)
@@ -65,24 +65,13 @@ const buildDebugPayload = (
     const documentDb = yield* DocumentRepository;
     const clarificationDb = yield* ClarificationRepository;
     const outputDb = yield* OutputRepository;
-    const db = yield* DB;
+    const messageQueue = yield* MessageQueue;
 
     const session = yield* agentSessionDb
       .getAgentSessionById({ sessionId })
       .pipe(Effect.orDie, Effect.flatMap(Effect.fromOption), Effect.orDie);
 
-    const queueRows = yield* db
-      .select({
-        queue: queueMessages.queue,
-        status: queueMessages.status,
-        attempts: queueMessages.attempts,
-        maxAttempts: queueMessages.maxAttempts,
-        createdAt: queueMessages.createdAt,
-      })
-      .from(queueMessages)
-      .where(sql`${queueMessages.payload}->>'sessionId' = ${sessionId}`)
-      .orderBy(queueMessages.createdAt)
-      .pipe(Effect.orDie);
+    const queueRows = yield* messageQueue.listBySession(sessionId);
 
     const documents = yield* documentDb.getDocumentsBySessionId(sessionId).pipe(Effect.orDie);
     const questions = yield* clarificationDb.getQuestionsBySessionId(sessionId).pipe(Effect.orDie);
@@ -181,7 +170,7 @@ export const SessionDebugSseLayer = HttpRouter.add(
       // --- Auth ---
       const cookieHeader = req.headers["cookie"] as string | undefined;
       yield* Effect.logDebug("[debug-sse] cookie header", { cookie: cookieHeader?.slice(0, 60) });
-      const userId = yield* Effect.promise(() => resolveUserId(cookieHeader));
+      const userId = yield* resolveUserId(cookieHeader);
       yield* Effect.logDebug("[debug-sse] resolved userId", { userId });
 
       if (!userId) {

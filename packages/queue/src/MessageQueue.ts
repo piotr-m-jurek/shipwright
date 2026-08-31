@@ -40,9 +40,9 @@ import {
   Schema,
   pipe,
 } from "effect";
-import { and, eq, isNull, lte, or } from "drizzle-orm";
+import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { DB } from "@shipwright/db";
-import { type QueueMessagePayload, queueMessages } from "./schema";
+import { type QueueMessagePayload, type QueueMessageSelect, queueMessages } from "./schema";
 
 // ─── Backoff ─────────────────────────────────────────────────────────────────
 
@@ -109,6 +109,15 @@ export interface ConsumerHandle {
   readonly interrupt: Effect.Effect<void>;
 }
 
+/** Summary row returned by `listBySession` — status/progress, not the payload. */
+export interface QueueMessageSummary {
+  readonly queue: QueueMessageSelect["queue"];
+  readonly status: QueueMessageSelect["status"];
+  readonly attempts: QueueMessageSelect["attempts"];
+  readonly maxAttempts: QueueMessageSelect["maxAttempts"];
+  readonly createdAt: QueueMessageSelect["createdAt"];
+}
+
 // ─── Internal envelope flowing through the in-memory queue ───────────────────
 
 interface Envelope {
@@ -156,6 +165,12 @@ interface MessageQueueInterface {
     deliveryTag: string,
     opts?: { requeue?: boolean; delayMs?: number },
   ): Effect.Effect<void, DeliveryTagNotFoundError>;
+
+  /**
+   * List queue message status/progress for a session — filters by sessionId
+   * inside the JSONB payload. Read-only status view, not for consuming.
+   */
+  listBySession(sessionId: string): Effect.Effect<QueueMessageSummary[]>;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -401,6 +416,23 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
         };
       });
 
+      // ── listBySession ─────────────────────────────────────────────────────
+
+      const listBySession = Effect.fn("listBySession")(function* (sessionId: string) {
+        return yield* db
+          .select({
+            queue: queueMessages.queue,
+            status: queueMessages.status,
+            attempts: queueMessages.attempts,
+            maxAttempts: queueMessages.maxAttempts,
+            createdAt: queueMessages.createdAt,
+          })
+          .from(queueMessages)
+          .where(sql`${queueMessages.payload}->>'sessionId' = ${sessionId}`)
+          .orderBy(queueMessages.createdAt)
+          .pipe(Effect.orDie);
+      });
+
       // ── cleanup ───────────────────────────────────────────────────────────
 
       yield* Effect.addFinalizer(() =>
@@ -411,7 +443,7 @@ export class MessageQueue extends Context.Service<MessageQueue, MessageQueueInte
         }),
       );
 
-      return MessageQueue.of({ publish, consume, ack, nack });
+      return MessageQueue.of({ publish, consume, ack, nack, listBySession });
     }),
   );
 }

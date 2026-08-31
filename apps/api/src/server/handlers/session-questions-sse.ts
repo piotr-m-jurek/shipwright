@@ -11,7 +11,7 @@
 import { Cause, Context, Effect, Option, Queue, Schedule, Stream } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { Sse } from "effect/unstable/encoding";
-import { auth } from "@shipwright/auth/auth";
+import { AuthService } from "@shipwright/auth/auth-service";
 import { extractSessionToken, sessionCookieHeader } from "@shipwright/shared/api/session-cookie";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
@@ -29,17 +29,19 @@ type QuestionsServices = AgentSessionRepository | ClarificationRepository;
 // Auth helper (same as debug SSE)
 // ---------------------------------------------------------------------------
 
-async function resolveUserId(cookieHeader: string | undefined): Promise<string | null> {
-  const token = extractSessionToken(cookieHeader);
-  if (Option.isNone(token)) return null;
+const resolveUserId = (
+  cookieHeader: string | undefined,
+): Effect.Effect<string | null, never, AuthService> =>
+  Effect.gen(function* () {
+    const token = extractSessionToken(cookieHeader);
+    if (Option.isNone(token)) return null;
 
-  try {
-    const session = await auth.api.getSession({ headers: sessionCookieHeader(token.value) });
+    const authService = yield* AuthService;
+    const session = yield* authService
+      .getSession({ headers: sessionCookieHeader(token.value) })
+      .pipe(Effect.catch(() => Effect.succeed(null)));
     return session?.user.id ?? null;
-  } catch {
-    return null;
-  }
-}
+  });
 
 // ---------------------------------------------------------------------------
 // Build questions payload from the DB
@@ -112,7 +114,7 @@ export const SessionQuestionsSseLayer = HttpRouter.add(
       yield* Effect.logDebug("[questions-sse] cookie header", {
         cookie: cookieHeader?.slice(0, 60),
       });
-      const userId = yield* Effect.promise(() => resolveUserId(cookieHeader));
+      const userId = yield* resolveUserId(cookieHeader);
       yield* Effect.logDebug("[questions-sse] resolved userId", { userId });
 
       if (!userId) {
