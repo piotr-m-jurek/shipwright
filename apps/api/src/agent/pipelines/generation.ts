@@ -10,7 +10,7 @@ import { runBriefWriter, runPrdWriter, runRevisionBriefWriter, runRevisionPrdWri
 import { getOrRestoreActor } from "../session-actor";
 import { AnalysisPipelineError, SessionStateError } from "../errors";
 import type { MachineContext } from "@shipwright/shared/schemas/machine";
-import { MessageQueue } from "@shipwright/queue";
+import { isComplete, publishForCurrentState } from "../session-process-manager";
 
 export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
   function* (sessionId: AgentSessionId) {
@@ -278,18 +278,17 @@ export const startRevision = Effect.fn("agent/startRevision")(function* (
 ) {
   yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
 
-  const mq = yield* MessageQueue;
   const actor = yield* getOrRestoreActor(sessionId);
 
-  const state = actor.getSnapshot().value as string;
-  if (state !== "complete") {
+  const state = actor.getSnapshot().value;
+  if (!isComplete(state)) {
     return yield* new SessionStateError({
-      message: `Session ${sessionId} is in state '${state}', expected 'complete'`,
+      message: `Session ${sessionId} is in state '${String(state)}', expected 'complete'`,
     });
   }
 
   actor.send({ type: "REVISION_REQUESTED", feedback });
-  yield* mq.publish("session.revise", { sessionId });
+  yield* publishForCurrentState(sessionId, actor.getSnapshot().value);
 
   return { started: true };
 });

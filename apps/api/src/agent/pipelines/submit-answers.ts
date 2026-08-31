@@ -4,20 +4,19 @@ import type { AgentSessionId, QuestionId } from "@shipwright/shared/domain/ids";
 import { Spans } from "@shipwright/observability";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { AnalysisPipelineError, SessionStateError } from "../errors";
-import { MessageQueue } from "@shipwright/queue";
+import { isAwaitingAnswers, publishForCurrentState } from "../session-process-manager";
 
 export const submitAnswers = Effect.fn("agent/submitAnswers")(
   function* (sessionId: AgentSessionId, rawAnswers: { questionId: QuestionId; text: string }[]) {
     yield* Effect.annotateCurrentSpan(Spans.session(sessionId));
 
     const db = yield* ClarificationRepository;
-    const mq = yield* MessageQueue;
     const actor = yield* getOrRestoreActor(sessionId);
 
     const state = actor.getSnapshot().value;
-    if (state !== "awaiting_answers") {
+    if (!isAwaitingAnswers(state)) {
       return yield* new SessionStateError({
-        message: `Session ${sessionId} is in state '${state}', expected 'awaiting_answers'`,
+        message: `Session ${sessionId} is in state '${String(state)}', expected 'awaiting_answers'`,
       });
     }
 
@@ -75,17 +74,12 @@ export const submitAnswers = Effect.fn("agent/submitAnswers")(
       );
     }
 
-    const stateAfter = actor.getSnapshot().value as string;
-    yield* Effect.logInfo(`[submitAnswers] state after sends: ${stateAfter}`).pipe(
-      Effect.annotateLogs({ sessionId, stateAfter }),
+    const stateAfter = actor.getSnapshot().value;
+    yield* Effect.logInfo(`[submitAnswers] state after sends: ${String(stateAfter)}`).pipe(
+      Effect.annotateLogs({ sessionId, stateAfter: String(stateAfter) }),
     );
 
-    if (stateAfter === "generating") {
-      yield* mq.publish("session.generate", { sessionId });
-      yield* Effect.logInfo("[submitAnswers] published session.generate").pipe(
-        Effect.annotateLogs({ sessionId }),
-      );
-    }
+    yield* publishForCurrentState(sessionId, stateAfter);
 
     return { sufficient, round: round + 1 };
   },

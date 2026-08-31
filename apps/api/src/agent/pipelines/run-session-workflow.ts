@@ -6,6 +6,7 @@ import { SummaryRepository } from "@shipwright/db/repositories/summary-repositor
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { getOrRestoreActor } from "../session-actor";
+import { isSummarizingError } from "../session-process-manager";
 import { runChallenger, runQuestionGenerator } from "../challenger/index";
 import { AnalysisPipelineError, AllExtractionsFailedError } from "../errors";
 import { Spans } from "@shipwright/observability";
@@ -46,8 +47,7 @@ const runSessionWorkflowInner = Effect.fn("agent/runSessionWorkflow")(function* 
   );
 
   // All actors settled. Check if machine transitioned to summarizing_error (all failed).
-  const stateAfterExtraction = actor.getSnapshot().value as string;
-  if (stateAfterExtraction === "summarizing_error") {
+  if (isSummarizingError(actor.getSnapshot().value)) {
     return yield* new AllExtractionsFailedError();
   }
 

@@ -16,6 +16,7 @@ import { ClarificationRepository } from "@shipwright/db/repositories/clarificati
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { CurrentUser } from "@shipwright/shared/middleware";
 import type { Question } from "@shipwright/shared/domain/types";
+import { isIdle, isUploading, publishForCurrentState } from "../../agent/session-process-manager";
 
 export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
   handlers
@@ -172,16 +173,12 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const stateValue = actor.getSnapshot().value;
 
         // Already past uploading — confirm was already processed.
-        const isUploading =
-          typeof stateValue === "object" && stateValue !== null && "uploading" in stateValue;
-        const isIdle = stateValue === "idle";
-
-        if (!isIdle && !isUploading) {
+        if (!isIdle(stateValue) && !isUploading(stateValue)) {
           return new ConfirmAnalysisResponse({ started: true });
         }
 
         // Advance idle → uploading_pending_docs first if still idle.
-        if (isIdle) {
+        if (isIdle(stateValue)) {
           actor.send({ type: "UPLOAD_COMPLETE" });
         }
 
@@ -193,17 +190,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         // Publish session.workflow only if machine is now in summarizing.
         // If it entered waiting_for_documents instead, processUploadedDocuments
         // will publish session.workflow after sending DOCUMENTS_READY.
-        const afterState = actor.getSnapshot().value;
-        const isNowSummarizing = afterState === "summarizing";
-
-        if (isNowSummarizing) {
-          const mq = yield* MessageQueue.pipe(
-            Effect.mapError((cause) => new ConfirmAnalysisError({ cause })),
-          );
-          yield* mq
-            .publish("session.workflow", { sessionId }, { maxAttempts: 5 })
-            .pipe(Effect.mapError((cause) => new ConfirmAnalysisError({ cause })));
-        }
+        yield* publishForCurrentState(sessionId, actor.getSnapshot().value);
 
         return new ConfirmAnalysisResponse({ started: true });
       }),

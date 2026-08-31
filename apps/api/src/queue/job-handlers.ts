@@ -5,6 +5,7 @@ import { runSessionWorkflow } from "../agent/pipelines/run-session-workflow";
 import { processUploadedDocuments } from "../agent/pipelines/process-uploaded-documents";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas";
 import { runGeneratingPipeline, runRevisionPipeline } from "../agent/pipelines/generation";
+import { SessionQueue } from "../agent/session-process-manager";
 import { Spans } from "@shipwright/observability";
 
 // ---------------------------------------------------------------------------
@@ -99,10 +100,10 @@ export class JobHandlers extends Context.Service<JobHandlers, void>()(
     Effect.gen(function* () {
       const mq = yield* MessageQueue;
 
-      yield* mq.consume("documents.process", documentsConsumeHandler);
-      yield* mq.consume("session.workflow", sessionWorkflowHandler);
-      yield* mq.consume("session.generate", sessionGenerateHandler);
-      yield* mq.consume("session.revise", sessionReviseHanlder);
+      yield* mq.consume(SessionQueue.documentsProcess, documentsConsumeHandler);
+      yield* mq.consume(SessionQueue.sessionWorkflow, sessionWorkflowHandler);
+      yield* mq.consume(SessionQueue.sessionGenerate, sessionGenerateHandler);
+      yield* mq.consume(SessionQueue.sessionRevise, sessionReviseHanlder);
     }),
   );
 }

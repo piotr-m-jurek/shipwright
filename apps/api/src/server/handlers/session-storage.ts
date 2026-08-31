@@ -23,6 +23,7 @@ import { createUploadSession } from "../../agent/pipelines/create-upload-session
 import { confirmUploadResults } from "../../agent/pipelines/confirm-upload-results";
 import { retrySession } from "../../agent/pipelines/retry-session";
 import { MessageQueue } from "@shipwright/queue";
+import { SessionQueue } from "../../agent/session-process-manager";
 
 export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
   handlers
@@ -53,7 +54,7 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
           return yield* new MissingUploads({ missingKeys });
         }
 
-        yield* mq.publish("documents.process", { sessionId, uploads });
+        yield* mq.publish(SessionQueue.documentsProcess, { sessionId, uploads });
         return new ConfirmUploadResponse({ valid: true });
       }),
     )

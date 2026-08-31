@@ -8,7 +8,7 @@ import { AgentSessionRepository } from "@shipwright/db/repositories/agent-sessio
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { getOrRestoreActor } from "../session-actor";
-import { MessageQueue } from "@shipwright/queue";
+import { publishForCurrentState } from "../session-process-manager";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
@@ -169,22 +169,13 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
   // Fire DOCUMENTS_READY so the machine can advance regardless of whether
   // USER_CONFIRM arrived before or after document processing completed.
   // If USER_CONFIRM already arrived (waiting_for_documents), the machine
-  // transitions to summarizing here and we publish session.workflow.
+  // transitions to summarizing here and publishForCurrentState publishes
+  // the workflow job that confirmAnalysis would have published.
   yield* getOrRestoreActor(sessionId).pipe(
     Effect.flatMap((actor) =>
       Effect.gen(function* () {
         actor.send({ type: "DOCUMENTS_READY" });
-
-        // If machine is now in summarizing, USER_CONFIRM arrived early —
-        // publish the workflow job that confirmAnalysis would have published.
-        const afterState = actor.getSnapshot().value;
-        if (afterState === "summarizing") {
-          yield* Effect.logInfo("[processUploadedDocuments] DOCUMENTS_READY → summarizing, publishing session.workflow").pipe(
-            Effect.annotateLogs({ sessionId }),
-          );
-          const mq = yield* MessageQueue;
-          yield* mq.publish("session.workflow", { sessionId }, { maxAttempts: 5 });
-        }
+        yield* publishForCurrentState(sessionId, actor.getSnapshot().value);
       }),
     ),
     Effect.tapError((err) =>

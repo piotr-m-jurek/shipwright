@@ -531,3 +531,11 @@ export const restoreAgentActor = Effect.fn("agent/restoreAgentActor")(function* 
 
 export type AgentMachine = ReturnType<typeof createAgentMachine>;
 export type AgentActor = ReturnType<typeof createAgentActor>;
+
+// The real state-value type this machine's snapshots carry — derived from
+// the actual `states: {...}` chart above, not hand-typed. Anything that
+// compares against a state name (session-process-manager.ts's predicates
+// and transition→queue routing) should use this, not xstate's generic
+// StateValue, so a state rename here is a compile error at every call site
+// instead of a silently-always-false comparison.
+export type AgentStateValue = ReturnType<AgentActor["getSnapshot"]>["value"];

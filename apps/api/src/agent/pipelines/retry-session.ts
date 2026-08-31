@@ -3,6 +3,7 @@ import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { MessageQueue } from "@shipwright/queue";
+import { SessionQueue } from "../session-process-manager";
 import { Spans } from "@shipwright/observability";
 
 // ── Reason errors ─────────────────────────────────────────────────────────────
@@ -90,7 +91,7 @@ export const retrySession = Effect.fn("agent/retrySession")(function* (
   yield* agentSessionDb.updateAgentSession(sessionId, "uploading", null);
 
   // Re-enqueue
-  yield* mq.publish("documents.process", { sessionId, uploads });
+  yield* mq.publish(SessionQueue.documentsProcess, { sessionId, uploads });
 
   yield* Effect.logInfo("[retrySession] re-enqueued documents.process").pipe(
     Effect.annotateLogs({ sessionId, documentCount: uploads.length }),
