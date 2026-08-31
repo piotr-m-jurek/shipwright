@@ -13,24 +13,16 @@
 import { Effect, Layer, pipe } from "effect";
 import { FetchHttpClient, HttpRouter } from "effect/unstable/http";
 import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
-import { StorageAdapter } from "@shipwright/storage";
 import { ConfigService } from "@shipwright/config";
+import { AppDBLiveLayer } from "@shipwright/db";
 import { OtlpLayer } from "@shipwright/observability";
 import { LangfuseClient } from "../observability/langfuse-client";
 import { LangfuseSpanTransformerLayer } from "../observability/langfuse-span-transformer";
-import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
-import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
-import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
-import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
-import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
-import { OutputRepository } from "@shipwright/db/repositories/output-repository";
-import { McpTokenRepository } from "@shipwright/db/repositories/mcp-token-repository";
-import { AppDBLiveLayer } from "@shipwright/db";
 import { EmbeddingService, HuggingFaceTeiEmbeddingModelLayerProvided } from "@shipwright/embedding";
 import { AnthropicClientLayer } from "../agent/providers";
 import { MessageQueue } from "@shipwright/queue";
 import { JobHandlers } from "../queue/job-handlers";
-import { AllRoutesLayer } from "./server";
+import { AllRoutesLayer, InfrastructureLayer } from "./server";
 
 const OtlpLayerProvided = pipe(
   OtlpLayer,
@@ -47,44 +39,34 @@ const LangfuseClientLayer = LangfuseClient.layer.pipe(
   Layer.provide(FetchHttpClient.layer),
 );
 
+// Reuses server.ts's InfrastructureLayer reference (repos + DB + storage +
+// config) rather than re-listing those layers, so Effect's identity-based
+// layer memoization actually guarantees one DB pool / one StorageAdapter
+// instance across the whole app — not just within this file.
+//
+// AppDBLiveLayer is provideMerge'd (not provide'd), so DB/SqlClient stay
+// exposed in the output — session-debug-sse.ts and session-questions-sse.ts
+// (part of AllRoutesLayer) query DB directly for queue messages rather than
+// through a repository (tracked as a violation in SHIP-156), so they need
+// DB available in the ambient context, not just consumed internally here.
+const RuntimeInfrastructureLayer = Layer.mergeAll(
+  InfrastructureLayer,
+  OtlpLayerProvided,
+  EmbeddingServiceLayer,
+  AnthropicClientLayer,
+  LangfuseClientLayer,
+  LangfuseSpanTransformerLayer,
+  MessageQueue.layer,
+).pipe(Layer.provideMerge(AppDBLiveLayer));
+
 const JobHandlersLayer = pipe(
   JobHandlers.layer,
-  Layer.provide([
-    AgentSessionRepository.layer,
-    DocumentRepository.layer,
-    ChunkRepository.layer,
-    SummaryRepository.layer,
-    ClarificationRepository.layer,
-    OutputRepository.layer,
-    OtlpLayerProvided,
-    EmbeddingServiceLayer,
-    AnthropicClientLayer,
-    StorageAdapter.layer,
-    MessageQueue.layer,
-    LangfuseClientLayer,
-    LangfuseSpanTransformerLayer,
-  ]),
-  Layer.provide(AppDBLiveLayer),
+  Layer.provide(RuntimeInfrastructureLayer),
 );
 
 const ServiceLayer = pipe(
-  OtlpLayerProvided,
-  Layer.provideMerge([
-    AgentSessionRepository.layer,
-    DocumentRepository.layer,
-    ChunkRepository.layer,
-    SummaryRepository.layer,
-    ClarificationRepository.layer,
-    OutputRepository.layer,
-    McpTokenRepository.layer,
-    EmbeddingServiceLayer,
-    AnthropicClientLayer,
-    StorageAdapter.layer,
-    LangfuseClientLayer,
-  ]),
+  RuntimeInfrastructureLayer,
   Layer.provideMerge(JobHandlersLayer),
-  Layer.provideMerge(MessageQueue.layer),
-  Layer.provideMerge(AppDBLiveLayer),
 );
 
 const StartupLayer = Layer.effectDiscard(

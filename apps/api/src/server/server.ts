@@ -40,7 +40,7 @@ export const ApiGroupsLayer = Layer.provide([
   McpToken,
 ]);
 
-export const RepositoriesLayer = Layer.provide([
+export const RepositoriesLayer = Layer.mergeAll(
   AgentSessionRepository.layer,
   DocumentRepository.layer,
   ChunkRepository.layer,
@@ -48,16 +48,25 @@ export const RepositoriesLayer = Layer.provide([
   ClarificationRepository.layer,
   OutputRepository.layer,
   McpTokenRepository.layer,
-]);
+);
+
+// The base infrastructure ApiLayer needs to be self-contained (server.test.ts
+// builds TestRoutes from ApiLayer alone, providing only NodeHttpServer +
+// StorageAdapter.layer + ConfigService.layer — no repos/DB). Exported so
+// main.ts can reuse this exact reference for JobHandlersLayer/ServiceLayer
+// instead of re-listing the same layers — Effect dedups by reference
+// identity, so reusing the reference is what actually guarantees a single
+// DB pool/StorageAdapter instance, not just convention.
+export const InfrastructureLayer = Layer.mergeAll(RepositoriesLayer, StorageAdapter.layer).pipe(
+  Layer.provide(AppDBLiveLayer),
+  Layer.provide(ConfigService.layer),
+);
 
 export const ApiLayer = pipe(
   HttpApiBuilder.layer(Api, { openapiPath: "/opencode.json" }),
   ApiGroupsLayer,
   Layer.provide(AuthorizationLayer),
-  RepositoriesLayer,
-  Layer.provide(StorageAdapter.layer),
-  Layer.provide(AppDBLiveLayer),
-  Layer.provide(ConfigService.layer),
+  Layer.provide(InfrastructureLayer),
 );
 
 const DocsLayer = HttpApiScalar.layer(Api, { path: "/docs" });
