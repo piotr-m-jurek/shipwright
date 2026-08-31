@@ -13,6 +13,7 @@
     "test:phase5b": "bun --env-file=.env src/agent/tests/test-phase5b-gate.ts",
     "test:corpus": "bun --env-file=.env src/agent/tests/test-corpus.ts",
     "test:evals": "bun --env-file=.env src/agent/tests/evals.ts",
+    "eval:register-dataset": "bun --env-file=.env src/agent/tests/register-corpus-dataset.ts",
     "test:transactions": "vitest run src/agent/tests/transactions.test.ts",
     "lint": "oxlint .",
     "fmt": "oxfmt src"

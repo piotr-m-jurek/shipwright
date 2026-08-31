@@ -53,6 +53,15 @@ const LangfusePromptResponse = Schema.Struct({
   name: Schema.String,
 });
 
+const LangfuseDatasetResponse = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+});
+
+const LangfuseDatasetItemResponse = Schema.Struct({
+  id: Schema.String,
+});
+
 // ── Result type ────────────────────────────────────────────────────────────
 
 export class PromptResult extends Schema.Class<PromptResult>("PromptResult")({
@@ -81,6 +90,27 @@ export interface ScoreInput {
   readonly observationId?: string;
 }
 
+// ── Dataset registration ──────────────────────────────────────────────────
+
+export class DatasetError extends Schema.TaggedErrorClass<DatasetError>()(
+  "shipwright/observability/DatasetError",
+  { operation: Schema.String, name: Schema.String, cause: Schema.Defect() },
+) {}
+
+export interface CreateDatasetInput {
+  readonly name: string;
+  readonly description?: string;
+}
+
+export interface CreateDatasetItemInput {
+  readonly datasetName: string;
+  /** Stable id — dataset items are upserted on this, so re-running registration is idempotent. */
+  readonly id: string;
+  readonly input: unknown;
+  readonly expectedOutput?: unknown;
+  readonly metadata?: unknown;
+}
+
 // ── Service ────────────────────────────────────────────────────────────────
 
 interface Interface {
@@ -102,6 +132,24 @@ interface Interface {
    * errors so score failures never break the calling pipeline.
    */
   submitScore: (input: ScoreInput) => Effect.Effect<void>;
+
+  /**
+   * Create (or update, if a dataset with this name already exists — the
+   * Langfuse API upserts by name) a dataset to hold eval corpus cases.
+   *
+   * Fails with DatasetError when Langfuse is not configured or the request
+   * fails — unlike getPrompt/submitScore, this is provisioning tooling, not
+   * a runtime code path, so failures should be visible rather than
+   * swallowed into a silent fallback.
+   */
+  createDataset: (input: CreateDatasetInput) => Effect.Effect<{ id: string; name: string }, DatasetError>;
+
+  /**
+   * Create (or update, since items are upserted on `id`) a dataset item.
+   */
+  createDatasetItem: (
+    input: CreateDatasetItemInput,
+  ) => Effect.Effect<{ id: string }, DatasetError>;
 }
 
 export class LangfuseClient extends Context.Service<LangfuseClient, Interface>()(
@@ -123,6 +171,18 @@ export class LangfuseClient extends Context.Service<LangfuseClient, Interface>()
               `[LangfuseClient] skipping prompt fetch for "${name}" — no Langfuse config`,
             ).pipe(Effect.as(Option.none())),
           submitScore: (_input) => Effect.void,
+          createDataset: (input) =>
+            new DatasetError({
+              operation: "createDataset",
+              name: input.name,
+              cause: "Langfuse not configured",
+            }),
+          createDatasetItem: (input) =>
+            new DatasetError({
+              operation: "createDatasetItem",
+              name: input.id,
+              cause: "Langfuse not configured",
+            }),
         });
       }
 
@@ -218,8 +278,7 @@ export class LangfuseClient extends Context.Service<LangfuseClient, Interface>()
 
           const response = yield* HttpClientRequest.post(url).pipe(
             HttpClientRequest.setHeader("Authorization", `Basic ${auth}`),
-            HttpClientRequest.setHeader("Content-Type", "application/json"),
-            HttpClientRequest.bodyText(body),
+            HttpClientRequest.bodyText(body, "application/json"),
             http.execute,
             Effect.mapError((cause) => new ScoreSubmitError({ traceId: input.traceId, name: input.name, cause })),
           );
@@ -243,7 +302,102 @@ export class LangfuseClient extends Context.Service<LangfuseClient, Interface>()
           }),
         );
 
-      return LangfuseClient.of({ getPrompt, submitScore });
+      const createDataset = (input: CreateDatasetInput): Effect.Effect<{ id: string; name: string }, DatasetError> =>
+        Effect.gen(function* () {
+          const url = `${baseUrl}/api/public/v2/datasets`;
+          const body = JSON.stringify({
+            name: input.name,
+            ...(input.description !== undefined ? { description: input.description } : {}),
+          });
+
+          yield* Effect.logDebug(`[LangfuseClient] creating dataset "${input.name}"`).pipe(
+            Effect.annotateLogs({ datasetName: input.name }),
+          );
+
+          const response = yield* HttpClientRequest.post(url).pipe(
+            HttpClientRequest.setHeader("Authorization", `Basic ${auth}`),
+            HttpClientRequest.bodyText(body, "application/json"),
+            http.execute,
+            Effect.mapError(
+              (cause) => new DatasetError({ operation: "createDataset", name: input.name, cause }),
+            ),
+          );
+
+          if (response.status < 200 || response.status >= 300) {
+            const responseBody = yield* response.text.pipe(Effect.orElseSucceed(() => ""));
+            return yield* new DatasetError({
+              operation: "createDataset",
+              name: input.name,
+              cause: `HTTP ${response.status}: ${responseBody}`,
+            });
+          }
+
+          const json = yield* HttpClientResponse.schemaBodyJson(LangfuseDatasetResponse)(
+            response,
+          ).pipe(
+            Effect.mapError(
+              (cause) => new DatasetError({ operation: "createDataset", name: input.name, cause }),
+            ),
+          );
+
+          yield* Effect.logInfo(
+            `[LangfuseClient] dataset "${input.name}" ready (id=${json.id})`,
+          ).pipe(Effect.annotateLogs({ datasetName: input.name, datasetId: json.id }));
+
+          return json;
+        });
+
+      const createDatasetItem = (
+        input: CreateDatasetItemInput,
+      ): Effect.Effect<{ id: string }, DatasetError> =>
+        Effect.gen(function* () {
+          const url = `${baseUrl}/api/public/dataset-items`;
+          const body = JSON.stringify({
+            datasetName: input.datasetName,
+            id: input.id,
+            input: input.input,
+            ...(input.expectedOutput !== undefined ? { expectedOutput: input.expectedOutput } : {}),
+            ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+          });
+
+          yield* Effect.logDebug(`[LangfuseClient] creating dataset item "${input.id}"`).pipe(
+            Effect.annotateLogs({ datasetName: input.datasetName, itemId: input.id }),
+          );
+
+          const response = yield* HttpClientRequest.post(url).pipe(
+            HttpClientRequest.setHeader("Authorization", `Basic ${auth}`),
+            HttpClientRequest.bodyText(body, "application/json"),
+            http.execute,
+            Effect.mapError(
+              (cause) => new DatasetError({ operation: "createDatasetItem", name: input.id, cause }),
+            ),
+          );
+
+          if (response.status < 200 || response.status >= 300) {
+            const responseBody = yield* response.text.pipe(Effect.orElseSucceed(() => ""));
+            return yield* new DatasetError({
+              operation: "createDatasetItem",
+              name: input.id,
+              cause: `HTTP ${response.status}: ${responseBody}`,
+            });
+          }
+
+          const json = yield* HttpClientResponse.schemaBodyJson(LangfuseDatasetItemResponse)(
+            response,
+          ).pipe(
+            Effect.mapError(
+              (cause) => new DatasetError({ operation: "createDatasetItem", name: input.id, cause }),
+            ),
+          );
+
+          yield* Effect.logInfo(`[LangfuseClient] dataset item "${input.id}" ready`).pipe(
+            Effect.annotateLogs({ datasetName: input.datasetName, itemId: input.id }),
+          );
+
+          return json;
+        });
+
+      return LangfuseClient.of({ getPrompt, submitScore, createDataset, createDatasetItem });
     }),
   );
 }
