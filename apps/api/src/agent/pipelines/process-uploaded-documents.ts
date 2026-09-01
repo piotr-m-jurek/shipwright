@@ -7,7 +7,7 @@ import { SqlClient } from "effect/unstable/sql/SqlClient";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
-import { getOrRestoreActor } from "../session-actor";
+import { AgentSessionAggregate } from "../agent-session-aggregate";
 import { publishForCurrentState } from "../session-process-manager";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
@@ -171,13 +171,11 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
   // If USER_CONFIRM already arrived (waiting_for_documents), the machine
   // transitions to summarizing here and publishForCurrentState publishes
   // the workflow job that confirmAnalysis would have published.
-  yield* getOrRestoreActor(sessionId).pipe(
-    Effect.flatMap((actor) =>
-      Effect.gen(function* () {
-        actor.send({ type: "DOCUMENTS_READY" });
-        yield* publishForCurrentState(sessionId, actor.getSnapshot().value);
-      }),
-    ),
+  yield* Effect.gen(function* () {
+    const aggregate = yield* AgentSessionAggregate;
+    const stateAfter = yield* aggregate.markDocumentsReady(sessionId);
+    yield* publishForCurrentState(sessionId, stateAfter);
+  }).pipe(
     Effect.tapError((err) =>
       Effect.logWarning("[processUploadedDocuments] could not send DOCUMENTS_READY to actor", err).pipe(
         Effect.annotateLogs({ sessionId }),

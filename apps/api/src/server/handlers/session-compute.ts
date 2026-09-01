@@ -2,7 +2,7 @@ import { Effect, Option, pipe } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { AgentSessionNotFound, ConfirmAnalysisError } from "@shipwright/shared/domain/errors";
 import { MessageQueue } from "@shipwright/queue";
-import { getOrRestoreActor } from "../../agent/session-actor";
+import { AgentSessionAggregate } from "../../agent/agent-session-aggregate";
 import {
   GetAgentSessionResponse,
   ConfirmAnalysisResponse,
@@ -17,7 +17,7 @@ import { ClarificationRepository } from "@shipwright/db/repositories/clarificati
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { CurrentUser } from "@shipwright/shared/middleware";
 import type { Question } from "@shipwright/shared/domain/types";
-import { isIdle, isUploading, publishForCurrentState } from "../../agent/session-process-manager";
+import { publishForCurrentState } from "../../agent/session-process-manager";
 
 export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
   handlers
@@ -167,6 +167,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
     .handle("confirmAnalysis", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
         const agentSessionDb = yield* AgentSessionRepository;
+        const aggregate = yield* AgentSessionAggregate;
         const user = yield* CurrentUser;
 
         // Ownership check — 404 for unknown or other user's session
@@ -176,32 +177,22 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
           Effect.catch(() => new AgentSessionNotFound()),
         );
 
-        const actor = yield* pipe(
-          getOrRestoreActor(sessionId),
+        // confirmUpload is idempotent — None means a prior call already
+        // confirmed this session (nothing changed, nothing new to publish).
+        // Publish session.workflow only if the machine actually transitioned
+        // and is now in summarizing. If it entered waiting_for_documents
+        // instead, processUploadedDocuments will publish session.workflow
+        // after sending DOCUMENTS_READY.
+        yield* pipe(
+          aggregate.confirmUpload(sessionId),
           Effect.mapError((cause) => new ConfirmAnalysisError({ cause })),
+          Effect.flatMap(
+            Option.match({
+              onNone: () => Effect.void,
+              onSome: (state) => publishForCurrentState(sessionId, state),
+            }),
+          ),
         );
-
-        const stateValue = actor.getSnapshot().value;
-
-        // Already past uploading — confirm was already processed.
-        if (!isIdle(stateValue) && !isUploading(stateValue)) {
-          return new ConfirmAnalysisResponse({ started: true });
-        }
-
-        // Advance idle → uploading_pending_docs first if still idle.
-        if (isIdle(stateValue)) {
-          actor.send({ type: "UPLOAD_COMPLETE" });
-        }
-
-        // Send USER_CONFIRM — machine transitions to either:
-        //   uploading_docs_ready → summarizing  (docs already ready)
-        //   uploading_pending_docs → waiting_for_documents  (docs still processing)
-        actor.send({ type: "USER_CONFIRM" });
-
-        // Publish session.workflow only if machine is now in summarizing.
-        // If it entered waiting_for_documents instead, processUploadedDocuments
-        // will publish session.workflow after sending DOCUMENTS_READY.
-        yield* publishForCurrentState(sessionId, actor.getSnapshot().value);
 
         return new ConfirmAnalysisResponse({ started: true });
       }),

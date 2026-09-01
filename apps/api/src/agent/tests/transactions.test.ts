@@ -19,6 +19,7 @@ import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { AgentSessionSnapshotReader } from "@shipwright/db/repositories/agent-session-snapshot-reader";
+import { AgentSessionAggregate } from "../agent-session-aggregate";
 import { StorageAdapter } from "@shipwright/storage";
 import { EmbeddingService } from "@shipwright/embedding";
 import { MessageQueue } from "@shipwright/queue";
@@ -159,6 +160,10 @@ const agentSessionSnapshotReaderLayer = Layer.succeed(AgentSessionSnapshotReader
   getUnsafe: () => Effect.succeed(Option.none()),
 } as any);
 
+const agentSessionAggregateLayer = Layer.succeed(AgentSessionAggregate, {
+  markDocumentsReady: () => Effect.succeed("idle"),
+} as any);
+
 // ── Mock StorageAdapter ───────────────────────────────────────────────────
 
 const storageAdapterLayer = Layer.succeed(StorageAdapter, {
@@ -286,6 +291,7 @@ describe("processUploadedDocuments — transaction behaviour", () => {
         Effect.provide(summaryLayer),
         Effect.provide(agentSessionRepositoryLayer),
         Effect.provide(agentSessionSnapshotReaderLayer),
+        Effect.provide(agentSessionAggregateLayer),
         Effect.provide(storageAdapterLayer),
         Effect.provide(embeddingServiceLayer),
         Effect.provide(messageQueueLayer),
@@ -322,6 +328,7 @@ describe("processUploadedDocuments — transaction behaviour", () => {
         Effect.provide(summaryLayer),
         Effect.provide(agentSessionRepositoryLayer),
         Effect.provide(agentSessionSnapshotReaderLayer),
+        Effect.provide(agentSessionAggregateLayer),
         Effect.provide(storageAdapterLayer),
         Effect.provide(embeddingServiceLayer),
         Effect.provide(messageQueueLayer),
