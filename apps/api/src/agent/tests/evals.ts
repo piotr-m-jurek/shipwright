@@ -50,12 +50,14 @@ import { OutputRepository } from "@shipwright/db/repositories/output-repository"
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { StorageAdapter } from "@shipwright/storage";
 import { LangfuseClient } from "../../observability/langfuse-client";
+import { OtlpLayer } from "@shipwright/observability";
 import { FetchHttpClient } from "effect/unstable/http";
 import { ConfigService } from "@shipwright/config";
 import type { GapReportEffect } from "../challenger/index";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { QuestionSelect, AnswerSelect } from "@shipwright/db/types";
 import { AgentSessionId } from "@shipwright/shared/domain/ids";
+import { CORPUS_CASE_ID } from "./eval-corpus";
 
 import {
   FaithfulnessEvalSchema,
@@ -66,7 +68,17 @@ import {
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, OutputRepository.layer, ClarificationRepository.layer, LangfuseClient.layer.pipe(Layer.provide(FetchHttpClient.layer))),
+    Layer.mergeAll(
+      StorageAdapter.layer,
+      AgentSessionRepository.layer,
+      DocumentRepository.layer,
+      ChunkRepository.layer,
+      SummaryRepository.layer,
+      OutputRepository.layer,
+      ClarificationRepository.layer,
+      LangfuseClient.layer,
+      OtlpLayer,
+    ).pipe(Layer.provide(FetchHttpClient.layer)),
     Layer.provideMerge(AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
@@ -118,6 +130,46 @@ async function runEffect<A>(
   effect: Effect.Effect<A, any, AgentSessionRepository | DocumentRepository | ChunkRepository | SummaryRepository | OutputRepository | StorageAdapter | ClarificationRepository>,
 ): Promise<A> {
   return runtime.runPromise(effect);
+}
+
+/**
+ * SHIP-168 — push a part's score to Langfuse and link its trace to the
+ * corpus dataset item under this run's name, so it shows up in the
+ * Dataset's Runs tab for regression tracking over time.
+ *
+ * Best-effort: a Langfuse outage shouldn't fail the eval gate itself (the
+ * score threshold checks already did that) — logged and swallowed instead.
+ */
+async function reportRunResult(opts: {
+  traceId: string;
+  runName: string;
+  scoreName: string;
+  value: number;
+  comment: string;
+  runDescription: string;
+}): Promise<void> {
+  await runtime.runPromise(
+    Effect.gen(function* () {
+      const langfuse = yield* LangfuseClient;
+      yield* langfuse.submitScore({
+        traceId: opts.traceId,
+        name: opts.scoreName,
+        value: opts.value,
+        comment: opts.comment,
+      });
+      yield* langfuse.createDatasetRunItem({
+        runName: opts.runName,
+        datasetItemId: CORPUS_CASE_ID,
+        traceId: opts.traceId,
+        runDescription: opts.runDescription,
+      });
+    }).pipe(
+      Effect.tapErrorTag("shipwright/observability/DatasetError", (err) =>
+        Effect.logError(`[evals] failed to push "${opts.scoreName}" run result to Langfuse`, err),
+      ),
+      Effect.ignore,
+    ),
+  );
 }
 
 // ── Part A — Conflict detection (deterministic) ────────────────────────────
@@ -204,7 +256,21 @@ function checkPlantedIssues(
   return { results, allFound: results.every((r) => r.found) };
 }
 
-async function runPartA(): Promise<boolean> {
+/** Wraps the summarizer + challenger run in a named span so its OTLP trace
+ *  ID is available afterward to attach a score / dataset run item to. */
+const runPartAAnalysis = Effect.fn("eval/part-a")(function* (sessionId: AgentSessionId) {
+  const span = yield* Effect.currentSpan;
+
+  yield* summarizeAllDocuments(sessionId);
+  const summaryDb = yield* SummaryRepository;
+  const summaries = yield* summaryDb.getFinalSummariesBySession(sessionId);
+
+  const gapReport = yield* runChallenger(summaries);
+
+  return { traceId: span.traceId, summaries, gapReport };
+}, Effect.provide(AnthropicClientLayer));
+
+async function runPartA(runName: string): Promise<boolean> {
   console.log("\n── Part A: Conflict detection (deterministic) ──────────────");
 
   await insertTestUser();
@@ -251,13 +317,9 @@ async function runPartA(): Promise<boolean> {
     }
 
     console.log(`  Corpus inserted (${CORPUS_FILES.length} documents)`);
-    console.log("  Running summarizer...");
-    await runtime.runPromise(
-      summarizeAllDocuments(sessionId).pipe(Effect.provide(AnthropicClientLayer)),
-    );
-
-    const summaries = await runEffect(
-      Effect.flatMap(SummaryRepository, (db) => db.getFinalSummariesBySession(sessionId)),
+    console.log("  Running summarizer + challenger...");
+    const { traceId, summaries, gapReport } = await runtime.runPromise(
+      runPartAAnalysis(sessionId),
     );
 
     if (summaries.length !== CORPUS_FILES.length) {
@@ -265,11 +327,6 @@ async function runPartA(): Promise<boolean> {
       return false;
     }
     pass(`${summaries.length} final summaries produced`);
-
-    console.log("  Running challenger...");
-    const gapReport = await runtime.runPromise(
-      runChallenger(summaries).pipe(Effect.provide(AnthropicClientLayer)),
-    );
 
     console.log(
       `  GapReport: ${gapReport.conflicts.length} conflicts, ${gapReport.gaps.length} gaps, ${gapReport.ambiguities.length} ambiguities`,
@@ -282,6 +339,19 @@ async function runPartA(): Promise<boolean> {
 
     const count = results.filter((r) => r.found).length;
     console.log(`\n  Planted issues surfaced: ${count}/5`);
+
+    await reportRunResult({
+      traceId,
+      runName,
+      scoreName: "conflict-detection",
+      value: count / results.length,
+      comment: `${count}/${results.length} planted issues surfaced: ${results
+        .filter((r) => !r.found)
+        .map((r) => r.label)
+        .join("; ") || "none missed"}`,
+      runDescription: "Phase 8 eval suite — Part A conflict detection",
+    });
+
     return allFound;
   } finally {
     await runEffect(Effect.flatMap(AgentSessionRepository, (db) => db.deleteAgentSession(sessionId)));
@@ -312,7 +382,23 @@ A claim is hallucinated if:
 Score 0.0–1.0 where 1.0 = completely faithful, 0.0 = heavily hallucinated.
 Pass threshold: score >= 0.9`;
 
-async function runPartB(briefText: string, summaries: DocumentSummary[], questions: QuestionSelect[], answers: AnswerSelect[]): Promise<boolean> {
+/** Wraps the faithfulness judge's generateObject call in a named span so its
+ *  OTLP trace ID is available afterward to attach a score / dataset run item to. */
+const runFaithfulnessJudge = Effect.fn("eval/part-b")(function* (userContent: string) {
+  const span = yield* Effect.currentSpan;
+
+  const response = yield* LanguageModel.generateObject({
+    schema: FaithfulnessEvalSchema,
+    prompt: Prompt.make([
+      { role: "system", content: FaithfulnessJudgeSystemPrompt },
+      { role: "user", content: userContent },
+    ]),
+  });
+
+  return { traceId: span.traceId, value: response.value };
+}, Effect.provide(AnthropicSonnetModelLayer), Effect.provide(AnthropicClientLayer));
+
+async function runPartB(briefText: string, summaries: DocumentSummary[], questions: QuestionSelect[], answers: AnswerSelect[], runName: string): Promise<boolean> {
   console.log("\n── Part B: Faithfulness eval (LLM-as-judge) ───────────────");
 
   const summaryContext = summaries
@@ -335,19 +421,7 @@ async function runPartB(briefText: string, summaries: DocumentSummary[], questio
 
   const userContent = `## Source Document Summaries\n\n${summaryContext}\n\n## Clarifying Q&A\n\n${qaContext}\n\n## Project Brief to Evaluate\n\n${briefText}`;
 
-  const judgeEffect = LanguageModel.generateObject({
-    schema: FaithfulnessEvalSchema,
-    prompt: Prompt.make([
-      { role: "system", content: FaithfulnessJudgeSystemPrompt },
-      { role: "user", content: userContent },
-    ]),
-  });
-
-  const response = await runtime.runPromise(
-    judgeEffect.pipe(Effect.provide(AnthropicSonnetModelLayer), Effect.provide(AnthropicClientLayer)),
-  );
-
-  const parsed = response.value;
+  const { traceId, value: parsed } = await runtime.runPromise(runFaithfulnessJudge(userContent));
 
   if (parsed.hallucinatedRequirements.length > 0) {
     console.log("  Hallucinations found:");
@@ -361,6 +435,15 @@ async function runPartB(briefText: string, summaries: DocumentSummary[], questio
   const scorePassed = parsed.result.score >= 0.9;
   console.log(`  Score: ${parsed.result.score.toFixed(2)} — ${parsed.result.reasoning}`);
   scorePassed ? pass("Faithfulness eval PASSED") : fail("Faithfulness eval FAILED (score < 0.9)");
+
+  await reportRunResult({
+    traceId,
+    runName,
+    scoreName: "faithfulness",
+    value: parsed.result.score,
+    comment: parsed.result.reasoning,
+    runDescription: "Phase 8 eval suite — Part B faithfulness eval",
+  });
 
   return scorePassed;
 }
@@ -396,7 +479,23 @@ Respond with JSON matching exactly this structure:
   "result": { "score": 0.0-1.0, "reasoning": "...", "pass": true/false, "citations": [] }
 }`;
 
-async function runPartC(prdText: string, summaries: DocumentSummary[], questions: QuestionSelect[], answers: AnswerSelect[]): Promise<boolean> {
+/** Wraps the completeness judge's generateObject call in a named span so its
+ *  OTLP trace ID is available afterward to attach a score / dataset run item to. */
+const runCompletenessJudge = Effect.fn("eval/part-c")(function* (userContent: string) {
+  const span = yield* Effect.currentSpan;
+
+  const response = yield* LanguageModel.generateObject({
+    schema: CompletenessEvalSchema,
+    prompt: Prompt.make([
+      { role: "system", content: CompletenessJudgeSystemPrompt },
+      { role: "user", content: userContent },
+    ]),
+  });
+
+  return { traceId: span.traceId, value: response.value };
+}, Effect.provide(AnthropicSonnetModelLayer), Effect.provide(AnthropicClientLayer));
+
+async function runPartC(prdText: string, summaries: DocumentSummary[], questions: QuestionSelect[], answers: AnswerSelect[], runName: string): Promise<boolean> {
   console.log("\n── Part C: Completeness eval (LLM-as-judge) ────────────────");
 
   const summaryContext = summaries
@@ -419,19 +518,7 @@ async function runPartC(prdText: string, summaries: DocumentSummary[], questions
 
   const userContent = `## Source Document Summaries\n\n${summaryContext}\n\n## Clarifying Q&A\n\n${qaContext}\n\n## Implementation PRD to Evaluate\n\n${prdText}`;
 
-  const judgeEffect = LanguageModel.generateObject({
-    schema: CompletenessEvalSchema,
-    prompt: Prompt.make([
-      { role: "system", content: CompletenessJudgeSystemPrompt },
-      { role: "user", content: userContent },
-    ]),
-  });
-
-  const response = await runtime.runPromise(
-    judgeEffect.pipe(Effect.provide(AnthropicSonnetModelLayer), Effect.provide(AnthropicClientLayer)),
-  );
-
-  const parsed = response.value;
+  const { traceId, value: parsed } = await runtime.runPromise(runCompletenessJudge(userContent));
 
   if (parsed.droppedItems.length > 0) {
     console.log("  Dropped items:");
@@ -446,6 +533,15 @@ async function runPartC(prdText: string, summaries: DocumentSummary[], questions
   console.log(`  Score: ${parsed.result.score.toFixed(2)} — ${parsed.result.reasoning}`);
   scorePassed ? pass("Completeness eval PASSED") : fail("Completeness eval FAILED (score < 0.9)");
 
+  await reportRunResult({
+    traceId,
+    runName,
+    scoreName: "completeness",
+    value: parsed.result.score,
+    comment: parsed.result.reasoning,
+    runDescription: "Phase 8 eval suite — Part C completeness eval",
+  });
+
   return scorePassed;
 }
 
@@ -453,14 +549,16 @@ async function runPartC(prdText: string, summaries: DocumentSummary[], questions
 
 async function main() {
   const conflictOnly = process.argv.includes("--conflict-only");
+  const runName = process.env.EVAL_RUN_NAME ?? `eval-${new Date().toISOString()}`;
 
   console.log("=== Phase 8 Eval Suite ===");
+  console.log(`Run name: ${runName}`);
   if (conflictOnly) console.log("Mode: conflict detection only (--conflict-only)");
 
   const results: { part: string; passed: boolean }[] = [];
 
   // Part A always runs
-  const partAPassed = await runPartA();
+  const partAPassed = await runPartA(runName);
   results.push({ part: "A — conflict detection", passed: partAPassed });
 
   if (!conflictOnly) {
@@ -511,7 +609,7 @@ async function main() {
         fail("No project_brief output found for this session");
         results.push({ part: "B — faithfulness", passed: false });
       } else {
-        const partBPassed = await runPartB(briefRow.content, summaries, sessionQuestions, sessionAnswers);
+        const partBPassed = await runPartB(briefRow.content, summaries, sessionQuestions, sessionAnswers, runName);
         results.push({ part: "B — faithfulness", passed: partBPassed });
       }
 
@@ -519,7 +617,7 @@ async function main() {
         fail("No implementation_prd output found for this session");
         results.push({ part: "C — completeness", passed: false });
       } else {
-        const partCPassed = await runPartC(prdRow.content, summaries, sessionQuestions, sessionAnswers);
+        const partCPassed = await runPartC(prdRow.content, summaries, sessionQuestions, sessionAnswers, runName);
         results.push({ part: "C — completeness", passed: partCPassed });
       }
     }

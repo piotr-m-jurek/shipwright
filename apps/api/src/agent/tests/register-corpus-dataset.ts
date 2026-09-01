@@ -30,6 +30,7 @@ import { ConfigService } from "@shipwright/config";
 import { parseDocument } from "../parsers";
 import { LangfuseClient } from "../../observability/langfuse-client";
 import { FetchHttpClient } from "effect/unstable/http";
+import { DATASET_NAME, CORPUS_CASE_ID } from "./eval-corpus";
 
 const runtime = ManagedRuntime.make(
   pipe(
@@ -37,8 +38,6 @@ const runtime = ManagedRuntime.make(
     Layer.provide(ConfigService.layer),
   ),
 );
-
-const DATASET_NAME = "shipwright-eval-corpus";
 
 // Ground truth mirrors docs/test_corpus/README.md — kept here (not derived
 // from the README) so it's structured data a future eval script (SHIP-168)
@@ -83,7 +82,7 @@ const PLANTED_ISSUES = [
 
 const CORPUS_CASES = [
   {
-    id: "leave-management-v1",
+    id: CORPUS_CASE_ID,
     name: "Leave Management System (Synthetic)",
     dir: "docs/test_corpus",
     files: [

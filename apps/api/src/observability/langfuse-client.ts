@@ -62,6 +62,10 @@ const LangfuseDatasetItemResponse = Schema.Struct({
   id: Schema.String,
 });
 
+const LangfuseDatasetRunItemResponse = Schema.Struct({
+  id: Schema.String,
+});
+
 // ── Result type ────────────────────────────────────────────────────────────
 
 export class PromptResult extends Schema.Class<PromptResult>("PromptResult")({
@@ -111,6 +115,17 @@ export interface CreateDatasetItemInput {
   readonly metadata?: unknown;
 }
 
+export interface CreateDatasetRunItemInput {
+  /** Groups run items together into one Run in the Langfuse UI. */
+  readonly runName: string;
+  /** The dataset item (registered via createDatasetItem) this run result is for. */
+  readonly datasetItemId: string;
+  /** The trace carrying the score(s) for this run — submit via submitScore first. */
+  readonly traceId: string;
+  readonly observationId?: string;
+  readonly runDescription?: string;
+}
+
 // ── Service ────────────────────────────────────────────────────────────────
 
 interface Interface {
@@ -150,6 +165,19 @@ interface Interface {
   createDatasetItem: (
     input: CreateDatasetItemInput,
   ) => Effect.Effect<{ id: string }, DatasetError>;
+
+  /**
+   * Link a trace (already carrying its score(s) via submitScore) to a
+   * dataset item under a named run — this is what makes the run show up in
+   * the Dataset's Runs tab in the Langfuse UI, enabling regression tracking
+   * across runs over time.
+   *
+   * Fails loud like createDataset/createDatasetItem — this is eval-runner
+   * reporting, not a runtime code path, so failures should be visible.
+   */
+  createDatasetRunItem: (
+    input: CreateDatasetRunItemInput,
+  ) => Effect.Effect<{ id: string }, DatasetError>;
 }
 
 export class LangfuseClient extends Context.Service<LangfuseClient, Interface>()(
@@ -181,6 +209,12 @@ export class LangfuseClient extends Context.Service<LangfuseClient, Interface>()
             new DatasetError({
               operation: "createDatasetItem",
               name: input.id,
+              cause: "Langfuse not configured",
+            }),
+          createDatasetRunItem: (input) =>
+            new DatasetError({
+              operation: "createDatasetRunItem",
+              name: input.runName,
               cause: "Langfuse not configured",
             }),
         });
@@ -397,7 +431,71 @@ export class LangfuseClient extends Context.Service<LangfuseClient, Interface>()
           return json;
         });
 
-      return LangfuseClient.of({ getPrompt, submitScore, createDataset, createDatasetItem });
+      const createDatasetRunItem = (
+        input: CreateDatasetRunItemInput,
+      ): Effect.Effect<{ id: string }, DatasetError> =>
+        Effect.gen(function* () {
+          const url = `${baseUrl}/api/public/dataset-run-items`;
+          const body = JSON.stringify({
+            runName: input.runName,
+            datasetItemId: input.datasetItemId,
+            traceId: input.traceId,
+            ...(input.observationId !== undefined ? { observationId: input.observationId } : {}),
+            ...(input.runDescription !== undefined ? { runDescription: input.runDescription } : {}),
+          });
+
+          yield* Effect.logDebug(
+            `[LangfuseClient] linking dataset item "${input.datasetItemId}" to run "${input.runName}"`,
+          ).pipe(
+            Effect.annotateLogs({
+              runName: input.runName,
+              datasetItemId: input.datasetItemId,
+              traceId: input.traceId,
+            }),
+          );
+
+          const response = yield* HttpClientRequest.post(url).pipe(
+            HttpClientRequest.setHeader("Authorization", `Basic ${auth}`),
+            HttpClientRequest.bodyText(body, "application/json"),
+            http.execute,
+            Effect.mapError(
+              (cause) =>
+                new DatasetError({ operation: "createDatasetRunItem", name: input.runName, cause }),
+            ),
+          );
+
+          if (response.status < 200 || response.status >= 300) {
+            const responseBody = yield* response.text.pipe(Effect.orElseSucceed(() => ""));
+            return yield* new DatasetError({
+              operation: "createDatasetRunItem",
+              name: input.runName,
+              cause: `HTTP ${response.status}: ${responseBody}`,
+            });
+          }
+
+          const json = yield* HttpClientResponse.schemaBodyJson(LangfuseDatasetRunItemResponse)(
+            response,
+          ).pipe(
+            Effect.mapError(
+              (cause) =>
+                new DatasetError({ operation: "createDatasetRunItem", name: input.runName, cause }),
+            ),
+          );
+
+          yield* Effect.logInfo(
+            `[LangfuseClient] run "${input.runName}" linked to dataset item "${input.datasetItemId}"`,
+          ).pipe(Effect.annotateLogs({ runName: input.runName, datasetItemId: input.datasetItemId }));
+
+          return json;
+        });
+
+      return LangfuseClient.of({
+        getPrompt,
+        submitScore,
+        createDataset,
+        createDatasetItem,
+        createDatasetRunItem,
+      });
     }),
   );
 }

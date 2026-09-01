@@ -30,6 +30,7 @@
     "typescript": "^7.0.2"
   },
   "devDependencies": {
+    "@effect/language-service": "^0.87.2",
     "@effect/tsgo": "^0.24.2"
   }
 }
