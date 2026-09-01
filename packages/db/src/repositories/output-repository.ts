@@ -1,23 +1,25 @@
 import { Context, Effect, Layer, Option } from "effect";
 import { Spans } from "@shipwright/observability";
-import type { OutputInsert, OutputSelect } from "../types";
+import type { OutputInsert } from "../types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { outputs } from "../schema";
 import { DB } from "../index";
 import { and, desc, eq } from "drizzle-orm";
+import type { Output, OutputType } from "@shipwright/shared/domain/types";
+import { toOutput } from "../mappers";
 
 interface Interface {
-  createOutput: (data: OutputInsert) => Effect.Effect<OutputSelect, EffectDrizzleQueryError>;
+  createOutput: (data: OutputInsert) => Effect.Effect<Output, EffectDrizzleQueryError>;
 
   getOutputsBySessionId: (
     sessionId: AgentSessionId,
-  ) => Effect.Effect<OutputSelect[], EffectDrizzleQueryError>;
+  ) => Effect.Effect<Output[], EffectDrizzleQueryError>;
 
   getLatestOutputByType: (payload: {
     sessionId: AgentSessionId;
-    type: OutputSelect["type"];
-  }) => Effect.Effect<Option.Option<OutputSelect>, EffectDrizzleQueryError>;
+    type: OutputType;
+  }) => Effect.Effect<Option.Option<Output>, EffectDrizzleQueryError>;
 }
 
 export class OutputRepository extends Context.Service<OutputRepository, Interface>()(
@@ -30,7 +32,7 @@ export class OutputRepository extends Context.Service<OutputRepository, Interfac
 
       const createOutput = Effect.fn("db/createOutput")(function* (data: OutputInsert) {
         const [result] = yield* db.insert(outputs).values(data).returning();
-        return result;
+        return toOutput(result);
       });
 
       const getOutputsBySessionId = Effect.fn("db/getOutputsBySessionId")(function* (sessionId: AgentSessionId) {
@@ -40,12 +42,12 @@ export class OutputRepository extends Context.Service<OutputRepository, Interfac
           .where(eq(outputs.sessionId, sessionId))
           .orderBy(desc(outputs.version));
         yield* Effect.annotateCurrentSpan(Spans.dbRowCount(rows.length));
-        return rows;
+        return rows.map(toOutput);
       });
 
       const getLatestOutputByType = Effect.fn("db/getLatestOutputByType")(function* (payload: {
         sessionId: AgentSessionId;
-        type: OutputSelect["type"];
+        type: OutputType;
       }) {
         const [result] = yield* db
           .select()
@@ -54,7 +56,7 @@ export class OutputRepository extends Context.Service<OutputRepository, Interfac
           .orderBy(desc(outputs.version))
           .limit(1);
 
-        return Option.fromNullishOr(result);
+        return Option.fromNullishOr(result).pipe(Option.map(toOutput));
       });
 
       return {

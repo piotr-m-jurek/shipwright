@@ -6,6 +6,7 @@ import { Api } from "@shipwright/shared/api";
 import { SessionCompute } from "./handlers/session-compute";
 import { ConfigService } from "@shipwright/config";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
+import { AgentSessionSnapshotReader } from "@shipwright/db/repositories/agent-session-snapshot-reader";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
@@ -43,6 +44,7 @@ export const ApiGroupsLayer = Layer.provide([
 
 export const RepositoriesLayer = Layer.mergeAll(
   AgentSessionRepository.layer,
+  AgentSessionSnapshotReader.layer,
   DocumentRepository.layer,
   ChunkRepository.layer,
   SummaryRepository.layer,

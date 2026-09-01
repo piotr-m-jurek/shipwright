@@ -1,32 +1,34 @@
 import { Context, Effect, Layer, Option } from "effect";
 import { Spans } from "@shipwright/observability";
-import { InsertDocument, SelectDocument } from "../types";
+import { InsertDocument } from "../types";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { DB } from "../index";
 import { documents } from "../schema";
 import { eq } from "drizzle-orm";
 import { type AgentSessionId, type DocumentId } from "@shipwright/shared/domain/ids";
 import type { TokenCount } from "@shipwright/shared/domain/value-objects";
+import type { Document, DocumentStatus } from "@shipwright/shared/domain/types";
+import { toDocument } from "../mappers";
 
 interface Interface {
-  createDocument: (data: InsertDocument) => Effect.Effect<SelectDocument, EffectDrizzleQueryError>;
+  createDocument: (data: InsertDocument) => Effect.Effect<Document, EffectDrizzleQueryError>;
 
   getDocumentById: (
     id: DocumentId,
-  ) => Effect.Effect<Option.Option<SelectDocument>, EffectDrizzleQueryError>;
+  ) => Effect.Effect<Option.Option<Document>, EffectDrizzleQueryError>;
 
   getDocumentsBySessionId: (
     sessionId: AgentSessionId,
-  ) => Effect.Effect<SelectDocument[], EffectDrizzleQueryError>;
+  ) => Effect.Effect<Document[], EffectDrizzleQueryError>;
 
   updateDocument: (
     documentId: DocumentId,
-    payload: Pick<SelectDocument, "status" | "tokenCount">,
+    payload: Pick<Document, "status" | "tokenCount">,
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
 
   updateDocumentStatus: (
     documentId: DocumentId,
-    status: SelectDocument["status"],
+    status: DocumentStatus,
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
 
   updateDocumentTokenCount: (
@@ -45,30 +47,30 @@ export class DocumentRepository extends Context.Service<DocumentRepository, Inte
 
       const createDocument = Effect.fn("db/createDocument")(function* (data: InsertDocument) {
         const [result] = yield* db.insert(documents).values(data).returning();
-        return result;
+        return toDocument(result);
       });
 
       const getDocumentById = Effect.fn("db/getDocumentById")(function* (id: DocumentId) {
         const results = yield* db.select().from(documents).where(eq(documents.id, id)).limit(1);
-        return Option.fromIterable(results);
+        return Option.fromIterable(results).pipe(Option.map(toDocument));
       });
 
       const getDocumentsBySessionId = Effect.fn("db/getDocumentsBySessionId")(function* (sessionId: AgentSessionId) {
         const rows = yield* db.select().from(documents).where(eq(documents.sessionId, sessionId));
         yield* Effect.annotateCurrentSpan(Spans.dbRowCount(rows.length));
-        return rows;
+        return rows.map(toDocument);
       });
 
       const updateDocument = Effect.fn("db/updateDocument")(function* (
         documentId: DocumentId,
-        payload: Pick<SelectDocument, "status" | "tokenCount">,
+        payload: Pick<Document, "status" | "tokenCount">,
       ) {
         yield* db.update(documents).set(payload).where(eq(documents.id, documentId));
       });
 
       const updateDocumentStatus = Effect.fn("db/updateDocumentStatus")(function* (
         documentId: DocumentId,
-        status: SelectDocument["status"],
+        status: DocumentStatus,
       ) {
         yield* db.update(documents).set({ status }).where(eq(documents.id, documentId));
       });

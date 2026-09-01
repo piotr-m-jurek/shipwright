@@ -86,7 +86,7 @@ export class SessionComputationApi extends HttpApiGroup.make("compute")
     HttpApiEndpoint.post("confirmAnalysis", "/sessions/:sessionId/confirm", {
       params: { sessionId: AgentSessionId },
       success: ConfirmAnalysisResponse,
-      error: ConfirmAnalysisError,
+      error: [ConfirmAnalysisError, AgentSessionNotFound],
     }),
     HttpApiEndpoint.get("getSessionDebug", "/sessions/:sessionId/debug", {
       params: { sessionId: AgentSessionId },
@@ -103,7 +103,7 @@ export class SessionResultsApi extends HttpApiGroup.make("results")
       params: { sessionId: AgentSessionId },
       payload: PostAgentSessionAnswersRequest,
       success: PostAgentSessionAnswersResponse,
-      error: [SessionStateError, AnalysisPipelineError],
+      error: [SessionStateError, AnalysisPipelineError, AgentSessionNotFound],
     }),
     HttpApiEndpoint.get("getSessionFinalOutput", "/sessions/:sessionId/output", {
       params: { sessionId: AgentSessionId },
@@ -114,7 +114,7 @@ export class SessionResultsApi extends HttpApiGroup.make("results")
       params: { sessionId: AgentSessionId },
       payload: ReviseRequest,
       success: ReviseResponse,
-      error: [SessionStateError, RevisionError],
+      error: [SessionStateError, RevisionError, AgentSessionNotFound],
     }),
   )
   .middleware(Authorization) {}

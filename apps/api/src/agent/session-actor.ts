@@ -6,6 +6,7 @@ import {
   type DocumentExtractionServices,
 } from "./machine";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
+import { AgentSessionSnapshotReader } from "@shipwright/db/repositories/agent-session-snapshot-reader";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
 export class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()(
@@ -46,6 +47,7 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
   sessionId: AgentSessionId,
 ) {
   const db = yield* AgentSessionRepository;
+  const snapshotReader = yield* AgentSessionSnapshotReader;
   const existing = registry.get(sessionId);
 
   if (existing) {
@@ -60,7 +62,7 @@ export const getOrRestoreActor = Effect.fn("agent/getOrRestoreActor")(function* 
   // wherever the app Layer is provided is compiler-checked, not trusted.
   const services = yield* Effect.context<DocumentExtractionServices>();
 
-  const session = yield* db.getAgentSessionById({ sessionId }).pipe(
+  const session = yield* snapshotReader.getUnsafe({ sessionId }).pipe(
     Effect.flatMap(
       Option.match({
         onNone: () => Effect.fail(new SessionNotFoundError()),

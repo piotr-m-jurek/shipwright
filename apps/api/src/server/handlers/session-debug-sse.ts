@@ -16,6 +16,7 @@ import { Sse } from "effect/unstable/encoding";
 import { AuthService } from "@shipwright/auth/auth-service";
 import { extractSessionToken, sessionCookieHeader } from "@shipwright/shared/api/session-cookie";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
+import { AgentSessionSnapshotReader } from "@shipwright/db/repositories/agent-session-snapshot-reader";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
@@ -29,7 +30,7 @@ import type { DebugSnapshot } from "@shipwright/shared/schemas/debug";
 // ---------------------------------------------------------------------------
 
 type DebugServices =
-  | AgentSessionRepository
+  | AgentSessionSnapshotReader
   | DocumentRepository
   | ClarificationRepository
   | OutputRepository
@@ -61,14 +62,14 @@ const buildDebugPayload = (
   sessionId: AgentSessionId,
 ): Effect.Effect<DebugSnapshot, never, DebugServices> =>
   Effect.gen(function* () {
-    const agentSessionDb = yield* AgentSessionRepository;
+    const snapshotReader = yield* AgentSessionSnapshotReader;
     const documentDb = yield* DocumentRepository;
     const clarificationDb = yield* ClarificationRepository;
     const outputDb = yield* OutputRepository;
     const messageQueue = yield* MessageQueue;
 
-    const session = yield* agentSessionDb
-      .getAgentSessionById({ sessionId })
+    const session = yield* snapshotReader
+      .getUnsafe({ sessionId })
       .pipe(Effect.orDie, Effect.flatMap(Effect.fromOption), Effect.orDie);
 
     const queueRows = yield* messageQueue.listBySession(sessionId);

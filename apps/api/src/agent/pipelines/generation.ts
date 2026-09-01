@@ -3,12 +3,14 @@ import { Effect, Option, pipe } from "effect";
 import { Spans } from "@shipwright/observability";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
+import { outputStorageKey } from "@shipwright/shared/domain/storage-keys";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { StorageAdapter } from "@shipwright/storage";
 import { runBriefWriter, runPrdWriter, runRevisionBriefWriter, runRevisionPrdWriter } from "../writer/index";
 import { getOrRestoreActor } from "../session-actor";
-import { AnalysisPipelineError, SessionStateError } from "../errors";
+import { AnalysisPipelineError } from "../errors";
+import { SessionStateError } from "@shipwright/shared/domain/errors";
 import type { MachineContext } from "@shipwright/shared/schemas/machine";
 import { isComplete, publishForCurrentState } from "../session-process-manager";
 
@@ -36,7 +38,7 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
           Effect.annotateLogs({ sessionId, outputVersion, chars: briefText.length }),
         );
 
-        const briefKey = `outputs/${sessionId}/project_brief_v${outputVersion}.md`;
+        const briefKey = outputStorageKey(sessionId, "project_brief", outputVersion);
         yield* pipe(
           storage.upload(briefKey, Buffer.from(briefText, "utf-8")),
           Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
@@ -78,7 +80,7 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
           Effect.annotateLogs({ sessionId, outputVersion, chars: prdText.length }),
         );
 
-        const prdKey = `outputs/${sessionId}/implementation_prd_v${outputVersion}.md`;
+        const prdKey = outputStorageKey(sessionId, "implementation_prd", outputVersion);
         yield* pipe(
           storage.upload(prdKey, Buffer.from(prdText, "utf-8")),
           Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
@@ -181,7 +183,7 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
           Effect.annotateLogs({ sessionId, outputVersion, chars: newBriefText.length }),
         );
 
-        const briefKey = `outputs/${sessionId}/project_brief_v${outputVersion}.md`;
+        const briefKey = outputStorageKey(sessionId, "project_brief", outputVersion);
         yield* pipe(
           storage.upload(briefKey, Buffer.from(newBriefText, "utf-8")),
           Effect.mapError((cause) => new AnalysisPipelineError({ cause })),
@@ -228,7 +230,7 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
           Effect.annotateLogs({ sessionId, outputVersion, chars: newPrdText.length }),
         );
 
-        const prdKey = `outputs/${sessionId}/implementation_prd_v${outputVersion}.md`;
+        const prdKey = outputStorageKey(sessionId, "implementation_prd", outputVersion);
         yield* pipe(
           storage.upload(prdKey, Buffer.from(newPrdText, "utf-8")),
           Effect.mapError((cause) => new AnalysisPipelineError({ cause })),

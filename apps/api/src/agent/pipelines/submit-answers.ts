@@ -3,7 +3,8 @@ import { getOrRestoreActor } from "../session-actor";
 import type { AgentSessionId, QuestionId } from "@shipwright/shared/domain/ids";
 import { Spans } from "@shipwright/observability";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
-import { AnalysisPipelineError, SessionStateError } from "../errors";
+import { AnalysisPipelineError } from "../errors";
+import { SessionStateError } from "@shipwright/shared/domain/errors";
 import { isAwaitingAnswers, publishForCurrentState } from "../session-process-manager";
 
 export const submitAnswers = Effect.fn("agent/submitAnswers")(

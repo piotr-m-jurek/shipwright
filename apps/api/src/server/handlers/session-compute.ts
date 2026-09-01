@@ -11,6 +11,7 @@ import {
 } from "@shipwright/shared/schemas/api";
 import { Api } from "@shipwright/shared/api";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
+import { AgentSessionSnapshotReader } from "@shipwright/db/repositories/agent-session-snapshot-reader";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
@@ -83,7 +84,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
     )
     .handle("getSessionDebug", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
-        const agentSessionDb = yield* AgentSessionRepository;
+        const snapshotReader = yield* AgentSessionSnapshotReader;
         const documentDb = yield* DocumentRepository;
         const clarificationDb = yield* ClarificationRepository;
         const outputDb = yield* OutputRepository;
@@ -91,8 +92,8 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const user = yield* CurrentUser;
 
         // Ownership check — 404 for unknown or other user's session
-        const session = yield* agentSessionDb
-          .getAgentSessionByIdForUser({ sessionId, userId: user.id })
+        const session = yield* snapshotReader
+          .get({ sessionId, userId: user.id })
           .pipe(
             Effect.orDie,
             Effect.flatMap(Effect.fromOption),
@@ -165,6 +166,16 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
     )
     .handle("confirmAnalysis", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
+        const agentSessionDb = yield* AgentSessionRepository;
+        const user = yield* CurrentUser;
+
+        // Ownership check — 404 for unknown or other user's session
+        yield* pipe(
+          agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }),
+          Effect.map((v) => Option.getOrThrow(v)),
+          Effect.catch(() => new AgentSessionNotFound()),
+        );
+
         const actor = yield* pipe(
           getOrRestoreActor(sessionId),
           Effect.mapError((cause) => new ConfirmAnalysisError({ cause })),

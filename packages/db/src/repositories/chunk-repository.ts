@@ -1,22 +1,24 @@
 import { Context, Effect, Layer } from "effect";
 import { Spans } from "@shipwright/observability";
-import type { InsertChunk, SelectChunk } from "../types";
+import type { InsertChunk } from "../types";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { chunks } from "../schema";
 import { DB } from "../index";
 import { and, asc, cosineDistance, desc, eq, gt, sql } from "drizzle-orm";
+import type { Chunk } from "@shipwright/shared/domain/types";
+import { toChunk } from "../mappers";
 
 interface Interface {
-  createChunks: (data: InsertChunk[]) => Effect.Effect<SelectChunk[], EffectDrizzleQueryError>;
+  createChunks: (data: InsertChunk[]) => Effect.Effect<Chunk[], EffectDrizzleQueryError>;
 
   getChunksByDocumentId: (
     documentId: DocumentId,
-  ) => Effect.Effect<SelectChunk[], EffectDrizzleQueryError>;
+  ) => Effect.Effect<Chunk[], EffectDrizzleQueryError>;
 
   getChunksBySessionId: (
     sessionId: AgentSessionId,
-  ) => Effect.Effect<SelectChunk[], EffectDrizzleQueryError>;
+  ) => Effect.Effect<Chunk[], EffectDrizzleQueryError>;
 
   getChunksBySimilarity: (payload: {
     sessionId: AgentSessionId;
@@ -42,7 +44,8 @@ export class ChunkRepository extends Context.Service<ChunkRepository, Interface>
       const db = yield* DB;
 
       const createChunks = Effect.fn("db/createChunks")(function* (data: InsertChunk[]) {
-        return yield* db.insert(chunks).values(data).returning();
+        const rows = yield* db.insert(chunks).values(data).returning();
+        return rows.map(toChunk);
       });
 
       const getChunksByDocumentId = Effect.fn("db/getChunksByDocumentId")(function* (documentId: DocumentId) {
@@ -52,13 +55,13 @@ export class ChunkRepository extends Context.Service<ChunkRepository, Interface>
           .where(eq(chunks.documentId, documentId))
           .orderBy(asc(chunks.chunkIndex));
         yield* Effect.annotateCurrentSpan(Spans.dbRowCount(rows.length));
-        return rows;
+        return rows.map(toChunk);
       });
 
       const getChunksBySessionId = Effect.fn("db/getChunksBySessionId")(function* (sessionId: AgentSessionId) {
         const rows = yield* db.select().from(chunks).where(eq(chunks.sessionId, sessionId));
         yield* Effect.annotateCurrentSpan(Spans.dbRowCount(rows.length));
-        return rows;
+        return rows.map(toChunk);
       });
 
       const getChunksBySimilarity = Effect.fn("db/getChunksBySimilarity")(function* ({

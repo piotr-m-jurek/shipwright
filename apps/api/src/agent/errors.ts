@@ -15,11 +15,6 @@ export class AnalysisPipelineError extends Schema.TaggedErrorClass<AnalysisPipel
   { cause: Schema.Defect() },
 ) {}
 
-export class SessionStateError extends Schema.TaggedErrorClass<SessionStateError>()(
-  "shipwright/agent/SessionStateError",
-  { message: Schema.String },
-) {}
-
 export class AllExtractionsFailedError extends Schema.TaggedErrorClass<AllExtractionsFailedError>()(
   "shipwright/agent/AllExtractionsFailedError",
   {},
