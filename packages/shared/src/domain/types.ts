@@ -63,9 +63,6 @@ export type ConfidenceLevel = (typeof CONFIDENCE_LEVEL_VALUES)[number];
 export const SUMMARY_ITEM_TYPE_VALUES = ["requirement", "constraint", "assumption"] as const;
 export type SummaryItemType = (typeof SUMMARY_ITEM_TYPE_VALUES)[number];
 
-export const MESSAGE_ROLE_VALUES = ["user", "assistant", "system"] as const;
-export type MessageRole = (typeof MESSAGE_ROLE_VALUES)[number];
-
 export const OUTPUT_TYPE_VALUES = ["project_brief", "implementation_prd"] as const;
 export type OutputType = (typeof OUTPUT_TYPE_VALUES)[number];
 

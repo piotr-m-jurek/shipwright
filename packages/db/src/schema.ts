@@ -19,7 +19,6 @@ import type {
   ChunkId,
   DocumentId,
   McpTokenId,
-  MessageId,
   OutputId,
   QuestionId,
   SummaryId,
@@ -29,7 +28,6 @@ import {
   CONFIDENCE_LEVEL_VALUES,
   DOCUMENT_STATUS_VALUES,
   INPUT_MODE_VALUES,
-  MESSAGE_ROLE_VALUES,
   OUTPUT_TYPE_VALUES,
   SESSION_STATUS_VALUES,
   SUMMARY_ITEM_TYPE_VALUES,
@@ -243,24 +241,6 @@ export const summaryItems = pgTable("summary_items", {
   orderIndex: integer("order_index").notNull(),
 });
 
-export const messageRoleEnum = pgEnum("role", MESSAGE_ROLE_VALUES);
-
-export const messages = pgTable("messages", {
-  id: uuid("id").primaryKey().defaultRandom().notNull().$type<MessageId>(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at")
-    .notNull()
-    .defaultNow()
-    .$onUpdate(() => new Date()),
-  sessionId: uuid("session_id")
-    .references(() => agentSessions.id, { onDelete: "cascade" })
-    .notNull()
-    .$type<AgentSessionId>(),
-  content: text("content").notNull(),
-  role: messageRoleEnum("role").notNull(),
-  agentPass: text("agent_pass"),
-});
-
 export const questions = pgTable("questions", {
   id: uuid("id").primaryKey().defaultRandom().notNull().$type<QuestionId>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -352,7 +332,6 @@ export const relations = defineRelations(
     chunks,
     documentSummaries,
     summaryItems,
-    messages,
     questions,
     answers,
     outputs,
@@ -379,7 +358,6 @@ export const relations = defineRelations(
       documents: r.many.documents(),
       chunks: r.many.chunks(),
       documentSummaries: r.many.documentSummaries(),
-      messages: r.many.messages(),
       questions: r.many.questions(),
       answers: r.many.answers(),
       outputs: r.many.outputs(),
@@ -403,9 +381,6 @@ export const relations = defineRelations(
     chunks: {
       document: r.one.documents({ from: r.chunks.documentId, to: r.documents.id }),
       session: r.one.agentSessions({ from: r.chunks.sessionId, to: r.agentSessions.id }),
-    },
-    messages: {
-      session: r.one.agentSessions({ from: r.messages.sessionId, to: r.agentSessions.id }),
     },
     questions: {
       session: r.one.agentSessions({ from: r.questions.sessionId, to: r.agentSessions.id }),

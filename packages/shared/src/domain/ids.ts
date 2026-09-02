@@ -39,8 +39,5 @@ export type AnswerId = typeof AnswerId.Type;
 export const OutputId = Schema.String.pipe(Schema.brand("OutputId"));
 export type OutputId = typeof OutputId.Type;
 
-export const MessageId = Schema.String.pipe(Schema.brand("MessageId"));
-export type MessageId = typeof MessageId.Type;
-
 export const McpTokenId = Schema.String.pipe(Schema.brand("McpTokenId"));
 export type McpTokenId = typeof McpTokenId.Type;
