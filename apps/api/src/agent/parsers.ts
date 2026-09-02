@@ -13,25 +13,25 @@ export type ParseResult = (
   | { type: Exclude<ParsedFileType, "pdf"> }
 ) & { text: string; filename: string };
 
-class UnknownFileExtension extends Schema.TaggedErrorClass<UnknownFileExtension>()(
+class UnknownFileExtension extends Schema.TaggedError<UnknownFileExtension>()(
   "UnknownFileExtension",
   { cause: Schema.Defect(), message: Schema.optional(Schema.String) },
 ) {}
 
-class PdfParseError extends Schema.TaggedErrorClass<PdfParseError>()("PdfParseError", {
+class PdfParseError extends Schema.TaggedError<PdfParseError>()("PdfParseError", {
   cause: Schema.Defect(),
 }) {}
 
-class DocParseError extends Schema.TaggedErrorClass<DocParseError>()("DocParseError", {
+class DocParseError extends Schema.TaggedError<DocParseError>()("DocParseError", {
   cause: Schema.Defect(),
 }) {}
 
-class UnsupportedFileTypeError extends Schema.TaggedErrorClass<UnsupportedFileTypeError>()(
+class UnsupportedFileTypeError extends Schema.TaggedError<UnsupportedFileTypeError>()(
   "UnsupportedFileTypeError",
   { filetype: Schema.optional(Schema.String) },
 ) {}
 
-export class MimeVerificationError extends Schema.TaggedErrorClass<MimeVerificationError>()(
+export class MimeVerificationError extends Schema.TaggedError<MimeVerificationError>()(
   "MimeVerificationError",
   {
     filename: Schema.String,

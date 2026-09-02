@@ -35,12 +35,12 @@ export type PromptName = typeof PromptName.Type;
 
 // ── Errors ─────────────────────────────────────────────────────────────────
 
-export class PromptFetchError extends Schema.TaggedErrorClass<PromptFetchError>()(
+export class PromptFetchError extends Schema.TaggedError<PromptFetchError>()(
   "shipwright/observability/PromptFetchError",
   { name: Schema.String, cause: Schema.Defect() },
 ) {}
 
-export class PromptParseError extends Schema.TaggedErrorClass<PromptParseError>()(
+export class PromptParseError extends Schema.TaggedError<PromptParseError>()(
   "shipwright/observability/PromptParseError",
   { name: Schema.String, cause: Schema.Defect() },
 ) {}
@@ -76,7 +76,7 @@ export class PromptResult extends Schema.Class<PromptResult>("PromptResult")({
 
 // ── Score submission ───────────────────────────────────────────────────────
 
-export class ScoreSubmitError extends Schema.TaggedErrorClass<ScoreSubmitError>()(
+export class ScoreSubmitError extends Schema.TaggedError<ScoreSubmitError>()(
   "shipwright/observability/ScoreSubmitError",
   { traceId: Schema.String, name: Schema.String, cause: Schema.Defect() },
 ) {}
@@ -96,7 +96,7 @@ export interface ScoreInput {
 
 // ── Dataset registration ──────────────────────────────────────────────────
 
-export class DatasetError extends Schema.TaggedErrorClass<DatasetError>()(
+export class DatasetError extends Schema.TaggedError<DatasetError>()(
   "shipwright/observability/DatasetError",
   { operation: Schema.String, name: Schema.String, cause: Schema.Defect() },
 ) {}

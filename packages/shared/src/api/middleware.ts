@@ -3,7 +3,7 @@ import { HttpApiMiddleware, HttpApiSecurity } from "effect/unstable/httpapi";
 import type { UserId } from "../domain/ids";
 import { SESSION_COOKIE_NAME } from "./session-cookie";
 
-export class Unauthorized extends Schema.TaggedErrorClass<Unauthorized>()(
+export class Unauthorized extends Schema.TaggedError<Unauthorized>()(
   "Unauthorized",
   { message: Schema.String },
   { httpApiStatus: 401 },

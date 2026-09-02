@@ -24,7 +24,7 @@ export type DocumentExtractionServices =
   | SqlClient
   | LangfuseClient;
 
-export class SnapshotValidationError extends Schema.TaggedErrorClass<SnapshotValidationError>()(
+export class SnapshotValidationError extends Schema.TaggedError<SnapshotValidationError>()(
   "SnapshotValidationError",
   { cause: Schema.Defect() },
 ) {}

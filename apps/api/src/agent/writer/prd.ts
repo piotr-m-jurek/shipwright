@@ -9,7 +9,7 @@ import { runAgenticLoop } from "./agentic-loop";
 import { LangfuseClient } from "../../observability/langfuse-client";
 import { forkCompletenessJudge } from "./judge";
 
-export class PrdWriterError extends Schema.TaggedErrorClass<PrdWriterError>()(
+export class PrdWriterError extends Schema.TaggedError<PrdWriterError>()(
   "shipwright/agent/PrdWriterError",
   {
     cause: Schema.Defect(),

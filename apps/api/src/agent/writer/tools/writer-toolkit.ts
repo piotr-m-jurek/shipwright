@@ -12,12 +12,12 @@ import { LangfuseClient } from "../../../observability/langfuse-client";
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 
-class DocumentNotFoundError extends Schema.TaggedErrorClass<DocumentNotFoundError>()(
+class DocumentNotFoundError extends Schema.TaggedError<DocumentNotFoundError>()(
   "shipwright/tools/DocumentNotFoundError",
   { filename: Schema.String },
 ) {}
 
-class DocumentSummaryNotFoundError extends Schema.TaggedErrorClass<DocumentSummaryNotFoundError>()(
+class DocumentSummaryNotFoundError extends Schema.TaggedError<DocumentSummaryNotFoundError>()(
   "shipwright/tools/DocumentSummaryNotFoundError",
   { filename: Schema.String },
 ) {}

@@ -9,27 +9,27 @@ import { ConfigService } from "@shipwright/config";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Context, Layer, Schema, Effect, Redacted } from "effect";
 
-export class UploadError extends Schema.TaggedErrorClass<UploadError>()(
+export class UploadError extends Schema.TaggedError<UploadError>()(
   "shipwright/storage/UploadError",
   { cause: Schema.Defect() },
 ) {}
 
-export class DownloadError extends Schema.TaggedErrorClass<DownloadError>()(
+export class DownloadError extends Schema.TaggedError<DownloadError>()(
   "shipwright/storage/DownloadError",
   { cause: Schema.Defect(), message: Schema.optional(Schema.String) },
 ) {}
 
-export class DeleteError extends Schema.TaggedErrorClass<DeleteError>()(
+export class DeleteError extends Schema.TaggedError<DeleteError>()(
   "shipwright/storage/DeleteError",
   { cause: Schema.Defect() },
 ) {}
 
-export class PresignedUrlError extends Schema.TaggedErrorClass<PresignedUrlError>()(
+export class PresignedUrlError extends Schema.TaggedError<PresignedUrlError>()(
   "shipwright/storage/PresignedUrlError",
   { cause: Schema.Defect() },
 ) {}
 
-export class HeadObjectError extends Schema.TaggedErrorClass<HeadObjectError>()(
+export class HeadObjectError extends Schema.TaggedError<HeadObjectError>()(
   "shipwright/storage/HeadObjectError",
   { cause: Schema.Defect() },
 ) {}

@@ -8,9 +8,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@effect/ai-anthropic": "4.0.0-beta.103",
-    "@effect/platform-bun": "4.0.0-beta.103",
-    "@effect/sql-pg": "4.0.0-beta.103",
+    "@effect/ai-anthropic": "4.0.0-rc.112",
+    "@effect/platform-bun": "4.0.0-rc.112",
+    "@effect/sql-pg": "4.0.0-rc.112",
     "@shipwright/auth": "workspace:*",
     "@shipwright/config": "workspace:*",
     "@shipwright/db": "workspace:*",
@@ -18,7 +18,7 @@
     "@shipwright/observability": "workspace:*",
     "@shipwright/shared": "workspace:*",
     "@shipwright/storage": "workspace:*",
-    "drizzle-orm": "1.0.0-rc.4",
+    "drizzle-orm": "1.0.0-rc.5-169397b",
     "pg": "^8.22.0"
   },
   "devDependencies": {

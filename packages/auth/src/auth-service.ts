@@ -9,7 +9,7 @@ import { Option } from "effect";
 import { ConfigService } from "@shipwright/config";
 import { type Auth, makeAuth } from "./auth";
 
-export class AuthSessionLookupError extends Schema.TaggedErrorClass<AuthSessionLookupError>()(
+export class AuthSessionLookupError extends Schema.TaggedError<AuthSessionLookupError>()(
   "shipwright/auth/AuthSessionLookupError",
   { cause: Schema.Defect() },
 ) {}

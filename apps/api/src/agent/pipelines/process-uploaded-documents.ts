@@ -17,17 +17,17 @@ import { documentParseErrorCounter } from "../../observability/metrics";
 import { Spans } from "@shipwright/observability";
 
 // TODO: actually throw those errors, not DB errors
-export class DocumentNotFoundError extends Schema.TaggedErrorClass<DocumentNotFoundError>()(
+export class DocumentNotFoundError extends Schema.TaggedError<DocumentNotFoundError>()(
   "DocumentNotFoundError",
   { cause: Schema.Defect() },
 ) {}
 
-export class UpdateDocumentStatusError extends Schema.TaggedErrorClass<UpdateDocumentStatusError>()(
+export class UpdateDocumentStatusError extends Schema.TaggedError<UpdateDocumentStatusError>()(
   "UpdateDocumentStatusError",
   { cause: Schema.Defect() },
 ) {}
 
-export class ProcessDocumentError extends Schema.TaggedErrorClass<ProcessDocumentError>()(
+export class ProcessDocumentError extends Schema.TaggedError<ProcessDocumentError>()(
   "ProcessDocumentError",
   { cause: Schema.Defect() },
 ) {}

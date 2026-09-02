@@ -9,7 +9,7 @@ import { AgentSessionRepository } from "@shipwright/db/repositories/agent-sessio
 import { AgentSessionSnapshotReader } from "@shipwright/db/repositories/agent-session-snapshot-reader";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 
-export class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()(
+export class SessionNotFoundError extends Schema.TaggedError<SessionNotFoundError>()(
   "shipwright/agent/SessionNotFoundError",
   {},
 ) {}

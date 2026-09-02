@@ -8,22 +8,22 @@ import { Spans } from "@shipwright/observability";
 
 // ── Reason errors ─────────────────────────────────────────────────────────────
 
-export class SessionNotFoundReason extends Schema.TaggedErrorClass<SessionNotFoundReason>()(
+export class SessionNotFoundReason extends Schema.TaggedError<SessionNotFoundReason>()(
   "SessionNotFoundReason",
   {},
 ) {}
 
-export class NotInErrorStateReason extends Schema.TaggedErrorClass<NotInErrorStateReason>()(
+export class NotInErrorStateReason extends Schema.TaggedError<NotInErrorStateReason>()(
   "NotInErrorStateReason",
   { currentStatus: Schema.String },
 ) {}
 
-export class NoDocumentsReason extends Schema.TaggedErrorClass<NoDocumentsReason>()(
+export class NoDocumentsReason extends Schema.TaggedError<NoDocumentsReason>()(
   "NoDocumentsReason",
   {},
 ) {}
 
-export class RetrySessionError extends Schema.TaggedErrorClass<RetrySessionError>()(
+export class RetrySessionError extends Schema.TaggedError<RetrySessionError>()(
   "shipwright/agent/RetrySessionError",
   {
     reason: Schema.Union([SessionNotFoundReason, NotInErrorStateReason, NoDocumentsReason]),

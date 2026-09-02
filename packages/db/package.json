@@ -21,17 +21,17 @@
     "@shipwright/shared": "workspace:*"
   },
   "peerDependencies": {
-    "@effect/sql-pg": "4.0.0-beta.103",
-    "drizzle-orm": "1.0.0-rc.4",
+    "@effect/sql-pg": "4.0.0-rc.112",
+    "drizzle-orm": "1.0.0-rc.5-169397b",
     "pg": "^8.22.0"
   },
   "devDependencies": {
-    "@effect/sql-pg": "4.0.0-beta.103",
+    "@effect/sql-pg": "4.0.0-rc.112",
     "@types/pg": "^8.20.0",
     "bun-types": "^1.3.14",
     "dotenv": "^17.4.2",
     "drizzle-kit": "1.0.0-rc.4",
-    "drizzle-orm": "1.0.0-rc.4",
+    "drizzle-orm": "1.0.0-rc.5-169397b",
     "pg": "^8.22.0"
   }
 }

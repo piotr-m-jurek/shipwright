@@ -15,7 +15,7 @@ import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers";
 import { makeWriterToolkitLayer, WriterToolkit } from "./tools/writer-toolkit";
 import { forkFaithfulnessJudge, forkCompletenessJudge } from "./judge";
 
-export class RevisionWriterError extends Schema.TaggedErrorClass<RevisionWriterError>()(
+export class RevisionWriterError extends Schema.TaggedError<RevisionWriterError>()(
   "shipwright/agent/RevisionWriterError",
   { cause: Schema.Defect() },
 ) {}

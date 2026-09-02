@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
-    "@effect/atom-react": "4.0.0-beta.103",
-    "@effect/platform-browser": "4.0.0-beta.103",
+    "@effect/atom-react": "4.0.0-rc.112",
+    "@effect/platform-browser": "4.0.0-rc.112",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@phosphor-icons/react": "^2.1.10",
     "@shadcn/react": "^0.2.1",

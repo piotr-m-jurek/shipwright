@@ -13,19 +13,19 @@ import { type DocumentSummaryEffect, DocumentSummaryEffectSchema } from "./schem
 import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers";
 import { LangfuseClient } from "../../observability/langfuse-client";
 
-class ChunksRetrievalError extends Schema.TaggedErrorClass<ChunksRetrievalError>()(
+class ChunksRetrievalError extends Schema.TaggedError<ChunksRetrievalError>()(
   "ChunksRetrievalError",
   { cause: Schema.Defect() },
 ) {}
 
-class DocumentSummaryWriteError extends Schema.TaggedErrorClass<DocumentSummaryWriteError>()(
+class DocumentSummaryWriteError extends Schema.TaggedError<DocumentSummaryWriteError>()(
   "DocumentSummaryWriteError",
   { cause: Schema.Defect() },
 ) {}
 
-class NoChunksError extends Schema.TaggedErrorClass<NoChunksError>()("NoChunksError", {}) {}
+class NoChunksError extends Schema.TaggedError<NoChunksError>()("NoChunksError", {}) {}
 
-class DocumentSummaryReadError extends Schema.TaggedErrorClass<DocumentSummaryReadError>()(
+class DocumentSummaryReadError extends Schema.TaggedError<DocumentSummaryReadError>()(
   "DocumentSummaryReadError",
   { cause: Schema.Defect() },
 ) {}

@@ -55,7 +55,7 @@ export const HuggingFaceTeiEmbeddingModelLayerProvided = pipe(
   Layer.provide(ConfigService.layer),
 );
 
-export class EmbeddingError extends Schema.TaggedErrorClass<EmbeddingError>()(
+export class EmbeddingError extends Schema.TaggedError<EmbeddingError>()(
   "shipwright/agent/EmbeddingService/EmbeddingError",
   { cause: Schema.Defect() },
 ) {}

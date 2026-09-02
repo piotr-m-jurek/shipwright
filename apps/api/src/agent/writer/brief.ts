@@ -9,7 +9,7 @@ import { runAgenticLoop } from "./agentic-loop";
 import { LangfuseClient } from "../../observability/langfuse-client";
 import { forkFaithfulnessJudge } from "./judge";
 
-export class BriefWriterError extends Schema.TaggedErrorClass<BriefWriterError>()(
+export class BriefWriterError extends Schema.TaggedError<BriefWriterError>()(
   "shipwright/agent/BriefWriterError",
   {
     cause: Schema.Defect(),

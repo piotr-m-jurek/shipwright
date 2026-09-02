@@ -71,7 +71,7 @@ export const deadLetteredCounter = Metric.counter("shipwright.queue.dead_lettere
 
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
-export class DeliveryTagNotFoundError extends Schema.TaggedErrorClass<DeliveryTagNotFoundError>()(
+export class DeliveryTagNotFoundError extends Schema.TaggedError<DeliveryTagNotFoundError>()(
   "DeliveryTagNotFoundError",
   { deliveryTag: Schema.String },
 ) {}

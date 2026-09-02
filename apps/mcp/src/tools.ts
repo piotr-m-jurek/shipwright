@@ -37,7 +37,7 @@ import { Effect, Layer, Option, pipe, Schema } from "effect";
 import { McpServer, Tool, Toolkit } from "effect/unstable/ai";
 import { Spans } from "@shipwright/observability";
 
-class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()(
+class SessionNotFoundError extends Schema.TaggedError<SessionNotFoundError>()(
   "shipwright/mcp/SessionNotFoundError",
   { message: Schema.String },
 ) {}
