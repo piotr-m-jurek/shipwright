@@ -16,13 +16,14 @@ import {
   RetrySessionResponse,
 } from "@shipwright/shared/schemas/api";
 import { Api } from "@shipwright/shared/api";
-import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { CurrentUser } from "@shipwright/shared/middleware";
 import { createUploadSession } from "../../agent/pipelines/create-upload-session";
 import { confirmUploadResults } from "../../agent/pipelines/confirm-upload-results";
 import { retrySession } from "../../agent/pipelines/retry-session";
 import { DocumentsProcess } from "@shipwright/queue";
+import { requireOwnedSession } from "./require-owned-session";
+import { toServiceUnavailable } from "./service-unavailable";
 
 export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
   handlers
@@ -71,16 +72,16 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
     )
     .handle("getOutputDownloadUrl", ({ params: { sessionId, type } }) =>
       Effect.gen(function* () {
-        const agentSessionDb = yield* AgentSessionRepository;
         const outputDb = yield* OutputRepository;
         const user = yield* CurrentUser;
 
-        yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(
-          Effect.mapError(() => new OutputNotFoundError()),
-          Effect.flatMap(Option.match({
-            onNone: () => Effect.fail(new OutputNotFoundError()),
-            onSome: Effect.succeed,
-          })),
+        // This endpoint's contract deliberately uses one 404 flavor
+        // (OutputNotFoundError) for both "no such session" and "no such
+        // output" — the client doesn't need to distinguish. A genuine store
+        // failure is a different thing, though: map that to
+        // ServiceUnavailableError instead of misreporting it as a 404.
+        yield* requireOwnedSession(sessionId, user.id).pipe(
+          Effect.catchTag("AgentSessionNotFound", () => new OutputNotFoundError()),
         );
 
         // Validate type param
@@ -89,7 +90,7 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
         }
 
         const s3Key = yield* outputDb.getLatestOutputByType({ sessionId, type }).pipe(
-          Effect.mapError(() => new OutputNotFoundError()),
+          toServiceUnavailable,
           Effect.flatMap((opt) =>
             Option.match(
               pipe(opt, Option.flatMap((r) => Option.fromNullishOr(r.s3Key))),
@@ -102,11 +103,11 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
         );
 
         const storage = yield* StorageAdapter;
-        // Generate presigned GET URL with 15-minute TTL (not a PUT URL)
-        const url = yield* pipe(
-          storage.generatePresignedGetUrl(s3Key, 15),
-          Effect.mapError(() => new OutputNotFoundError()),
-        );
+        // Generate presigned GET URL with 15-minute TTL (not a PUT URL) — a
+        // failure here is a storage/infra issue, not "output not found" (the
+        // output row above was found fine); ServiceUnavailableError, not
+        // OutputNotFoundError.
+        const url = yield* pipe(storage.generatePresignedGetUrl(s3Key, 15), toServiceUnavailable);
 
         return new OutputDownloadUrlResponse({ url });
       }),

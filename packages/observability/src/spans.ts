@@ -87,7 +87,7 @@ export const Spans = {
     "shipwright.mcp.result_count": count,
   }),
 
-  mcpAuthOutcome: (outcome: "success" | "invalid_token") => ({
+  mcpAuthOutcome: (outcome: "success" | "invalid_token" | "store_unavailable") => ({
     "shipwright.mcp.auth.outcome": outcome,
   }),
 

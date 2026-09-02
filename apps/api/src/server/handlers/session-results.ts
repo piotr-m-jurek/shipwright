@@ -1,7 +1,6 @@
 import { Effect, Option, pipe } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import {
-  AgentSessionNotFound,
   AnalysisPipelineError,
   RevisionError,
 } from "@shipwright/shared/domain/errors";
@@ -11,29 +10,22 @@ import {
   ReviseResponse,
 } from "@shipwright/shared/schemas/api";
 import { Api } from "@shipwright/shared/api";
-import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { CurrentUser } from "@shipwright/shared/middleware";
 import { submitAnswers } from "../../agent/pipelines/submit-answers";
 import { startRevision } from "../../agent/pipelines/generation";
+import { requireOwnedSession } from "./require-owned-session";
+import { toServiceUnavailable } from "./service-unavailable";
 
 export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
   handlers
     .handle("submitSessionAnswers", ({ payload: { answers }, params: { sessionId } }) =>
       Effect.gen(function* () {
-        const agentSessionDb = yield* AgentSessionRepository;
         const user = yield* CurrentUser;
 
-        // Ownership check — 404 for unknown or other user's session
-        yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(
-          Effect.mapError(() => new AgentSessionNotFound()),
-          Effect.flatMap(
-            Option.match({
-              onNone: () => Effect.fail(new AgentSessionNotFound()),
-              onSome: Effect.succeed,
-            }),
-          ),
-        );
+        // Ownership check — 404 for unknown/other-user session, 503 if the
+        // store itself failed.
+        yield* requireOwnedSession(sessionId, user.id);
 
         const result = yield* pipe(
           submitAnswers(sessionId, [...answers]),
@@ -47,23 +39,17 @@ export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
     )
     .handle("getSessionFinalOutput", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
-        const agentSessionDb = yield* AgentSessionRepository;
         const outputDb = yield* OutputRepository;
         const user = yield* CurrentUser;
 
-        yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(
-          Effect.mapError(() => new AgentSessionNotFound()),
-          Effect.flatMap(
-            Option.match({
-              onNone: () => Effect.fail(new AgentSessionNotFound()),
-              onSome: Effect.succeed,
-            }),
-          ),
-        );
+        yield* requireOwnedSession(sessionId, user.id);
 
-        const allOutputs = yield* outputDb
-          .getOutputsBySessionId(sessionId)
-          .pipe(Effect.mapError(() => new AgentSessionNotFound()));
+        // getOutputsBySessionId returns an array (possibly empty when no
+        // output exists yet) — its only failure mode is a genuine store
+        // error, never "not found", so it maps to ServiceUnavailableError,
+        // not AgentSessionNotFound (which the ownership check above already
+        // owns).
+        const allOutputs = yield* outputDb.getOutputsBySessionId(sessionId).pipe(toServiceUnavailable);
 
         const brief = Option.fromNullishOr(allOutputs.find((o) => o.type === "project_brief"));
         const prd = Option.fromNullishOr(allOutputs.find((o) => o.type === "implementation_prd"));
@@ -83,19 +69,11 @@ export const SessionResults = HttpApiBuilder.group(Api, "results", (handlers) =>
     )
     .handle("reviseOutput", ({ payload: { feedback }, params: { sessionId } }) =>
       Effect.gen(function* () {
-        const agentSessionDb = yield* AgentSessionRepository;
         const user = yield* CurrentUser;
 
-        // Ownership check — 404 for unknown or other user's session
-        yield* agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }).pipe(
-          Effect.mapError(() => new AgentSessionNotFound()),
-          Effect.flatMap(
-            Option.match({
-              onNone: () => Effect.fail(new AgentSessionNotFound()),
-              onSome: Effect.succeed,
-            }),
-          ),
-        );
+        // Ownership check — 404 for unknown/other-user session, 503 if the
+        // store itself failed.
+        yield* requireOwnedSession(sessionId, user.id);
 
         const result = yield* pipe(
           startRevision(sessionId, feedback),

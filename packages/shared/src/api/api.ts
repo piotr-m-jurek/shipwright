@@ -64,7 +64,7 @@ export class SessionStorageApi extends HttpApiGroup.make("storage")
     HttpApiEndpoint.get("getOutputDownloadUrl", "/sessions/:sessionId/output/:type/download-url", {
       params: { sessionId: AgentSessionId, type: Schema.String },
       success: OutputDownloadUrlResponse,
-      error: OutputNotFoundError,
+      error: [OutputNotFoundError, ServiceUnavailableError],
     }),
     HttpApiEndpoint.post("retrySession", "/sessions/:sessionId/retry", {
       params: { sessionId: AgentSessionId },
@@ -79,22 +79,22 @@ export class SessionComputationApi extends HttpApiGroup.make("compute")
     HttpApiEndpoint.get("getAgentSessionById", "/sessions/:sessionId", {
       params: { sessionId: AgentSessionId },
       success: GetAgentSessionResponse,
-      error: AgentSessionNotFound,
+      error: [AgentSessionNotFound, ServiceUnavailableError],
     }),
     HttpApiEndpoint.get("getSessionDocuments", "/sessions/:sessionId/documents", {
       params: { sessionId: AgentSessionId },
       success: GetSessionDocumentsResponse,
-      error: AgentSessionNotFound,
+      error: [AgentSessionNotFound, ServiceUnavailableError],
     }),
     HttpApiEndpoint.post("confirmAnalysis", "/sessions/:sessionId/confirm", {
       params: { sessionId: AgentSessionId },
       success: ConfirmAnalysisResponse,
-      error: [ConfirmAnalysisError, AgentSessionNotFound],
+      error: [ConfirmAnalysisError, AgentSessionNotFound, ServiceUnavailableError],
     }),
     HttpApiEndpoint.get("getSessionDebug", "/sessions/:sessionId/debug", {
       params: { sessionId: AgentSessionId },
       success: GetSessionDebugResponse,
-      error: AgentSessionNotFound,
+      error: [AgentSessionNotFound, ServiceUnavailableError],
     }),
     // SHIP-173 — retry a dead-lettered/failed job belonging to this session.
     // jobId is effect-mq's own JobId (opaque string, not one of this app's
@@ -102,7 +102,7 @@ export class SessionComputationApi extends HttpApiGroup.make("compute")
     HttpApiEndpoint.post("retryJob", "/sessions/:sessionId/debug/jobs/:jobId/retry", {
       params: { sessionId: AgentSessionId, jobId: Schema.String },
       success: RetryJobResponse,
-      error: [AgentSessionNotFound, JobNotFoundError, JobNotRetryableError],
+      error: [AgentSessionNotFound, JobNotFoundError, JobNotRetryableError, ServiceUnavailableError],
     }),
   )
 
@@ -114,18 +114,18 @@ export class SessionResultsApi extends HttpApiGroup.make("results")
       params: { sessionId: AgentSessionId },
       payload: PostAgentSessionAnswersRequest,
       success: PostAgentSessionAnswersResponse,
-      error: [SessionStateError, AnalysisPipelineError, AgentSessionNotFound],
+      error: [SessionStateError, AnalysisPipelineError, AgentSessionNotFound, ServiceUnavailableError],
     }),
     HttpApiEndpoint.get("getSessionFinalOutput", "/sessions/:sessionId/output", {
       params: { sessionId: AgentSessionId },
       success: GetAgentSessionFinalOutputResponse,
-      error: AgentSessionNotFound,
+      error: [AgentSessionNotFound, ServiceUnavailableError],
     }),
     HttpApiEndpoint.post("reviseOutput", "/sessions/:id/revise", {
       params: { sessionId: AgentSessionId },
       payload: ReviseRequest,
       success: ReviseResponse,
-      error: [SessionStateError, RevisionError, AgentSessionNotFound],
+      error: [SessionStateError, RevisionError, AgentSessionNotFound, ServiceUnavailableError],
     }),
   )
   .middleware(Authorization) {}
@@ -134,12 +134,15 @@ export class McpTokenApi extends HttpApiGroup.make("mcp-token")
   .add(
     HttpApiEndpoint.post("generateMcpToken", "/mcp-token", {
       success: McpTokenGenerateResponse,
+      error: ServiceUnavailableError,
     }),
     HttpApiEndpoint.get("getMcpTokenStatus", "/mcp-token", {
       success: McpTokenStatusResponse,
+      error: ServiceUnavailableError,
     }),
     HttpApiEndpoint.delete("revokeMcpToken", "/mcp-token", {
       success: McpTokenRevokeResponse,
+      error: ServiceUnavailableError,
     }),
   )
   .middleware(Authorization) {}

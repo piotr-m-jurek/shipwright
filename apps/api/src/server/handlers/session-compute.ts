@@ -5,9 +5,12 @@ import {
   ConfirmAnalysisError,
   JobNotFoundError,
   JobNotRetryableError,
+  ServiceUnavailableError,
 } from "@shipwright/shared/domain/errors";
 import { JobStore } from "effect-mq";
 import { AgentSessionAggregate } from "../../agent/agent-session-aggregate";
+import { toServiceUnavailable } from "./service-unavailable";
+import { requireOwnedSession } from "./require-owned-session";
 import {
   GetAgentSessionResponse,
   ConfirmAnalysisResponse,
@@ -16,7 +19,6 @@ import {
   RetryJobResponse,
 } from "@shipwright/shared/schemas/api";
 import { Api } from "@shipwright/shared/api";
-import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { AgentSessionSnapshotReader } from "@shipwright/db/repositories/agent-session-snapshot-reader";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
@@ -29,22 +31,17 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
   handlers
     .handle("getAgentSessionById", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
-        const agentSessionDb = yield* AgentSessionRepository;
         const clarificationDb = yield* ClarificationRepository;
         const user = yield* CurrentUser;
 
-        const session = yield* pipe(
-          agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }),
-          Effect.map((v) => Option.getOrThrow(v)),
-          Effect.catch(() => new AgentSessionNotFound()),
-        );
+        const session = yield* requireOwnedSession(sessionId, user.id);
 
         // Include current questions when session is awaiting answers
         const questions = yield* pipe(
           clarificationDb.getQuestionsBySessionId(sessionId),
           Effect.when(Effect.succeed(session.status === "awaiting_answers")),
           Effect.map(Option.getOrElse(() => [] as Question[])),
-          Effect.mapError(() => new AgentSessionNotFound()),
+          toServiceUnavailable,
         );
 
         return new GetAgentSessionResponse({
@@ -65,17 +62,14 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
     )
     .handle("getSessionDocuments", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
-        const agentSessionDb = yield* AgentSessionRepository;
         const documentDb = yield* DocumentRepository;
         const user = yield* CurrentUser;
 
-        yield* pipe(
-          agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }),
-          Effect.flatMap(Effect.fromOption),
-          Effect.catch(() => new AgentSessionNotFound()),
-        );
+        yield* requireOwnedSession(sessionId, user.id);
 
-        const documents = yield* documentDb.getDocumentsBySessionId(sessionId).pipe(Effect.orDie);
+        const documents = yield* documentDb
+          .getDocumentsBySessionId(sessionId)
+          .pipe(toServiceUnavailable);
 
         return new GetSessionDocumentsResponse({
           documents: documents.map((d) => ({
@@ -101,7 +95,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const session = yield* snapshotReader
           .get({ sessionId, userId: user.id })
           .pipe(
-            Effect.orDie,
+            toServiceUnavailable,
             Effect.flatMap(Effect.fromOption),
             Effect.catchTag("NoSuchElementError", () => new AgentSessionNotFound()),
           );
@@ -111,14 +105,18 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         // metadata: ({ sessionId }) => ({ sessionId }).
         const { items: queueJobs } = yield* jobStore
           .list({ metadata: { sessionId } })
-          .pipe(Effect.orDie);
+          .pipe(toServiceUnavailable);
 
-        const documents = yield* documentDb.getDocumentsBySessionId(sessionId).pipe(Effect.orDie);
+        const documents = yield* documentDb
+          .getDocumentsBySessionId(sessionId)
+          .pipe(toServiceUnavailable);
         const questions = yield* clarificationDb
           .getQuestionsBySessionId(sessionId)
-          .pipe(Effect.orDie);
-        const answers = yield* clarificationDb.getAnswersBySessionId(sessionId).pipe(Effect.orDie);
-        const outputs = yield* outputDb.getOutputsBySessionId(sessionId).pipe(Effect.orDie);
+          .pipe(toServiceUnavailable);
+        const answers = yield* clarificationDb
+          .getAnswersBySessionId(sessionId)
+          .pipe(toServiceUnavailable);
+        const outputs = yield* outputDb.getOutputsBySessionId(sessionId).pipe(toServiceUnavailable);
 
         // Extract XState context from snapshot
         const xstate = pipe(
@@ -187,16 +185,12 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
     )
     .handle("confirmAnalysis", ({ params: { sessionId } }) =>
       Effect.gen(function* () {
-        const agentSessionDb = yield* AgentSessionRepository;
         const aggregate = yield* AgentSessionAggregate;
         const user = yield* CurrentUser;
 
-        // Ownership check — 404 for unknown or other user's session
-        yield* pipe(
-          agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }),
-          Effect.map((v) => Option.getOrThrow(v)),
-          Effect.catch(() => new AgentSessionNotFound()),
-        );
+        // Ownership check — 404 for unknown/other-user session, 503 if the
+        // store itself failed.
+        yield* requireOwnedSession(sessionId, user.id);
 
         // confirmUpload is idempotent — None means a prior call already
         // confirmed this session (nothing changed, nothing new to publish).
@@ -220,16 +214,12 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
     )
     .handle("retryJob", ({ params: { sessionId, jobId } }) =>
       Effect.gen(function* () {
-        const agentSessionDb = yield* AgentSessionRepository;
         const jobStore = yield* JobStore.JobStore;
         const user = yield* CurrentUser;
 
-        // Ownership check — 404 for unknown or other user's session
-        yield* pipe(
-          agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }),
-          Effect.map((v) => Option.getOrThrow(v)),
-          Effect.catch(() => new AgentSessionNotFound()),
-        );
+        // Ownership check — 404 for unknown/other-user session, 503 if the
+        // store itself failed.
+        yield* requireOwnedSession(sessionId, user.id);
 
         // The job must both exist AND belong to this session — jobId is an
         // opaque effect-mq id, not scoped to a session by construction, so
@@ -238,7 +228,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const record = yield* jobStore
           .getJob(JobStore.JobId(jobId))
           .pipe(
-            Effect.orDie,
+            toServiceUnavailable,
             Effect.flatMap(Effect.fromOption),
             Effect.catchTag("NoSuchElementError", () => new JobNotFoundError()),
           );
@@ -249,7 +239,18 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
 
         yield* jobStore.retry(record.id).pipe(
           Effect.catchTags({
-            JobStoreError: (cause) => Effect.die(cause),
+            // SHIP-178: same reasoning as toServiceUnavailable — a store
+            // failure here is a real, typed, temporary condition, not a bug.
+            JobStoreError: (cause) =>
+              Effect.logError("[retryJob] JobStore.retry failed", cause).pipe(
+                Effect.andThen(
+                  Effect.fail(
+                    new ServiceUnavailableError({
+                      message: "A backing service is temporarily unavailable",
+                    }),
+                  ),
+                ),
+              ),
             JobNotFoundError: () => new JobNotFoundError(),
             JobNotRetryableError: () => new JobNotRetryableError({ state: record.state }),
           }),

@@ -38,7 +38,10 @@ export const McpAuthMiddlewareLayer = HttpRouter.middleware<{
         Effect.gen(function* () {
           const tokenRepo = yield* McpTokenRepository;
           const tokenHash = hashMcpToken(Redacted.value(token));
-          const owner = yield* tokenRepo.findActiveOwnerByHash(tokenHash).pipe(Effect.orDie);
+          // SHIP-178: don't collapse a genuine store failure into "invalid
+          // token" — a client retrying after a real DB blip would keep
+          // getting told its credentials are wrong.
+          const owner = yield* tokenRepo.findActiveOwnerByHash(tokenHash);
           return yield* Effect.fromOption(owner);
         }),
       ),
@@ -61,13 +64,22 @@ export const McpAuthMiddlewareLayer = HttpRouter.middleware<{
         }),
       ),
 
-      Effect.catchTag("NoSuchElementError", () =>
-        Effect.gen(function* () {
-          yield* Effect.logDebug("mcp auth: invalid, missing, or revoked MCP token");
-          yield* Effect.annotateCurrentSpan(Spans.mcpAuthOutcome("invalid_token"));
-          return HttpServerResponse.empty({ status: 401 });
-        }),
-      ),
+      Effect.catchTags({
+        NoSuchElementError: () =>
+          Effect.gen(function* () {
+            yield* Effect.logDebug("mcp auth: invalid, missing, or revoked MCP token");
+            yield* Effect.annotateCurrentSpan(Spans.mcpAuthOutcome("invalid_token"));
+            return HttpServerResponse.empty({ status: 401 });
+          }),
+        // SHIP-178: distinct from an invalid token — the store itself
+        // failed, so we genuinely can't tell if the token is valid.
+        EffectDrizzleQueryError: (cause) =>
+          Effect.gen(function* () {
+            yield* Effect.logError("mcp auth: token store lookup failed", cause);
+            yield* Effect.annotateCurrentSpan(Spans.mcpAuthOutcome("store_unavailable"));
+            return HttpServerResponse.empty({ status: 503 });
+          }),
+      }),
     ),
   { global: true },
 );

@@ -8,7 +8,7 @@
  * HttpApiBuilder cannot produce streaming responses).
  */
 
-import { Cause, Context, Effect, Option, Queue, Schedule, Stream } from "effect";
+import { Cause, Context, Effect, Exit, Option, Queue, Schedule, Stream } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { Sse } from "effect/unstable/encoding";
 import { AuthService } from "@shipwright/auth/auth-service";
@@ -129,18 +129,29 @@ export const SessionQuestionsSseLayer = HttpRouter.add(
         return HttpServerResponse.text("Bad Request", { status: 400 });
       }
 
-      // --- Ownership check (404 for unknown or other user's session) ---
+      // --- Ownership check (404 for unknown or other user's session, 503
+      //     if the store itself failed — SHIP-178: distinguish a real infra
+      //     failure from "not found" instead of dying into a generic 500) ---
       const agentSessionDb = yield* AgentSessionRepository;
-      const sessionOption = yield* agentSessionDb
+      const sessionExit = yield* agentSessionDb
         .getAgentSessionByIdForUser({ sessionId, userId: userId as UserId })
-        .pipe(Effect.orDie);
+        .pipe(Effect.exit);
 
-      if (Option.isNone(sessionOption)) {
+      if (Exit.isFailure(sessionExit)) {
+        yield* Effect.logError("[questions-sse] ownership check failed", sessionExit.cause);
+        return HttpServerResponse.text("Service Unavailable", { status: 503 });
+      }
+      if (Option.isNone(sessionExit.value)) {
         return HttpServerResponse.text("Not Found", { status: 404 });
       }
 
       // --- Get or restore the XState actor ---
-      const actor = yield* getOrRestoreActor(sessionId).pipe(Effect.orDie);
+      const actorExit = yield* Effect.exit(getOrRestoreActor(sessionId));
+      if (Exit.isFailure(actorExit)) {
+        yield* Effect.logError("[questions-sse] actor restore failed", actorExit.cause);
+        return HttpServerResponse.text("Service Unavailable", { status: 503 });
+      }
+      const actor = actorExit.value;
 
       // --- Capture services for use from the subscription callback ---
       const services = yield* Effect.context<QuestionsServices>();

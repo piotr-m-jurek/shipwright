@@ -15,13 +15,16 @@
  * handler despite McpServer's own internal build-time-captured context
  * wrapping around it.
  *
- * Any error that escapes this handler and isn't `SessionNotFoundError`
- * (the only declared `failure` on the tool) is converted by
- * `McpServer.toolkit`'s own dispatch into a fixed, non-descriptive internal
- * error message — it never forwards the underlying error's message. That is
- * a different (safer, by construction) behavior than `McpServer.resource`,
- * which forwards the underlying message verbatim (see resources.ts) and
- * required an explicit normalization there.
+ * Any error that escapes this handler and isn't one of the tool's declared
+ * `failure` types (`SessionNotFoundError` | `ServiceUnavailableError` —
+ * SHIP-178: a genuine AgentSessionRepository failure is a distinct,
+ * typed outcome now, not a defect collapsed into the same generic message
+ * as everything else) is converted by `McpServer.toolkit`'s own dispatch
+ * into a fixed, non-descriptive internal error message — it never forwards
+ * the underlying error's message. That is a different (safer, by
+ * construction) behavior than `McpServer.resource`, which forwards the
+ * underlying message verbatim (see resources.ts) and required an explicit
+ * normalization there.
  *
  * Embedding/DB failures during the search itself degrade to empty results
  * rather than failing the call outright — mirrors the identical defensive
@@ -33,6 +36,7 @@ import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { EmbeddingService } from "@shipwright/embedding";
 import { CurrentUser } from "@shipwright/shared/middleware";
 import { AgentSessionId } from "@shipwright/shared/domain/ids";
+import { ServiceUnavailableError } from "@shipwright/shared/domain/errors";
 import { Effect, Layer, Option, pipe, Schema } from "effect";
 import { McpServer, Tool, Toolkit } from "effect/unstable/ai";
 import { Spans } from "@shipwright/observability";
@@ -67,7 +71,7 @@ const QuerySessionTool = Tool.make("query_session", {
       }),
     ),
   }),
-  failure: SessionNotFoundError,
+  failure: Schema.Union([SessionNotFoundError, ServiceUnavailableError]),
   failureMode: "return",
   dependencies: [CurrentUser],
 });
@@ -98,7 +102,18 @@ const QuerySessionHandlersLayer = QuerySessionToolkit.toLayer(
 
         const session = yield* sessionRepo
           .getAgentSessionByIdForUser({ sessionId, userId: user.id })
-          .pipe(Effect.orDie);
+          .pipe(
+            Effect.tapError((cause) =>
+              Effect.logError("mcp/query_session: ownership check failed", cause),
+            ),
+            Effect.catchTag(
+              "EffectDrizzleQueryError",
+              () =>
+                new ServiceUnavailableError({
+                  message: "A backing service is temporarily unavailable",
+                }),
+            ),
+          );
 
         if (Option.isNone(session)) {
           return yield* new SessionNotFoundError({ message: "Not found" });
