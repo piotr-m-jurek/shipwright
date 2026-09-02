@@ -29,6 +29,7 @@
         "@shipwright/shared": "workspace:*",
         "@shipwright/storage": "workspace:*",
         "drizzle-orm": "1.0.0-rc.5-169397b",
+        "effect-mq": "0.7.0",
         "file-type": "22.0.1",
         "js-tiktoken": "1.0.21",
         "mammoth": "1.12.0",
@@ -187,6 +188,7 @@
       "dependencies": {
         "@shipwright/db": "workspace:*",
         "@shipwright/shared": "workspace:*",
+        "effect-mq": "0.7.0",
       },
       "devDependencies": {
         "@effect/sql-pg": "4.0.0-rc.112",
@@ -1088,6 +1090,8 @@
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
 
     "effect": ["effect@4.0.0-rc.112", "", { "dependencies": { "fast-check": "^4.9.0", "msgpackr": "^2.0.5" } }, "sha512-wXxwuh1Ywnv4cPRM3Wfa0vDwuOHnZ1TsTgHJkG9XgzND6inhBH9n1vBxhg3iIXOia/OrpmvVmd3lrD4vq6bF3A=="],
+
+    "effect-mq": ["effect-mq@0.7.0", "", { "peerDependencies": { "@effect/sql-pg": ">=4.0.0-rc <5", "@effect/vitest": ">=4.0.0-rc <5", "drizzle-orm": ">=1.0.0-rc <2", "effect": ">=4.0.0-rc <5" }, "optionalPeers": ["@effect/sql-pg", "@effect/vitest", "drizzle-orm"] }, "sha512-MljABw5vOCjqaKN11DGvBnfVoDfE6Jwbdidikxgkjo9JDk797E7vrYSB0ASbxPKCiev1BGWOFyYHXPb8eXmVuw=="],
 
     "electron-to-chromium": ["electron-to-chromium@1.5.411", "", {}, "sha512-gglkxzokjHfawpGxq75XdBV2/l3BAPzrsMs70qgaZdTW5rpV1tC4MdgJVP9fN126bODA4ZJQkn1wryEzJyQXIg=="],
 

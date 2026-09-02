@@ -11,44 +11,30 @@
  * down every call site by hand. This module is that lookup table.
  */
 import { Effect } from "effect";
-import { MessageQueue } from "@shipwright/queue";
+import { SessionWorkflow, SessionGenerate, SessionRevise } from "@shipwright/queue";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import type { AgentStateValue } from "./machine";
 
 /** The flat (non-compound) state names — what a map keyed by state name can hold. */
 type FlatState = Extract<AgentStateValue, string>;
 
-// ── Queue names ────────────────────────────────────────────────────────────
-
-export const SessionQueue = {
-  documentsProcess: "documents.process",
-  sessionWorkflow: "session.workflow",
-  sessionGenerate: "session.generate",
-  sessionRevise: "session.revise",
-} as const;
-
-export type SessionQueueName = (typeof SessionQueue)[keyof typeof SessionQueue];
-
 // ── Queue routing ────────────────────────────────────────────────────────
 //
-// Single source of truth: which queue message follows which machine state.
-// Add an entry here — not at a call site — when a new transition needs to
-// trigger a queue publish. maxAttempts carries over the exact retry budget
-// each transition already had before this consolidation (they weren't all
-// the same — session.workflow used 5, session.generate/session.revise used
-// the queue's default — preserved as-is, not silently harmonized).
-
-const TRANSITION_QUEUE_MAP: Partial<Record<FlatState, { queue: SessionQueueName; maxAttempts?: number }>> = {
-  summarizing: { queue: SessionQueue.sessionWorkflow, maxAttempts: 5 },
-  generating: { queue: SessionQueue.sessionGenerate },
-  revising: { queue: SessionQueue.sessionRevise },
-};
+// Single source of truth: which job follows which machine state. Add a case
+// here — not at a call site — when a new transition needs to enqueue a job.
+// attempts carries over the exact retry budget each transition already had
+// before this consolidation (they weren't all the same — session.workflow
+// used 5, session.generate/session.revise used the default 1 — preserved
+// as-is, not silently harmonized).
+//
+// documents.process isn't state-transition-triggered (published directly
+// from session-storage.ts/retry-session.ts), so it has no case here.
 
 /**
- * Publish the queue message (if any) associated with the given state value.
- * No-ops when the state has no associated transition (including compound
- * state values like `{ uploading: "uploading_pending_docs" }` — the map is
- * only keyed by the flat state names that actually trigger a publish).
+ * Enqueue the job (if any) associated with the given state value. No-ops
+ * when the state has no associated transition (including compound state
+ * values like `{ uploading: "uploading_pending_docs" }` — only the flat
+ * state names below trigger an enqueue).
  */
 export const publishForCurrentState = Effect.fn("agent/publishForCurrentState")(function* (
   sessionId: AgentSessionId,
@@ -56,19 +42,24 @@ export const publishForCurrentState = Effect.fn("agent/publishForCurrentState")(
 ) {
   if (typeof stateValue !== "string") return;
 
-  const route = TRANSITION_QUEUE_MAP[stateValue];
-  if (route === undefined) return;
+  const state = stateValue as FlatState;
+  if (state !== "summarizing" && state !== "generating" && state !== "revising") return;
 
-  yield* Effect.logInfo(`[SessionProcessManager] ${stateValue} → publishing ${route.queue}`).pipe(
-    Effect.annotateLogs({ sessionId, state: stateValue, queue: route.queue }),
+  yield* Effect.logInfo(`[SessionProcessManager] ${state} → enqueuing job`).pipe(
+    Effect.annotateLogs({ sessionId, state }),
   );
 
-  const mq = yield* MessageQueue;
-  yield* mq.publish(
-    route.queue,
-    { sessionId },
-    route.maxAttempts !== undefined ? { maxAttempts: route.maxAttempts } : undefined,
-  );
+  switch (state) {
+    case "summarizing":
+      yield* SessionWorkflow.enqueue({ sessionId }, { attempts: 5 });
+      return;
+    case "generating":
+      yield* SessionGenerate.enqueue({ sessionId });
+      return;
+    case "revising":
+      yield* SessionRevise.enqueue({ sessionId });
+      return;
+  }
 });
 
 // ── State predicates ─────────────────────────────────────────────────────

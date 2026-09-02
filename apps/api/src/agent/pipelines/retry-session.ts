@@ -2,8 +2,7 @@ import { Array, Effect, Schema, Result, pipe } from "effect";
 import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
-import { MessageQueue } from "@shipwright/queue";
-import { SessionQueue } from "../session-process-manager";
+import { DocumentsProcess } from "@shipwright/queue";
 import { Spans } from "@shipwright/observability";
 
 // ── Reason errors ─────────────────────────────────────────────────────────────
@@ -51,7 +50,6 @@ export const retrySession = Effect.fn("agent/retrySession")(function* (
 
   const agentSessionDb = yield* AgentSessionRepository;
   const documentDb = yield* DocumentRepository;
-  const mq = yield* MessageQueue;
 
   // Ownership check — yield Option directly via Effect.fromOption;
   // NoSuchElementError is caught and mapped to the typed reason
@@ -91,7 +89,7 @@ export const retrySession = Effect.fn("agent/retrySession")(function* (
   yield* agentSessionDb.updateAgentSession(sessionId, "uploading", null);
 
   // Re-enqueue
-  yield* mq.publish(SessionQueue.documentsProcess, { sessionId, uploads });
+  yield* DocumentsProcess.enqueue({ sessionId, uploads });
 
   yield* Effect.logInfo("[retrySession] re-enqueued documents.process").pipe(
     Effect.annotateLogs({ sessionId, documentCount: uploads.length }),

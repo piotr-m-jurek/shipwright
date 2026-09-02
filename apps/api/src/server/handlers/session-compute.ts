@@ -1,7 +1,7 @@
 import { Effect, Option, pipe } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { AgentSessionNotFound, ConfirmAnalysisError } from "@shipwright/shared/domain/errors";
-import { MessageQueue } from "@shipwright/queue";
+import { JobStore } from "effect-mq";
 import { AgentSessionAggregate } from "../../agent/agent-session-aggregate";
 import {
   GetAgentSessionResponse,
@@ -88,7 +88,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         const documentDb = yield* DocumentRepository;
         const clarificationDb = yield* ClarificationRepository;
         const outputDb = yield* OutputRepository;
-        const messageQueue = yield* MessageQueue;
+        const jobStore = yield* JobStore.JobStore;
         const user = yield* CurrentUser;
 
         // Ownership check — 404 for unknown or other user's session
@@ -100,7 +100,12 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
             Effect.catchTag("NoSuchElementError", () => new AgentSessionNotFound()),
           );
 
-        const queueRows = yield* messageQueue.listBySession(sessionId);
+        // effect-mq metadata filter across all four job types — every
+        // Job.make definition in packages/queue/src/jobs.ts sets
+        // metadata: ({ sessionId }) => ({ sessionId }).
+        const { items: queueJobs } = yield* jobStore
+          .list({ metadata: { sessionId } })
+          .pipe(Effect.orDie);
 
         const documents = yield* documentDb.getDocumentsBySessionId(sessionId).pipe(Effect.orDie);
         const questions = yield* clarificationDb
@@ -139,7 +144,13 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
             updatedAt: session.updatedAt,
           },
           xstate,
-          queue: queueRows,
+          queue: queueJobs.map((j) => ({
+            queue: j.queue,
+            status: j.state,
+            attempts: j.attemptsMade,
+            maxAttempts: j.attemptsMax,
+            createdAt: new Date(j.enqueuedAt),
+          })),
           documents: documents.map((d) => ({
             id: d.id,
             filename: d.filename,

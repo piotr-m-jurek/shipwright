@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@shipwright/db": "workspace:*",
-    "@shipwright/shared": "workspace:*"
+    "@shipwright/shared": "workspace:*",
+    "effect-mq": "0.7.0"
   },
   "peerDependencies": {
     "@effect/sql-pg": "4.0.0-rc.112",

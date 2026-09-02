@@ -20,7 +20,7 @@ import { AgentSessionSnapshotReader } from "@shipwright/db/repositories/agent-se
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
-import { MessageQueue } from "@shipwright/queue";
+import { JobStore } from "effect-mq";
 import { getOrRestoreActor } from "../../agent/session-actor";
 import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
 import type { DebugSnapshot } from "@shipwright/shared/schemas/debug";
@@ -34,7 +34,7 @@ type DebugServices =
   | DocumentRepository
   | ClarificationRepository
   | OutputRepository
-  | MessageQueue;
+  | JobStore.JobStore;
 
 // ---------------------------------------------------------------------------
 // Auth helper
@@ -66,13 +66,18 @@ const buildDebugPayload = (
     const documentDb = yield* DocumentRepository;
     const clarificationDb = yield* ClarificationRepository;
     const outputDb = yield* OutputRepository;
-    const messageQueue = yield* MessageQueue;
+    const jobStore = yield* JobStore.JobStore;
 
     const session = yield* snapshotReader
       .getUnsafe({ sessionId })
       .pipe(Effect.orDie, Effect.flatMap(Effect.fromOption), Effect.orDie);
 
-    const queueRows = yield* messageQueue.listBySession(sessionId);
+    // effect-mq metadata filter across all four job types — every
+    // Job.make definition in packages/queue/src/jobs.ts sets
+    // metadata: ({ sessionId }) => ({ sessionId }).
+    const { items: queueJobs } = yield* jobStore
+      .list({ metadata: { sessionId } })
+      .pipe(Effect.orDie);
 
     const documents = yield* documentDb.getDocumentsBySessionId(sessionId).pipe(Effect.orDie);
     const questions = yield* clarificationDb.getQuestionsBySessionId(sessionId).pipe(Effect.orDie);
@@ -105,12 +110,12 @@ const buildDebugPayload = (
         updatedAt: session.updatedAt.toISOString(),
       },
       xstate,
-      queue: queueRows.map((r) => ({
-        queue: r.queue,
-        status: r.status,
-        attempts: r.attempts,
-        maxAttempts: r.maxAttempts,
-        createdAt: r.createdAt.toISOString(),
+      queue: queueJobs.map((j) => ({
+        queue: j.queue,
+        status: j.state,
+        attempts: j.attemptsMade,
+        maxAttempts: j.attemptsMax,
+        createdAt: new Date(j.enqueuedAt).toISOString(),
       })),
       documents: documents.map((d) => ({
         id: d.id,

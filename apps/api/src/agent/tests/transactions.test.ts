@@ -22,7 +22,7 @@ import { AgentSessionSnapshotReader } from "@shipwright/db/repositories/agent-se
 import { AgentSessionAggregate } from "../agent-session-aggregate";
 import { StorageAdapter } from "@shipwright/storage";
 import { EmbeddingService } from "@shipwright/embedding";
-import { MessageQueue } from "@shipwright/queue";
+import { JobStore } from "effect-mq";
 import { LangfuseClient } from "../../observability/langfuse-client";
 import { persistSummary } from "../../agent/extractor/index";
 import { processUploadedDocuments } from "../../agent/pipelines/process-uploaded-documents";
@@ -180,10 +180,13 @@ const embeddingServiceLayer = Layer.succeed(EmbeddingService, {
   embedText: () => Effect.succeed(Array(1024).fill(0.1)),
 } as any);
 
-// ── Mock MessageQueue ─────────────────────────────────────────────────────
+// ── Mock JobStore ─────────────────────────────────────────────────────────
+// publishForCurrentState (via AgentSessionAggregate.markDocumentsReady, in
+// the code path processUploadedDocuments exercises) calls SessionWorkflow
+// .enqueue(...) (SHIP-109), which resolves the default JobStore service.
 
-const messageQueueLayer = Layer.succeed(MessageQueue, {
-  publish: () => Effect.succeed(undefined),
+const jobStoreLayer = Layer.succeed(JobStore.JobStore, {
+  enqueue: () => Effect.succeed({ id: "job-1", duplicate: false }),
 } as any);
 
 // ── Mock LangfuseClient ───────────────────────────────────────────────────
@@ -294,7 +297,7 @@ describe("processUploadedDocuments — transaction behaviour", () => {
         Effect.provide(agentSessionAggregateLayer),
         Effect.provide(storageAdapterLayer),
         Effect.provide(embeddingServiceLayer),
-        Effect.provide(messageQueueLayer),
+        Effect.provide(jobStoreLayer),
         Effect.provide(langfuseClientLayer),
         Effect.provide(sqlLayer),
       ),
@@ -331,7 +334,7 @@ describe("processUploadedDocuments — transaction behaviour", () => {
         Effect.provide(agentSessionAggregateLayer),
         Effect.provide(storageAdapterLayer),
         Effect.provide(embeddingServiceLayer),
-        Effect.provide(messageQueueLayer),
+        Effect.provide(jobStoreLayer),
         Effect.provide(langfuseClientLayer),
         Effect.provide(sqlLayer),
       ),

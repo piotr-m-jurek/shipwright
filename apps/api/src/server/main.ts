@@ -20,8 +20,8 @@ import { LangfuseClient } from "../observability/langfuse-client";
 import { LangfuseSpanTransformerLayer } from "../observability/langfuse-span-transformer";
 import { EmbeddingService, HuggingFaceTeiEmbeddingModelLayerProvided } from "@shipwright/embedding";
 import { AnthropicClientLayer } from "../agent/providers";
-import { MessageQueue } from "@shipwright/queue";
-import { JobHandlers } from "../queue/job-handlers";
+import { JobStoreLayer, WorkerLayer } from "@shipwright/queue";
+import { JobHandlersLayer } from "../queue/job-handlers";
 import { AllRoutesLayer, InfrastructureLayer } from "./server";
 
 const OtlpLayerProvided = pipe(
@@ -46,9 +46,13 @@ const LangfuseClientLayer = LangfuseClient.layer.pipe(
 //
 // AppDBLiveLayer is provideMerge'd (not provide'd), so DB/SqlClient stay
 // exposed in the output — session-debug-sse.ts and session-questions-sse.ts
-// (part of AllRoutesLayer) query DB directly for queue messages rather than
-// through a repository (tracked as a violation in SHIP-156), so they need
-// DB available in the ambient context, not just consumed internally here.
+// (part of AllRoutesLayer) query DB directly rather than through a
+// repository (tracked as a violation in SHIP-156), so they need DB
+// available in the ambient context, not just consumed internally here.
+//
+// JobStoreLayer (SHIP-109) only needs PgClient, which AppDBLiveLayer's
+// provideMerge below supplies — reusing the app's single connection pool
+// rather than opening a second one, same as every other layer here.
 const RuntimeInfrastructureLayer = Layer.mergeAll(
   InfrastructureLayer,
   OtlpLayerProvided,
@@ -56,17 +60,25 @@ const RuntimeInfrastructureLayer = Layer.mergeAll(
   AnthropicClientLayer,
   LangfuseClientLayer,
   LangfuseSpanTransformerLayer,
-  MessageQueue.layer,
+  JobStoreLayer,
 ).pipe(Layer.provideMerge(AppDBLiveLayer));
 
-const JobHandlersLayer = pipe(
-  JobHandlers.layer,
-  Layer.provide(RuntimeInfrastructureLayer),
+// WorkerLayer needs JobStore (from RuntimeInfrastructureLayer, above) plus
+// a Scope — Layer.launch supplies the top-level scope automatically.
+const WorkerLive = WorkerLayer.pipe(Layer.provide(RuntimeInfrastructureLayer));
+
+// JobHandlersLayer (apps/api/src/queue/job-handlers.ts's Job.toLayer(...)
+// merge) needs both Worker (to register against) and every pipeline
+// handler's own deep requirements (repos, StorageAdapter, LLM providers) —
+// the same RuntimeInfrastructureLayer set job handlers always needed.
+const JobHandlersLive = pipe(
+  JobHandlersLayer,
+  Layer.provide(Layer.mergeAll(WorkerLive, RuntimeInfrastructureLayer)),
 );
 
 const ServiceLayer = pipe(
   RuntimeInfrastructureLayer,
-  Layer.provideMerge(JobHandlersLayer),
+  Layer.provideMerge(JobHandlersLive),
 );
 
 const StartupLayer = Layer.effectDiscard(

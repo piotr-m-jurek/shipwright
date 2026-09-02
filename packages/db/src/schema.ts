@@ -55,12 +55,13 @@ import type { ChunkIndex, TokenCount } from "@shipwright/shared/domain/value-obj
 // @shipwright/auth imports these table definitions FROM here to build its
 // drizzleAdapter — the dependency points auth -> db, never the reverse.
 //
-// queue_messages is NOT part of this schema: it has zero .references() into
-// this relational graph (sessionId lives inside a jsonb payload column, not a
-// SQL FK), so it safely stays independently owned and migrated in
-// apps/api/src/queue/schema.ts. That is the correct exception to this rule —
-// tables with no foreign-key coupling to the shared graph don't need to share
-// an owner.
+// effect-mq's job-store tables (SHIP-109) are NOT part of this schema: they
+// have zero .references() into this relational graph (job payloads carry
+// sessionId as opaque JSON, not a SQL FK), so they stay independently owned
+// and migrated in packages/queue/src/schema.ts — drizzle.config.ts's
+// `schema` array lists both files. That is the correct exception to this
+// rule — tables with no foreign-key coupling to the shared graph don't need
+// to share an owner.
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),

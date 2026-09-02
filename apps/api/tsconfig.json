@@ -3,7 +3,14 @@
   "compilerOptions": {
     "moduleResolution": "bundler",
     "module": "esnext",
-    "types": ["bun-types"]
+    "types": ["bun-types"],
+    // effect-mq (SHIP-109) re-exports its JobStore/Worker types only via a
+    // namespace from its "." entry point — see packages/queue/tsconfig.json
+    // for the full explanation. apps/api is the final app (nothing consumes
+    // its emitted .d.ts; its own dev workflow never emits either), so
+    // disabling these here is the same safe, check-only trade-off.
+    "declaration": false,
+    "declarationMap": false
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

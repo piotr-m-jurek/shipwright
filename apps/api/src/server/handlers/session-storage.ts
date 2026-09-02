@@ -22,8 +22,7 @@ import { CurrentUser } from "@shipwright/shared/middleware";
 import { createUploadSession } from "../../agent/pipelines/create-upload-session";
 import { confirmUploadResults } from "../../agent/pipelines/confirm-upload-results";
 import { retrySession } from "../../agent/pipelines/retry-session";
-import { MessageQueue } from "@shipwright/queue";
-import { SessionQueue } from "../../agent/session-process-manager";
+import { DocumentsProcess } from "@shipwright/queue";
 
 export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
   handlers
@@ -42,8 +41,6 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
     .handle(
       "confirmUpload",
       Effect.fn("handler/confirmUploads")(function* ({ payload: { uploads }, params: { sessionId } }) {
-        const mq = yield* MessageQueue;
-
         const results = yield* pipe(
           confirmUploadResults(uploads),
           Effect.mapError(() => new ConfirmUploadError()),
@@ -54,7 +51,7 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
           return yield* new MissingUploads({ missingKeys });
         }
 
-        yield* mq.publish(SessionQueue.documentsProcess, { sessionId, uploads });
+        yield* DocumentsProcess.enqueue({ sessionId, uploads });
         return new ConfirmUploadResponse({ valid: true });
       }),
     )

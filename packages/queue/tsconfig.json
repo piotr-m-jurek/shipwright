@@ -2,7 +2,20 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "moduleResolution": "bundler",
-    "module": "esnext"
+    "module": "esnext",
+    // effect-mq (SHIP-109) re-exports its JobStore types only via a
+    // namespace (`export * as JobStore from "./JobStore.ts"`) from its "."
+    // entry point — "./dist/JobStore" isn't a package.json export subpath,
+    // so TS's declaration-portability check (TS2883) can't synthesize a
+    // valid import specifier for types like BackoffPolicy/JobId/QueueName
+    // that our Job.make/mqJobs/DrizzleJobStore.layer calls return nested
+    // inside inferred types. Nothing in this repo's build actually consumes
+    // packages/*'s emitted .d.ts (every cross-package import resolves to
+    // .ts source via each package's "./*": "./src/*.ts" export map, and this
+    // package's own "build" script is `tsc --noEmit`) — declaration/
+    // declarationMap are check-only here, so disabling them is safe.
+    "declaration": false,
+    "declarationMap": false
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]
