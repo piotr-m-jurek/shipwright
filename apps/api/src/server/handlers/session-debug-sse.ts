@@ -85,7 +85,10 @@ const buildDebugPayload = (
         value: String(session.status),
         round: snap.round ?? 0,
         inputMode: snap.inputMode ?? "context",
-        outputVersion: snap.outputVersion ?? 1,
+        // SHIP-149: outputVersion no longer lives in the snapshot — derived
+        // from the outputs table (already fetched above, sorted
+        // desc(version)), the single source of truth.
+        outputVersion: outputs[0]?.version ?? 0,
         documentSummaryCount: snap.documentSummaries?.length ?? 0,
         questionCount: snap.questions?.length ?? 0,
         answerCount: snap.answers?.length ?? 0,

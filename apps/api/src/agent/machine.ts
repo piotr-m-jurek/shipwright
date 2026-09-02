@@ -41,7 +41,6 @@ export const initialContext: MachineContext = {
   inputMode: "context",
   agentAnalysis: Option.none(),
   revisionFeedback: Option.none(),
-  outputVersion: 1,
   outputs: {},
 };
 
@@ -262,7 +261,6 @@ export function createAgentMachine(services: Context.Context<DocumentExtractionS
           if (event.type !== "REVISION_REQUESTED") return Option.none();
           return Option.some(event.feedback);
         },
-        outputVersion: ({ context }) => context.outputVersion + 1,
       }),
       clearRevisionFeedback: assign({ revisionFeedback: Option.none() }),
     },

@@ -125,7 +125,11 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
       sourceDocuments: q.sourceDocuments,
     }));
 
-    const outputVersion = actor.getSnapshot().context.outputVersion;
+    // SHIP-149: outputVersion derived from the outputs table (single source
+    // of truth) rather than the XState snapshot — a corrupted/rolled-back
+    // snapshot could no longer diverge from what's actually persisted.
+    const existingOutputs = yield* outputDb.getOutputsBySessionId(sessionId);
+    const outputVersion = (existingOutputs[0]?.version ?? 0) + 1;
 
     const [projectBrief, implementationPrd] = yield* Effect.all([
       processBrief(summaries, answers, questions),
@@ -163,6 +167,12 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
         Effect.map(Option.getOrElse(() => "")),
       );
 
+    // SHIP-149: outputVersion derived from the outputs table (single source
+    // of truth) rather than the XState snapshot — computed once, both
+    // passes below close over it, same version for brief and PRD.
+    const existingOutputs = yield* outputDb.getOutputsBySessionId(sessionId);
+    const outputVersion = (existingOutputs[0]?.version ?? 0) + 1;
+
     const processBrief = Effect.fn("agent/reviseBrief")(function* ({
       existingBrief,
       existingPrd,
@@ -172,7 +182,6 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
     }) {
       return yield* Effect.gen(function* () {
         const feedback = Option.getOrElse(actor.getSnapshot().context.revisionFeedback, () => "");
-        const outputVersion = actor.getSnapshot().context.outputVersion;
 
         const newBriefText = yield* pipe(
           runRevisionBriefWriter(summaries, existingBrief, existingPrd, feedback, sessionId),
@@ -219,7 +228,6 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
     }) {
       return yield* Effect.gen(function* () {
         const feedback = Option.getOrElse(actor.getSnapshot().context.revisionFeedback, () => "");
-        const outputVersion = actor.getSnapshot().context.outputVersion;
 
         const newPrdText = yield* pipe(
           runRevisionPrdWriter(summaries, existingBrief, existingPrd, feedback, sessionId),

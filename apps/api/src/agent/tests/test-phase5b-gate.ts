@@ -20,7 +20,7 @@ import { DB, AppDBLiveLayer } from "@shipwright/db";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
-import { agentSessions, outputs, users } from "@shipwright/db/schema";
+import { outputs, users } from "@shipwright/db/schema";
 import { eq } from "drizzle-orm";
 import { parseDocument } from "../parsers";
 import { estimateTokenCount } from "../lib/estimate-token-count";
@@ -318,17 +318,10 @@ if (prdV2?.content && prdV2.content.length > 100) {
   fail("implementation_prd v2 missing or empty");
 }
 
-const [sessionRow] = await runRaw(
-  Effect.flatMap(DB, (db) =>
-    db.select().from(agentSessions).where(eq(agentSessions.id, sessionId)),
-  ),
-);
-const outputVersion = (sessionRow.xstateSnapshot as any)?.context?.outputVersion;
-if (outputVersion === 2) {
-  ok("outputVersion = 2 in xstateSnapshot");
-} else {
-  fail("outputVersion not 2", outputVersion);
-}
+// SHIP-149: outputVersion no longer lives in xstateSnapshot — the
+// outputRowsAfter check above (querying the outputs table directly) is
+// the real assertion that version 2 exists; this used to be a redundant
+// second check against the (now-removed) machine-context copy.
 
 const outputV2Res = (await req("GET", `/sessions/${sessionId}/output`)) as any;
 if (outputV2Res.body?.version === 2) {

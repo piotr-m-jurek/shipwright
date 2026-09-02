@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { AgentSessionId, QuestionId, SummaryId } from "../domain/ids";
 import { TokenCount } from "../domain/value-objects";
+import { GapReportSchema } from "../domain/gap-report";
 
 // Per-document extraction status tracked in the machine.
 // Uses filename (domain concept) not DocumentId (DB concern).
@@ -46,11 +47,9 @@ export class MachineContextEffectSchema extends Schema.Class<MachineContextEffec
   ),
   round: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 2 })),
   inputMode: Schema.Literals(["context", "retrieval"]),
-  agentAnalysis: Schema.Option(Schema.Unknown),
+  agentAnalysis: Schema.Option(GapReportSchema),
   // Set when REVISION_REQUESTED is fired; cleared after generating completes.
   revisionFeedback: Schema.Option(Schema.String),
-  // Starts at 1, increments on each pass through generating.
-  outputVersion: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
   outputs: Schema.Struct({
     projectBrief: Schema.optional(Schema.String),
     implementationPrd: Schema.optional(Schema.String),
