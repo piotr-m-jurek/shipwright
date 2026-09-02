@@ -17,6 +17,7 @@ import {
   GetHealthResponse,
   RetrySessionResponse,
   GetSessionDebugResponse,
+  RetryJobResponse,
   McpTokenGenerateResponse,
   McpTokenStatusResponse,
   McpTokenRevokeResponse,
@@ -33,6 +34,8 @@ import {
   RevisionError,
   ServiceUnavailableError,
   RetrySessionError,
+  JobNotFoundError,
+  JobNotRetryableError,
 } from "../domain/errors";
 import { Authorization } from "./middleware";
 import { AgentSessionId } from "../domain/ids";
@@ -92,6 +95,14 @@ export class SessionComputationApi extends HttpApiGroup.make("compute")
       params: { sessionId: AgentSessionId },
       success: GetSessionDebugResponse,
       error: AgentSessionNotFound,
+    }),
+    // SHIP-173 — retry a dead-lettered/failed job belonging to this session.
+    // jobId is effect-mq's own JobId (opaque string, not one of this app's
+    // branded domain ids).
+    HttpApiEndpoint.post("retryJob", "/sessions/:sessionId/debug/jobs/:jobId/retry", {
+      params: { sessionId: AgentSessionId, jobId: Schema.String },
+      success: RetryJobResponse,
+      error: [AgentSessionNotFound, JobNotFoundError, JobNotRetryableError],
     }),
   )
 

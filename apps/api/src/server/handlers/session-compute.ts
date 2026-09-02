@@ -1,6 +1,11 @@
 import { Effect, Option, pipe } from "effect";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { AgentSessionNotFound, ConfirmAnalysisError } from "@shipwright/shared/domain/errors";
+import {
+  AgentSessionNotFound,
+  ConfirmAnalysisError,
+  JobNotFoundError,
+  JobNotRetryableError,
+} from "@shipwright/shared/domain/errors";
 import { JobStore } from "effect-mq";
 import { AgentSessionAggregate } from "../../agent/agent-session-aggregate";
 import {
@@ -8,6 +13,7 @@ import {
   ConfirmAnalysisResponse,
   GetSessionDebugResponse,
   GetSessionDocumentsResponse,
+  RetryJobResponse,
 } from "@shipwright/shared/schemas/api";
 import { Api } from "@shipwright/shared/api";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
@@ -145,6 +151,7 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
           },
           xstate,
           queue: queueJobs.map((j) => ({
+            id: j.id,
             queue: j.queue,
             status: j.state,
             attempts: j.attemptsMade,
@@ -209,6 +216,46 @@ export const SessionCompute = HttpApiBuilder.group(Api, "compute", (handlers) =>
         );
 
         return new ConfirmAnalysisResponse({ started: true });
+      }),
+    )
+    .handle("retryJob", ({ params: { sessionId, jobId } }) =>
+      Effect.gen(function* () {
+        const agentSessionDb = yield* AgentSessionRepository;
+        const jobStore = yield* JobStore.JobStore;
+        const user = yield* CurrentUser;
+
+        // Ownership check — 404 for unknown or other user's session
+        yield* pipe(
+          agentSessionDb.getAgentSessionByIdForUser({ sessionId, userId: user.id }),
+          Effect.map((v) => Option.getOrThrow(v)),
+          Effect.catch(() => new AgentSessionNotFound()),
+        );
+
+        // The job must both exist AND belong to this session — jobId is an
+        // opaque effect-mq id, not scoped to a session by construction, so
+        // this is the ownership check for the job itself (never distinguish
+        // "not found" from "found but not yours" — same 404 either way).
+        const record = yield* jobStore
+          .getJob(JobStore.JobId(jobId))
+          .pipe(
+            Effect.orDie,
+            Effect.flatMap(Effect.fromOption),
+            Effect.catchTag("NoSuchElementError", () => new JobNotFoundError()),
+          );
+
+        if (record.metadata["sessionId"] !== sessionId) {
+          return yield* new JobNotFoundError();
+        }
+
+        yield* jobStore.retry(record.id).pipe(
+          Effect.catchTags({
+            JobStoreError: (cause) => Effect.die(cause),
+            JobNotFoundError: () => new JobNotFoundError(),
+            JobNotRetryableError: () => new JobNotRetryableError({ state: record.state }),
+          }),
+        );
+
+        return new RetryJobResponse({ retried: true });
       }),
     ),
 );

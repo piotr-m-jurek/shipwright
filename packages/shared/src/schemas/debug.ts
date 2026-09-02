@@ -29,6 +29,7 @@ export interface DebugSnapshot {
     readonly raw: unknown;
   } | null;
   readonly queue: ReadonlyArray<{
+    readonly id: string;
     readonly queue: string;
     readonly status: string;
     readonly attempts: number;

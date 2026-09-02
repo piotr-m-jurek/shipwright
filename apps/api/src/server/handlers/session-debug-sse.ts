@@ -111,6 +111,7 @@ const buildDebugPayload = (
       },
       xstate,
       queue: queueJobs.map((j) => ({
+        id: j.id,
         queue: j.queue,
         status: j.state,
         attempts: j.attemptsMade,

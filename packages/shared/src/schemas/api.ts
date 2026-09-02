@@ -136,6 +136,11 @@ export class RetrySessionResponse extends Schema.Class<
   { readonly brand: unique symbol }
 >("RetrySessionResponse")({ queued: Schema.Boolean }) {}
 
+export class RetryJobResponse extends Schema.Class<
+  RetryJobResponse,
+  { readonly brand: unique symbol }
+>("RetryJobResponse")({ retried: Schema.Boolean }) {}
+
 export class GetSessionDocumentsResponse extends Schema.Class<
   GetSessionDocumentsResponse,
   { readonly brand: unique symbol }
@@ -176,6 +181,7 @@ export class GetSessionDebugResponse extends Schema.Class<
   ),
   queue: Schema.Array(
     Schema.Struct({
+      id: Schema.String,
       queue: Schema.String,
       status: Schema.String,
       attempts: Schema.Int,
