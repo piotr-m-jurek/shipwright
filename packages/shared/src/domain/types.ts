@@ -21,7 +21,7 @@ import type {
   QuestionId,
   SummaryId,
 } from "./ids";
-import type { ChunkIndex, TokenCount } from "./value-objects";
+import type { ChunkIndex, OutputVersion, TokenCount } from "./value-objects";
 
 // ── Enums ─────────────────────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ export type Output = {
   sessionId: AgentSessionId;
   type: OutputType;
   content: string | null;
-  version: number | null;
+  version: OutputVersion | null;
   s3Key: string | null;
 };
 

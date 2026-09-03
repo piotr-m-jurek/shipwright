@@ -12,6 +12,8 @@ import {
   GetAgentSessionFinalOutputResponse,
   ConfirmAnalysisResponse,
   OutputDownloadUrlResponse,
+  OutputDiffResponse,
+  OutputVersionParam,
   ReviseRequest,
   ReviseResponse,
   GetHealthResponse,
@@ -39,6 +41,7 @@ import {
 } from "../domain/errors";
 import { Authorization } from "./middleware";
 import { AgentSessionId } from "../domain/ids";
+import { OUTPUT_TYPE_VALUES } from "../domain/types";
 
 export class PublicApiGroup extends HttpApiGroup.make("public").add(
   HttpApiEndpoint.get("health", "/health", {
@@ -126,6 +129,18 @@ export class SessionResultsApi extends HttpApiGroup.make("results")
       payload: ReviseRequest,
       success: ReviseResponse,
       error: [SessionStateError, RevisionError, AgentSessionNotFound, ServiceUnavailableError],
+    }),
+    // type/from/to validated at the schema level (literal union /
+    // NumberFromString+brand), not by hand in the handler.
+    HttpApiEndpoint.get("getOutputDiff", "/sessions/:sessionId/output/:type/diff/:from/:to", {
+      params: {
+        sessionId: AgentSessionId,
+        type: Schema.Literals(OUTPUT_TYPE_VALUES),
+        from: OutputVersionParam,
+        to: OutputVersionParam,
+      },
+      success: OutputDiffResponse,
+      error: [AgentSessionNotFound, OutputNotFoundError, ServiceUnavailableError],
     }),
   )
   .middleware(Authorization) {}

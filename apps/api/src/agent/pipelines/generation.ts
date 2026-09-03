@@ -1,4 +1,5 @@
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
+import { OutputVersion } from "@shipwright/shared/domain/value-objects";
 import { Effect, Option, pipe } from "effect";
 import { Spans } from "@shipwright/observability";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
@@ -129,7 +130,7 @@ export const runGeneratingPipeline = Effect.fn("agent/runGeneratingPipeline")(
     // of truth) rather than the XState snapshot — a corrupted/rolled-back
     // snapshot could no longer diverge from what's actually persisted.
     const existingOutputs = yield* outputDb.getOutputsBySessionId(sessionId);
-    const outputVersion = (existingOutputs[0]?.version ?? 0) + 1;
+    const outputVersion = OutputVersion.make((existingOutputs[0]?.version ?? 0) + 1);
 
     const [projectBrief, implementationPrd] = yield* Effect.all([
       processBrief(summaries, answers, questions),
@@ -171,7 +172,7 @@ export const runRevisionPipeline = Effect.fn("agent/runRevisionPipeline")(
     // of truth) rather than the XState snapshot — computed once, both
     // passes below close over it, same version for brief and PRD.
     const existingOutputs = yield* outputDb.getOutputsBySessionId(sessionId);
-    const outputVersion = (existingOutputs[0]?.version ?? 0) + 1;
+    const outputVersion = OutputVersion.make((existingOutputs[0]?.version ?? 0) + 1);
 
     const processBrief = Effect.fn("agent/reviseBrief")(function* ({
       existingBrief,

@@ -33,7 +33,7 @@ import {
   SUMMARY_ITEM_TYPE_VALUES,
   SUMMARY_TYPE_VALUES,
 } from "@shipwright/shared/domain/types";
-import type { ChunkIndex, TokenCount } from "@shipwright/shared/domain/value-objects";
+import type { ChunkIndex, OutputVersion, TokenCount } from "@shipwright/shared/domain/value-objects";
 
 // NOTE: pgEnum requires a non-empty tuple [string, ...string[]]. The *_VALUES
 // arrays imported from @shipwright/shared/domain/types are `as const` readonly
@@ -292,7 +292,7 @@ export const outputs = pgTable("outputs", {
     .$type<AgentSessionId>(),
   type: outputTypeEnum().notNull(),
   content: text(),
-  version: integer(),
+  version: integer().$type<OutputVersion>(),
   // S3 key for presigned GET URL export — set when output is uploaded to storage
   s3Key: text("s3_key"),
 });

@@ -1,6 +1,15 @@
 import { pipe, Schema } from "effect";
 import { AgentSessionId, DocumentId, QuestionId } from "../domain/ids";
 
+// SHIP-182 plannotator follow-up — from/to arrive as string path segments;
+// decoding straight into the branded OutputVersion at the schema level
+// (instead of Number.parseInt + a manual Number.isInteger check in the
+// handler) means a malformed version rejects before the handler ever runs.
+export const OutputVersionParam = Schema.FiniteFromString.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(1),
+).pipe(Schema.brand("OutputVersion"));
+
 export class GetHealthResponse extends Schema.Class<
   GetHealthResponse,
   { readonly brand: unique symbol }
@@ -130,6 +139,23 @@ export class ConfirmUploadResponse extends Schema.Class<
   ConfirmUploadResponse,
   { readonly brand: unique symbol }
 >("ConfirmUploadResponse")({ valid: Schema.Boolean }) {}
+
+// SHIP-182 — deterministic section-level diff between two output versions.
+// No LLM: sections are matched by markdown heading text, "modified" carries
+// both bodies in full (line-level highlighting is a frontend concern).
+export class OutputDiffResponse extends Schema.Class<
+  OutputDiffResponse,
+  { readonly brand: unique symbol }
+>("OutputDiffResponse")({
+  sections: Schema.Array(
+    Schema.Struct({
+      heading: Schema.String,
+      changeType: Schema.Literals(["added", "removed", "modified", "unchanged"]),
+      oldContent: Schema.NullOr(Schema.String),
+      newContent: Schema.NullOr(Schema.String),
+    }),
+  ),
+}) {}
 
 export class RetrySessionResponse extends Schema.Class<
   RetrySessionResponse,

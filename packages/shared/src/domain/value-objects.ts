@@ -16,3 +16,8 @@ export const ChunkIndex = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pip
   Schema.brand("ChunkIndex"),
 );
 export type ChunkIndex = typeof ChunkIndex.Type;
+
+export const OutputVersion = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)).pipe(
+  Schema.brand("OutputVersion"),
+);
+export type OutputVersion = typeof OutputVersion.Type;
