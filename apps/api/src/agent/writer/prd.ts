@@ -1,10 +1,10 @@
-import { Array, Effect, Filter, Layer, Option, pipe, Schema } from "effect";
+import { Array, Effect, Filter, Option, pipe, Schema } from "effect";
 import { Spans } from "@shipwright/observability";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { type MachineContext } from "@shipwright/shared/schemas/machine";
 import { Chat } from "effect/unstable/ai";
-import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers";
+import { AiModels } from "@shipwright/ai";
 import { runAgenticLoop } from "./agentic-loop";
 import { LangfuseClient } from "../../observability/langfuse-client";
 import { forkCompletenessJudge } from "./judge";
@@ -129,6 +129,7 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
     });
 
     const chat = yield* Chat.empty;
+    const aiModels = yield* AiModels;
 
     const result = yield* runAgenticLoop({
       chat,
@@ -147,7 +148,7 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
         },
       ],
       sessionId,
-    }).pipe(Effect.mapError((cause) => new PrdWriterError({ cause })));
+    }).pipe(aiModels.use("sonnet"), Effect.mapError((cause) => new PrdWriterError({ cause })));
 
     yield* Effect.annotateCurrentSpan(Spans.output({ chars: result.text.length }));
     yield* Effect.annotateCurrentSpan(
@@ -170,5 +171,4 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
 
     return result.text;
   },
-  Effect.provide(Layer.provideMerge(AnthropicClientLayer, AnthropicSonnetModelLayer)),
 );

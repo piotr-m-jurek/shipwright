@@ -39,13 +39,13 @@ import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import { StorageAdapter } from "@shipwright/storage";
 import { ConfigService } from "@shipwright/config";
-import { AnthropicClientLayer } from "../providers";
+import { AiModels } from "@shipwright/ai";
 import { LangfuseClient } from "../../observability/langfuse-client";
 import { FetchHttpClient } from "effect/unstable/http";
 
 const runtime = ManagedRuntime.make(
   pipe(
-    Layer.mergeAll(StorageAdapter.layer, AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, LangfuseClient.layer.pipe(Layer.provide(FetchHttpClient.layer))),
+    Layer.mergeAll(StorageAdapter.layer, AgentSessionRepository.layer, DocumentRepository.layer, ChunkRepository.layer, SummaryRepository.layer, LangfuseClient.layer.pipe(Layer.provide(FetchHttpClient.layer)), AiModels.layer),
     Layer.provideMerge(AppDBLiveLayer),
     Layer.provide(ConfigService.layer),
   ),
@@ -172,9 +172,7 @@ async function main() {
     });
 
     console.log("\nRunning Challenger...");
-    const gapReport = await runtime.runPromise(
-      runChallenger(finals).pipe(Effect.provide(AnthropicClientLayer)),
-    );
+    const gapReport = await runtime.runPromise(runChallenger(finals));
 
     console.log("\n── CHALLENGER OUTPUT ───────────────────────────────────────");
     console.log(`Conflicts:    ${gapReport.conflicts.length}`);

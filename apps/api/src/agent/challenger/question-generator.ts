@@ -4,7 +4,7 @@ import { ClarifyingQuestionsEffectSchema, type GapReportEffect } from "./schemas
 import { TextGenerationError } from "../errors";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
-import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers";
+import { AiModels } from "@shipwright/ai";
 import { LangfuseClient } from "../../observability/langfuse-client";
 
 const QuestionGeneratorSystemPrompt = `You are a requirements analyst preparing clarifying questions for a project team.
@@ -49,6 +49,7 @@ export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(
         Effect.annotateCurrentSpan(Spans.prompt({ name: p.name, version: p.version })),
     });
 
+    const aiModels = yield* AiModels;
     const response = yield* pipe(
       LanguageModel.generateObject({
         schema: ClarifyingQuestionsEffectSchema,
@@ -57,6 +58,7 @@ export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(
           { role: "user", content: formatInput(gapReport, summaries) },
         ]),
       }),
+      aiModels.use("haiku"),
       Effect.mapError((cause) => new TextGenerationError({ cause })),
     );
 
@@ -72,8 +74,6 @@ export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(
 
     return response.value;
   },
-  Effect.provide(AnthropicHaikuModelLayer),
-  Effect.provide(AnthropicClientLayer),
 );
 
 function formatInput(gapReport: GapReportEffect, summaries: DocumentSummary[]): string {

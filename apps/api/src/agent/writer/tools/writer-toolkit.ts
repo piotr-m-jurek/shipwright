@@ -1,6 +1,6 @@
-import { Array, Effect, Layer, Option, pipe, Schema } from "effect";
+import { Array, Effect, Option, pipe, Schema } from "effect";
 import { LanguageModel, Prompt, Tool, Toolkit } from "effect/unstable/ai";
-import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../../providers";
+import { AiModels } from "@shipwright/ai";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { DocumentRepository } from "@shipwright/db/repositories/document-repository";
@@ -271,6 +271,7 @@ Respond with JSON:
           });
 
           const userContent = `## Section: ${sectionName}\n\n${sectionContent}\n\n## Source Context\n\n${sourceSummaryContext}`;
+          const aiModels = yield* AiModels;
 
           const response = yield* LanguageModel.generateObject({
             schema: Schema.Struct({
@@ -283,10 +284,7 @@ Respond with JSON:
               { role: "system", content: systemPrompt },
               { role: "user", content: userContent },
             ]),
-          }).pipe(
-            Effect.provide(Layer.provideMerge(AnthropicHaikuModelLayer, AnthropicClientLayer)),
-            Effect.orDie,
-          );
+          }).pipe(aiModels.use("haiku"), Effect.orDie);
 
           const modelId = response.content.find((p) => p.type === "response-metadata")?.modelId;
           yield* Effect.annotateCurrentSpan(

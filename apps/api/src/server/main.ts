@@ -19,7 +19,7 @@ import { OtlpLayer } from "@shipwright/observability";
 import { LangfuseClient } from "../observability/langfuse-client";
 import { LangfuseSpanTransformerLayer } from "../observability/langfuse-span-transformer";
 import { EmbeddingService, HuggingFaceTeiEmbeddingModelLayerProvided } from "@shipwright/embedding";
-import { AnthropicClientLayer } from "../agent/providers";
+import { AiModels } from "@shipwright/ai";
 import { JobStoreLayer, WorkerLayer } from "@shipwright/queue";
 import { JobHandlersLayer } from "../queue/job-handlers";
 import { AllRoutesLayer, InfrastructureLayer } from "./server";
@@ -57,7 +57,7 @@ const RuntimeInfrastructureLayer = Layer.mergeAll(
   InfrastructureLayer,
   OtlpLayerProvided,
   EmbeddingServiceLayer,
-  AnthropicClientLayer,
+  AiModels.layer,
   LangfuseClientLayer,
   LangfuseSpanTransformerLayer,
   JobStoreLayer,

@@ -19,6 +19,7 @@ import { AgentSessionRepository } from "@shipwright/db/repositories/agent-sessio
 import { AgentSessionSnapshotReader } from "@shipwright/db/repositories/agent-session-snapshot-reader";
 import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
 import { LangfuseClient } from "../../observability/langfuse-client";
+import { AiModels } from "@shipwright/ai";
 import { createAgentActor } from "../machine";
 import { AgentSessionAggregate } from "../agent-session-aggregate";
 
@@ -32,11 +33,14 @@ const chunkLayer = Layer.succeed(ChunkRepository, {} as any);
 const summaryLayer = Layer.succeed(SummaryRepository, {} as any);
 const sqlLayer = Layer.succeed(SqlClient, {} as any);
 const langfuseLayer = Layer.succeed(LangfuseClient, {} as any);
+const aiModelsLayer = Layer.succeed(AiModels, {} as any);
 
 function servicesFor(sessionId: AgentSessionId, value: unknown) {
   const fresh = createAgentActor(
     Effect.runSync(
-      Effect.scoped(Layer.build(Layer.mergeAll(chunkLayer, summaryLayer, sqlLayer, langfuseLayer))),
+      Effect.scoped(
+        Layer.build(Layer.mergeAll(chunkLayer, summaryLayer, sqlLayer, langfuseLayer, aiModelsLayer)),
+      ),
     ),
     { sessionId },
   );
@@ -69,6 +73,7 @@ function servicesFor(sessionId: AgentSessionId, value: unknown) {
     summaryLayer,
     sqlLayer,
     langfuseLayer,
+    aiModelsLayer,
     agentSessionRepositoryLayer,
     snapshotReaderLayer,
     AgentSessionAggregate.layer,

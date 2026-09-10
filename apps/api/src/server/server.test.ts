@@ -20,6 +20,7 @@ import { AppDBLiveLayer, DB } from "@shipwright/db";
 import { users } from "@shipwright/db/schema";
 import { getOrRestoreActor } from "../agent/session-actor";
 import { LangfuseClient } from "../observability/langfuse-client";
+import { AiModels } from "@shipwright/ai";
 import { UserId, type AgentSessionId } from "@shipwright/shared/domain/ids";
 
 // ---------------------------------------------------------------------------
@@ -199,6 +200,7 @@ const stateFabricationLayer = Layer.mergeAll(
   Layer.succeed(SummaryRepository, {} as any),
   Layer.succeed(SqlClient, {} as any),
   Layer.succeed(LangfuseClient, {} as any),
+  Layer.succeed(AiModels, {} as any),
 );
 
 const ActorDriverLayer = pipe(

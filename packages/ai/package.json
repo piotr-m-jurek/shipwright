@@ -1,0 +1,15 @@
+{
+  "name": "@shipwright/ai",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@shipwright/config": "workspace:*",
+    "@effect/ai-anthropic": "4.0.0-rc.112"
+  }
+}

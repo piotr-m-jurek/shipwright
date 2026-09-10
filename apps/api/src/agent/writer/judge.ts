@@ -11,10 +11,10 @@
  * Judge model: Haiku — fast and cheap, appropriate for automated eval passes.
  */
 
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { FaithfulnessEvalSchema, CompletenessEvalSchema } from "@shipwright/shared/schemas/evals";
-import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers";
+import { AiModels } from "@shipwright/ai";
 import { LangfuseClient } from "../../observability/langfuse-client";
 
 // ── Faithfulness judge (Brief) ─────────────────────────────────────────────
@@ -32,38 +32,40 @@ Score 0.0–1.0:
 Set pass=true if score >= 0.85.
 Cite the specific hallucinated text in hallucinatedRequirements when score < 1.0.`;
 
-const runFaithfulnessJudge = Effect.fn("agent/judge/faithfulness")(
-  function* (opts: { output: string; sourceContext: string; traceId: string }) {
-    const langfuse = yield* LangfuseClient;
+const runFaithfulnessJudge = Effect.fn("agent/judge/faithfulness")(function* (opts: {
+  output: string;
+  sourceContext: string;
+  traceId: string;
+}) {
+  const langfuse = yield* LangfuseClient;
+  const aiModels = yield* AiModels;
 
-    const result = yield* LanguageModel.generateObject({
-      schema: FaithfulnessEvalSchema,
-      prompt: Prompt.make([
-        { role: "system", content: FaithfulnessJudgeSystemPrompt },
-        {
-          role: "user",
-          content: `=== SOURCE SUMMARIES ===\n${opts.sourceContext}\n\n=== PROJECT BRIEF TO EVALUATE ===\n${opts.output}`,
-        },
-      ]),
-    });
+  const result = yield* LanguageModel.generateObject({
+    schema: FaithfulnessEvalSchema,
+    prompt: Prompt.make([
+      { role: "system", content: FaithfulnessJudgeSystemPrompt },
+      {
+        role: "user",
+        content: `=== SOURCE SUMMARIES ===\n${opts.sourceContext}\n\n=== PROJECT BRIEF TO EVALUATE ===\n${opts.output}`,
+      },
+    ]),
+  }).pipe(aiModels.use("haiku"));
 
-    yield* Effect.logInfo("[judge/faithfulness] score computed").pipe(
-      Effect.annotateLogs({
-        score: result.value.result.score,
-        pass: result.value.result.pass,
-        hallucinatedCount: result.value.hallucinatedRequirements.length,
-      }),
-    );
+  yield* Effect.logInfo("[judge/faithfulness] score computed").pipe(
+    Effect.annotateLogs({
+      score: result.value.result.score,
+      pass: result.value.result.pass,
+      hallucinatedCount: result.value.hallucinatedRequirements.length,
+    }),
+  );
 
-    yield* langfuse.submitScore({
-      traceId: opts.traceId,
-      name: "faithfulness",
-      value: result.value.result.score,
-      comment: result.value.result.reasoning,
-    });
-  },
-  Effect.provide(Layer.provideMerge(AnthropicHaikuModelLayer, AnthropicClientLayer)),
-);
+  yield* langfuse.submitScore({
+    traceId: opts.traceId,
+    name: "faithfulness",
+    value: result.value.result.score,
+    comment: result.value.result.reasoning,
+  });
+});
 
 // ── Completeness judge (PRD) ───────────────────────────────────────────────
 
@@ -80,38 +82,40 @@ Score 0.0–1.0:
 Set pass=true if score >= 0.85.
 List every dropped item in droppedItems with its source document when score < 1.0.`;
 
-const runCompletenessJudge = Effect.fn("agent/judge/completeness")(
-  function* (opts: { output: string; sourceContext: string; traceId: string }) {
-    const langfuse = yield* LangfuseClient;
+const runCompletenessJudge = Effect.fn("agent/judge/completeness")(function* (opts: {
+  output: string;
+  sourceContext: string;
+  traceId: string;
+}) {
+  const langfuse = yield* LangfuseClient;
+  const aiModels = yield* AiModels;
 
-    const result = yield* LanguageModel.generateObject({
-      schema: CompletenessEvalSchema,
-      prompt: Prompt.make([
-        { role: "system", content: CompletenessJudgeSystemPrompt },
-        {
-          role: "user",
-          content: `=== SOURCE SUMMARIES AND RESOLVED DECISIONS ===\n${opts.sourceContext}\n\n=== IMPLEMENTATION PRD TO EVALUATE ===\n${opts.output}`,
-        },
-      ]),
-    });
+  const result = yield* LanguageModel.generateObject({
+    schema: CompletenessEvalSchema,
+    prompt: Prompt.make([
+      { role: "system", content: CompletenessJudgeSystemPrompt },
+      {
+        role: "user",
+        content: `=== SOURCE SUMMARIES AND RESOLVED DECISIONS ===\n${opts.sourceContext}\n\n=== IMPLEMENTATION PRD TO EVALUATE ===\n${opts.output}`,
+      },
+    ]),
+  }).pipe(aiModels.use("haiku"));
 
-    yield* Effect.logInfo("[judge/completeness] score computed").pipe(
-      Effect.annotateLogs({
-        score: result.value.result.score,
-        pass: result.value.result.pass,
-        droppedCount: result.value.droppedItems.length,
-      }),
-    );
+  yield* Effect.logInfo("[judge/completeness] score computed").pipe(
+    Effect.annotateLogs({
+      score: result.value.result.score,
+      pass: result.value.result.pass,
+      droppedCount: result.value.droppedItems.length,
+    }),
+  );
 
-    yield* langfuse.submitScore({
-      traceId: opts.traceId,
-      name: "completeness",
-      value: result.value.result.score,
-      comment: result.value.result.reasoning,
-    });
-  },
-  Effect.provide(Layer.provideMerge(AnthropicHaikuModelLayer, AnthropicClientLayer)),
-);
+  yield* langfuse.submitScore({
+    traceId: opts.traceId,
+    name: "completeness",
+    value: result.value.result.score,
+    comment: result.value.result.reasoning,
+  });
+});
 
 // ── Public fire-and-forget wrappers ────────────────────────────────────────
 

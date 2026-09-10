@@ -10,11 +10,12 @@ import { summarizeDocument } from "./extractor/index";
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { SummaryRepository } from "@shipwright/db/repositories/summary-repository";
 import { LangfuseClient } from "../observability/langfuse-client";
+import { AiModels } from "@shipwright/ai";
 
 // The real Effect requirements summarizeDocumentActor needs from `services`.
 // Unlike wireSnapshotPersistence's Context.Context<never> (which runs an
 // already-resolved DB method — see session-actor.ts), summarizeDocument is
-// called directly and still has these three services in its own `R`. Typing
+// called directly and still has these four services in its own `R`. Typing
 // this concretely (not `never`) means the compiler verifies end-to-end that
 // getOrRestoreActor's caller chain actually provides them — no runtime trust
 // required, unlike the `never` escape hatch used elsewhere in this file.
@@ -22,7 +23,8 @@ export type DocumentExtractionServices =
   | ChunkRepository
   | SummaryRepository
   | SqlClient
-  | LangfuseClient;
+  | LangfuseClient
+  | AiModels;
 
 export class SnapshotValidationError extends Schema.TaggedError<SnapshotValidationError>()(
   "SnapshotValidationError",

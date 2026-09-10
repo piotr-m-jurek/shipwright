@@ -16,10 +16,10 @@
       "name": "@shipwright/api",
       "version": "1.0.0",
       "dependencies": {
-        "@effect/ai-anthropic": "4.0.0-rc.112",
         "@effect/ai-openai": "4.0.0-rc.112",
         "@effect/platform-bun": "4.0.0-rc.112",
         "@effect/sql-pg": "4.0.0-rc.112",
+        "@shipwright/ai": "workspace:*",
         "@shipwright/auth": "workspace:*",
         "@shipwright/config": "workspace:*",
         "@shipwright/db": "workspace:*",
@@ -51,9 +51,9 @@
       "name": "@shipwright/mcp",
       "version": "1.0.0",
       "dependencies": {
-        "@effect/ai-anthropic": "4.0.0-rc.112",
         "@effect/platform-bun": "4.0.0-rc.112",
         "@effect/sql-pg": "4.0.0-rc.112",
+        "@shipwright/ai": "workspace:*",
         "@shipwright/auth": "workspace:*",
         "@shipwright/config": "workspace:*",
         "@shipwright/db": "workspace:*",
@@ -116,6 +116,14 @@
         "tsx": "4.22.3",
         "vite": "8.0.14",
         "vitest": "4.1.8",
+      },
+    },
+    "packages/ai": {
+      "name": "@shipwright/ai",
+      "version": "1.0.0",
+      "dependencies": {
+        "@effect/ai-anthropic": "4.0.0-rc.112",
+        "@shipwright/config": "workspace:*",
       },
     },
     "packages/auth": {
@@ -678,6 +686,8 @@
     "@sec-ant/readable-stream": ["@sec-ant/readable-stream@0.4.1", "", {}, "sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg=="],
 
     "@shadcn/react": ["@shadcn/react@0.2.1", "", { "peerDependencies": { "@types/react": ">=19", "react": ">=19" }, "optionalPeers": ["@types/react", "react"] }, "sha512-5krgi3dRMKb5jH6a+qPzVJUy/54s0kKE4Rw4LjDfLqOdVQTWKUgxWf1kW8r912I0jX/Lzxqc+pgjkjWxUIK5BQ=="],
+
+    "@shipwright/ai": ["@shipwright/ai@workspace:packages/ai"],
 
     "@shipwright/api": ["@shipwright/api@workspace:apps/api"],
 

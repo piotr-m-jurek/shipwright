@@ -4,7 +4,7 @@ import { TextGenerationError } from "../errors";
 import type { DocumentSummary } from "@shipwright/shared/domain/types";
 import { GapReportEffectSchema } from "./schemas";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
-import { AnthropicHaikuModelLayer } from "../providers";
+import { AiModels } from "@shipwright/ai";
 import { LangfuseClient } from "../../observability/langfuse-client";
 
 const ChallengerSystemPrompt = `You are an adversarial requirements reviewer. Your job is to find everything wrong, missing, or contradictory across a set of project document summaries.
@@ -49,6 +49,7 @@ export const runChallenger = Effect.fn("agent/run-challenger")(function* (
       Effect.annotateCurrentSpan(Spans.prompt({ name: p.name, version: p.version })),
   });
 
+  const aiModels = yield* AiModels;
   const response = yield* pipe(
     LanguageModel.generateObject({
       schema: GapReportEffectSchema,
@@ -57,6 +58,7 @@ export const runChallenger = Effect.fn("agent/run-challenger")(function* (
         { role: "user", content: summaries.map(prepareDocument).join("\n\n") },
       ]),
     }),
+    aiModels.use("haiku"),
     Effect.mapError((cause) => new TextGenerationError({ cause })),
   );
 
@@ -71,7 +73,7 @@ export const runChallenger = Effect.fn("agent/run-challenger")(function* (
   );
 
   return response.value;
-}, Effect.provide(AnthropicHaikuModelLayer));
+});
 
 function prepareDocument(doc: DocumentSummary): string {
   return [

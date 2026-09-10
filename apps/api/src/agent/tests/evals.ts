@@ -36,7 +36,7 @@ import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
 import { DB, AppDBLiveLayer } from "@shipwright/db";
 import { users } from "@shipwright/db/schema";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
-import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers";
+import { AiModels } from "@shipwright/ai";
 
 import { runChallenger } from "../challenger/index";
 import { parseDocument } from "../parsers";
@@ -268,7 +268,7 @@ const runPartAAnalysis = Effect.fn("eval/part-a")(function* (sessionId: AgentSes
   const gapReport = yield* runChallenger(summaries);
 
   return { traceId: span.traceId, summaries, gapReport };
-}, Effect.provide(AnthropicClientLayer));
+}, Effect.provide(AiModels.layer));
 
 async function runPartA(runName: string): Promise<boolean> {
   console.log("\n── Part A: Conflict detection (deterministic) ──────────────");
@@ -386,6 +386,7 @@ Pass threshold: score >= 0.9`;
  *  OTLP trace ID is available afterward to attach a score / dataset run item to. */
 const runFaithfulnessJudge = Effect.fn("eval/part-b")(function* (userContent: string) {
   const span = yield* Effect.currentSpan;
+  const aiModels = yield* AiModels;
 
   const response = yield* LanguageModel.generateObject({
     schema: FaithfulnessEvalSchema,
@@ -393,10 +394,10 @@ const runFaithfulnessJudge = Effect.fn("eval/part-b")(function* (userContent: st
       { role: "system", content: FaithfulnessJudgeSystemPrompt },
       { role: "user", content: userContent },
     ]),
-  });
+  }).pipe(aiModels.use("sonnet"));
 
   return { traceId: span.traceId, value: response.value };
-}, Effect.provide(AnthropicSonnetModelLayer), Effect.provide(AnthropicClientLayer));
+}, Effect.provide(AiModels.layer));
 
 async function runPartB(briefText: string, summaries: DocumentSummary[], questions: QuestionSelect[], answers: AnswerSelect[], runName: string): Promise<boolean> {
   console.log("\n── Part B: Faithfulness eval (LLM-as-judge) ───────────────");
@@ -483,6 +484,7 @@ Respond with JSON matching exactly this structure:
  *  OTLP trace ID is available afterward to attach a score / dataset run item to. */
 const runCompletenessJudge = Effect.fn("eval/part-c")(function* (userContent: string) {
   const span = yield* Effect.currentSpan;
+  const aiModels = yield* AiModels;
 
   const response = yield* LanguageModel.generateObject({
     schema: CompletenessEvalSchema,
@@ -490,10 +492,10 @@ const runCompletenessJudge = Effect.fn("eval/part-c")(function* (userContent: st
       { role: "system", content: CompletenessJudgeSystemPrompt },
       { role: "user", content: userContent },
     ]),
-  });
+  }).pipe(aiModels.use("sonnet"));
 
   return { traceId: span.traceId, value: response.value };
-}, Effect.provide(AnthropicSonnetModelLayer), Effect.provide(AnthropicClientLayer));
+}, Effect.provide(AiModels.layer));
 
 async function runPartC(prdText: string, summaries: DocumentSummary[], questions: QuestionSelect[], answers: AnswerSelect[], runName: string): Promise<boolean> {
   console.log("\n── Part C: Completeness eval (LLM-as-judge) ────────────────");

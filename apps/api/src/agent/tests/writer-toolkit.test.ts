@@ -17,6 +17,7 @@ import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { EmbeddingService } from "@shipwright/embedding";
 import { StorageAdapter } from "@shipwright/storage";
 import { LangfuseClient } from "../../observability/langfuse-client";
+import { AiModels } from "@shipwright/ai";
 import { makeWriterToolkitLayer, WriterToolkit } from "../writer/tools/writer-toolkit";
 import type { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { TokenCount } from "@shipwright/shared/domain/value-objects";
@@ -111,6 +112,8 @@ const makeLangfuseClientLayer = () =>
     submitScore: () => Effect.succeed(undefined),
   } as any);
 
+const makeAiModelsLayer = () => Layer.succeed(AiModels, {} as any);
+
 // ── Helper: build toolkit layer and run a program against it ─────────────────
 
 function makeTestLayer(overrides: {
@@ -126,6 +129,7 @@ function makeTestLayer(overrides: {
     Layer.provide(makeEmbeddingServiceLayer()),
     Layer.provide(makeStorageAdapterLayer(overrides.fileContent ?? "full document text")),
     Layer.provide(makeLangfuseClientLayer()),
+    Layer.provide(makeAiModelsLayer()),
   );
 }
 

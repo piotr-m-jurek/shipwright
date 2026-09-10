@@ -11,7 +11,7 @@ type LlmFinishCapture = {
   cacheReadTokens: number | undefined;
 };
 import { LanguageModel } from "effect/unstable/ai";
-import { AnthropicClientLayer, AnthropicSonnetModelLayer } from "../providers";
+import { AiModels } from "@shipwright/ai";
 import { makeWriterToolkitLayer, WriterToolkit } from "./tools/writer-toolkit";
 import { forkFaithfulnessJudge, forkCompletenessJudge } from "./judge";
 
@@ -116,6 +116,7 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
       onSome: (p) =>
         Effect.annotateCurrentSpan(Spans.prompt({ name: p.name, version: p.version })),
     });
+    const aiModels = yield* AiModels;
 
     return yield* LanguageModel.streamText({
       toolkit: WriterToolkit,
@@ -185,11 +186,10 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
           }),
         ),
       ),
+      aiModels.use("sonnet"),
       Effect.mapError((cause) => new RevisionWriterError({ cause })),
     );
   },
-  Effect.provide(AnthropicSonnetModelLayer),
-  Effect.provide(AnthropicClientLayer),
 );
 
 export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
@@ -219,6 +219,7 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
       onSome: (p) =>
         Effect.annotateCurrentSpan(Spans.prompt({ name: p.name, version: p.version })),
     });
+    const aiModels = yield* AiModels;
 
     return yield* LanguageModel.streamText({
       toolkit: WriterToolkit,
@@ -288,9 +289,8 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
           }),
         ),
       ),
+      aiModels.use("sonnet"),
       Effect.mapError((cause) => new RevisionWriterError({ cause })),
     );
   },
-  Effect.provide(AnthropicSonnetModelLayer),
-  Effect.provide(AnthropicClientLayer),
 );

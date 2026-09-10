@@ -1,4 +1,4 @@
-import { Effect, Schema, Option, pipe, Layer } from "effect";
+import { Effect, Schema, Option, pipe } from "effect";
 import { SqlClient } from "effect/unstable/sql/SqlClient";
 import { Spans } from "@shipwright/observability";
 import type { Chunk, SummaryItemType } from "@shipwright/shared/domain/types";
@@ -10,7 +10,7 @@ import { TextGenerationError } from "../errors";
 import { estimateTokenCount } from "../lib/estimate-token-count";
 import { LanguageModel, Prompt } from "effect/unstable/ai";
 import { type DocumentSummaryEffect, DocumentSummaryEffectSchema } from "./schemas";
-import { AnthropicClientLayer, AnthropicHaikuModelLayer } from "../providers";
+import { AiModels } from "@shipwright/ai";
 import { LangfuseClient } from "../../observability/langfuse-client";
 
 class ChunksRetrievalError extends Schema.TaggedError<ChunksRetrievalError>()(
@@ -219,44 +219,43 @@ ANTI-HALLUCINATION RULE: Do not add any requirement, constraint, or assumption t
 When a running summary is present: the new chunk is additional evidence, not a replacement. Merge both into a single coherent output.
   `;
 
-export const runReducePass = Effect.fn("agent/runReducePass")(
-  function* (
-    current: Option.Option<DocumentSummaryEffect>,
-    chunk: Chunk,
-    sourceDocument: string,
-    systemPrompt: string = MapReduceSystemPrompt,
-  ) {
-    yield* Effect.annotateCurrentSpan({
-      ...Spans.document({ filename: sourceDocument }),
-      ...Spans.chunk(chunk.chunkIndex),
-    });
-    const userContent = formatChunk(current, chunk, sourceDocument);
+export const runReducePass = Effect.fn("agent/runReducePass")(function* (
+  current: Option.Option<DocumentSummaryEffect>,
+  chunk: Chunk,
+  sourceDocument: string,
+  systemPrompt: string = MapReduceSystemPrompt,
+) {
+  yield* Effect.annotateCurrentSpan({
+    ...Spans.document({ filename: sourceDocument }),
+    ...Spans.chunk(chunk.chunkIndex),
+  });
+  const userContent = formatChunk(current, chunk, sourceDocument);
+  const aiModels = yield* AiModels;
 
-    const response = yield* pipe(
-      LanguageModel.generateObject({
-        schema: DocumentSummaryEffectSchema,
-        prompt: Prompt.make([
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ]),
-      }),
-      Effect.mapError((cause) => new TextGenerationError({ cause })),
-    );
+  const response = yield* pipe(
+    LanguageModel.generateObject({
+      schema: DocumentSummaryEffectSchema,
+      prompt: Prompt.make([
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContent },
+      ]),
+    }),
+    aiModels.use("haiku"),
+    Effect.mapError((cause) => new TextGenerationError({ cause })),
+  );
 
-    const modelId = response.content.find((p) => p.type === "response-metadata")?.modelId;
-    yield* Effect.annotateCurrentSpan(
-      Spans.llm({
-        model: modelId,
-        inputTokens: response.usage.inputTokens.total,
-        outputTokens: response.usage.outputTokens.total,
-        cacheReadTokens: response.usage.inputTokens.cacheRead,
-      }),
-    );
+  const modelId = response.content.find((p) => p.type === "response-metadata")?.modelId;
+  yield* Effect.annotateCurrentSpan(
+    Spans.llm({
+      model: modelId,
+      inputTokens: response.usage.inputTokens.total,
+      outputTokens: response.usage.outputTokens.total,
+      cacheReadTokens: response.usage.inputTokens.cacheRead,
+    }),
+  );
 
-    return response.value;
-  },
-  Effect.provide(Layer.provideMerge(AnthropicHaikuModelLayer, AnthropicClientLayer)),
-);
+  return response.value;
+});
 
 const formatChunk = (
   summary: Option.Option<DocumentSummaryEffect>,
