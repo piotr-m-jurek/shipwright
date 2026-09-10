@@ -162,6 +162,9 @@ const agentSessionSnapshotReaderLayer = Layer.succeed(AgentSessionSnapshotReader
 
 const agentSessionAggregateLayer = Layer.succeed(AgentSessionAggregate, {
   markDocumentsReady: () => Effect.succeed("idle"),
+  // Not the SHIP-179/180/181 document-added path — these tests exercise the
+  // initial-upload finalization tail (markDocumentsReady above).
+  isSessionComplete: () => Effect.succeed(false),
 } as any);
 
 // ── Mock StorageAdapter ───────────────────────────────────────────────────

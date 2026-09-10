@@ -14,7 +14,7 @@
  * because packages/queue's schema.ts must not import from jobs.ts: jobs.ts
  * needs these tables' types to build the JobStore layer, and a schema.ts ->
  * jobs.ts import would invert that dependency into a cycle. Keep this union
- * in sync with jobs.ts's four Job.make tags by hand.
+ * in sync with jobs.ts's Job.make tags by hand.
  */
 import {
   mqDedupe,
@@ -30,7 +30,8 @@ export type QueueJobName =
   | "documents.process"
   | "session.workflow"
   | "session.generate"
-  | "session.revise";
+  | "session.revise"
+  | "session.document_added";
 
 export const jobs = mqJobs<QueueJobName>();
 export const jobAttempts = mqJobAttempts(jobs);

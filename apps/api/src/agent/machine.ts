@@ -157,6 +157,14 @@ export function createAgentMachine(services: Context.Context<DocumentExtractionS
         // only in the event payload (used once, at spawn time) — never stored in
         // context, per the "no DB IDs in machine context" rule.
         | { type: "EXTRACTION_STARTED"; documents: { filename: string; documentId: DocumentId }[] }
+        // SHIP-179: fired only from `complete`, when a document is added to an
+        // already-generated session. Same payload shape as EXTRACTION_STARTED
+        // (in practice always a single-element array) — assignExtractionStarted/
+        // spawnDocumentActors below handle both event types identically. Kept
+        // as a distinct type (rather than just reusing EXTRACTION_STARTED)
+        // purely for state-chart/trace readability — `complete` accepting
+        // "EXTRACTION_STARTED" would read as a contradiction.
+        | { type: "DOCUMENT_ADDED"; documents: { filename: string; documentId: DocumentId }[] }
         // Fired by processUploadedDocuments when all documents finish processing (ready or error).
         // May arrive before or after USER_CONFIRM — the machine handles both orderings.
         | { type: "DOCUMENTS_READY" }
@@ -214,21 +222,29 @@ export function createAgentMachine(services: Context.Context<DocumentExtractionS
         },
         round: ({ context }) => context.round + 1,
       }),
+      // Handles both EXTRACTION_STARTED (initial batch upload) and
+      // DOCUMENT_ADDED (SHIP-179, single post-hoc addition) — same payload
+      // shape, same "replace documents with whatever this event carries"
+      // semantics. For DOCUMENT_ADDED this deliberately drops old documents'
+      // tracking entries: the settlement guards below (allDocumentsSettled /
+      // atLeastOneDocumentDone) only need to know whether the newly-spawned
+      // actor(s) settled, not re-verify documents that already succeeded.
       assignExtractionStarted: assign({
         documents: ({ event }) => {
-          if (event.type !== "EXTRACTION_STARTED") return [];
+          if (event.type !== "EXTRACTION_STARTED" && event.type !== "DOCUMENT_ADDED") return [];
           return event.documents.map(({ filename }) => ({ filename, status: "pending" as const }));
         },
       }),
       // Spawns one summarizeDocumentActor per document. Dynamic count (unknown
-      // until EXTRACTION_STARTED arrives) rules out static spawnChild calls —
-      // enqueueActions + enqueue.spawnChild is the v5 pattern for a runtime-
-      // determined number of children. id = filename (already the correlation
-      // key used by DOCUMENT_EXTRACTED/assignDocumentExtracted), so the
-      // xstate.done.actor.<filename> / xstate.error.actor.<filename> events
-      // raised on completion need no separate lookup table.
+      // until EXTRACTION_STARTED/DOCUMENT_ADDED arrives) rules out static
+      // spawnChild calls — enqueueActions + enqueue.spawnChild is the v5
+      // pattern for a runtime-determined number of children. id = filename
+      // (already the correlation key used by DOCUMENT_EXTRACTED/
+      // assignDocumentExtracted), so the xstate.done.actor.<filename> /
+      // xstate.error.actor.<filename> events raised on completion need no
+      // separate lookup table.
       spawnDocumentActors: enqueueActions(({ context, event, enqueue }) => {
-        if (event.type !== "EXTRACTION_STARTED") return;
+        if (event.type !== "EXTRACTION_STARTED" && event.type !== "DOCUMENT_ADDED") return;
         for (const { filename, documentId } of event.documents) {
           enqueue.spawnChild("summarizeDocumentActor", {
             id: filename,
@@ -459,6 +475,15 @@ export function createAgentMachine(services: Context.Context<DocumentExtractionS
           REVISION_REQUESTED: {
             target: "revising",
             actions: "assignRevisionFeedback",
+          },
+          // SHIP-179: reuses summarizing's own entry actions directly on this
+          // transition (rather than a separate self-transition once inside
+          // summarizing, as the initial uploading→summarizing→EXTRACTION_STARTED
+          // path does) — there's no analogous need here to decouple
+          // "confirmed" from "extraction kicked off" for a single added file.
+          DOCUMENT_ADDED: {
+            target: "summarizing",
+            actions: ["assignExtractionStarted", "spawnDocumentActors"],
           },
         },
       },

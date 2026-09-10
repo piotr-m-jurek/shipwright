@@ -74,6 +74,20 @@ export class SessionStorageApi extends HttpApiGroup.make("storage")
       success: RetrySessionResponse,
       error: [AgentSessionNotFound, RetrySessionError],
     }),
+    // SHIP-179/180 — add a document to an already-`complete` session.
+    // complete-state-only. Deliberately reuses CreateAgentSessionRequest/
+    // CreateAgentSessionResponse verbatim (already a files[]/uploads[]
+    // array shape — a single-element array works fine) rather than a
+    // parallel single-document schema. The CONFIRM step needs no new
+    // endpoint at all — confirmUpload above is reused as-is; the
+    // uploading-vs-adding branch lives in processUploadedDocuments's
+    // finalization instead of in either HTTP handler.
+    HttpApiEndpoint.post("addDocumentUploadUrl", "/sessions/:sessionId/documents/upload-url", {
+      params: { sessionId: AgentSessionId },
+      payload: CreateAgentSessionRequest,
+      success: CreateAgentSessionResponse,
+      error: [AgentSessionNotFound, SessionStateError, ServiceUnavailableError],
+    }),
   )
   .middleware(Authorization) {}
 

@@ -18,7 +18,10 @@ import {
 import { Api } from "@shipwright/shared/api";
 import { OutputRepository } from "@shipwright/db/repositories/output-repository";
 import { CurrentUser } from "@shipwright/shared/middleware";
-import { createUploadSession } from "../../agent/pipelines/create-upload-session";
+import {
+  createUploadSession,
+  createUploadForExistingSession,
+} from "../../agent/pipelines/create-upload-session";
 import { confirmUploadResults } from "../../agent/pipelines/confirm-upload-results";
 import { retrySession } from "../../agent/pipelines/retry-session";
 import { DocumentsProcess } from "@shipwright/queue";
@@ -54,6 +57,24 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
 
         yield* DocumentsProcess.enqueue({ sessionId, uploads });
         return new ConfirmUploadResponse({ valid: true });
+      }),
+    )
+    .handle("addDocumentUploadUrl", ({ params: { sessionId }, payload: { files } }) =>
+      Effect.gen(function* () {
+        const user = yield* CurrentUser;
+
+        // Ownership check — 404 for unknown/other-user session, 503 if the
+        // store itself failed. createUploadForExistingSession's own
+        // `complete`-only precondition (SessionStateError, a 409) is
+        // separate from this.
+        yield* requireOwnedSession(sessionId, user.id);
+
+        const { uploads } = yield* createUploadForExistingSession({
+          sessionId,
+          userId: user.id,
+          files,
+        });
+        return new CreateAgentSessionResponse({ sessionId, uploads });
       }),
     )
     .handle("retrySession", ({ params: { sessionId } }) =>

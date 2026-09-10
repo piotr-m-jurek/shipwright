@@ -25,7 +25,7 @@
  * document set is correctly a different one.
  */
 import { Job } from "effect-mq";
-import { AgentSessionId } from "@shipwright/shared/domain/ids";
+import { AgentSessionId, DocumentId } from "@shipwright/shared/domain/ids";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas";
 
 export class DocumentsProcess extends Job.make("documents.process", {
@@ -60,6 +60,19 @@ export class SessionGenerate extends Job.make("session.generate", {
 export class SessionRevise extends Job.make("session.revise", {
   payload: { sessionId: AgentSessionId },
   queue: "session.revise",
+  metadata: ({ sessionId }) => ({ sessionId }),
+  defaults: { attempts: 3, backoff: { type: "exponential", delay: "5 seconds" } },
+}) {}
+
+// SHIP-179/180/181 — a single document added to an already-`complete`
+// session. documentId alone is a safe idempotency key here (unlike
+// sessionWorkflow/sessionGenerate/sessionRevise above): each added document
+// gets its own new document row, so a re-publish for the same documentId is
+// correctly a no-op, and a different documentId is correctly a new job.
+export class SessionDocumentAdded extends Job.make("session.document_added", {
+  payload: { sessionId: AgentSessionId, documentId: DocumentId },
+  queue: "session.document_added",
+  idempotencyKey: ({ documentId }) => documentId,
   metadata: ({ sessionId }) => ({ sessionId }),
   defaults: { attempts: 3, backoff: { type: "exponential", delay: "5 seconds" } },
 }) {}

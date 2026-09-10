@@ -113,6 +113,37 @@ interface Interface {
   markDocumentsReady: (
     sessionId: AgentSessionId,
   ) => Effect.Effect<AgentStateValue, ActorError, ActorServices>;
+
+  /**
+   * SHIP-179/180 — validates a document can be uploaded to this session
+   * right now, BEFORE any document row or presigned URL is created. Legal
+   * from `idle`/`uploading` (the initial-batch case — no output exists yet)
+   * or `complete` (adding to an already-generated session); rejected from
+   * every busy pipeline state (`analyzing`, `awaiting_answers`,
+   * `re_evaluating`, `generating`, `revising`) — those aren't "add a
+   * document" states without a real design for how a mid-flight addition
+   * interacts with in-progress work (tracked separately, SHIP-186).
+   * Doesn't send an event itself — DOCUMENT_ADDED is fired later, from
+   * run-session-workflow.ts's runDocumentAddedWorkflow, once the document is
+   * actually chunked/embedded (that send is a multi-stage-saga step, same
+   * category the class doc comment already excludes for
+   * EXTRACTION_STARTED/SUMMARIZATION_DONE/etc).
+   */
+  requireSessionAcceptsDocuments: (
+    sessionId: AgentSessionId,
+  ) => Effect.Effect<void, SessionStateError | ActorError, ActorServices>;
+
+  /**
+   * SHIP-179/180/181 — is this session currently `complete`? Used by
+   * processUploadedDocuments to decide, at finalization time, whether a
+   * just-processed batch is the initial upload (fire DOCUMENTS_READY,
+   * update session.status) or a document being added to an
+   * already-complete session (hand off to SessionDocumentAdded instead —
+   * see run-session-workflow.ts's runDocumentAddedWorkflow). Kept on the
+   * aggregate rather than a direct getOrRestoreActor call at the call site
+   * so every actor read still goes through this one seam.
+   */
+  isSessionComplete: (sessionId: AgentSessionId) => Effect.Effect<boolean, ActorError, ActorServices>;
 }
 
 export class AgentSessionAggregate extends Context.Service<AgentSessionAggregate, Interface>()(
@@ -199,6 +230,26 @@ export class AgentSessionAggregate extends Context.Service<AgentSessionAggregate
         const actor = yield* getOrRestoreActor(sessionId);
         actor.send({ type: "DOCUMENTS_READY" });
         return actor.getSnapshot().value;
+      }),
+
+      requireSessionAcceptsDocuments: Effect.fn(
+        "agent/AgentSessionAggregate.requireSessionAcceptsDocuments",
+      )(function* (sessionId: AgentSessionId) {
+        const actor = yield* getOrRestoreActor(sessionId);
+        const state = actor.getSnapshot().value;
+
+        if (!isIdle(state) && !isUploading(state) && !isComplete(state)) {
+          return yield* new SessionStateError({
+            message: `Session ${sessionId} is in state '${String(state)}', which does not accept document uploads`,
+          });
+        }
+      }),
+
+      isSessionComplete: Effect.fn("agent/AgentSessionAggregate.isSessionComplete")(function* (
+        sessionId: AgentSessionId,
+      ) {
+        const actor = yield* getOrRestoreActor(sessionId);
+        return isComplete(actor.getSnapshot().value);
       }),
     }),
   );

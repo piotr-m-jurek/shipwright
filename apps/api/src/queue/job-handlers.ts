@@ -1,7 +1,13 @@
 import { Effect, Layer } from "effect";
-import { DocumentsProcess, SessionWorkflow, SessionGenerate, SessionRevise } from "@shipwright/queue";
+import {
+  DocumentsProcess,
+  SessionWorkflow,
+  SessionGenerate,
+  SessionRevise,
+  SessionDocumentAdded,
+} from "@shipwright/queue";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
-import { runSessionWorkflow } from "../agent/pipelines/run-session-workflow";
+import { runSessionWorkflow, runDocumentAddedWorkflow } from "../agent/pipelines/run-session-workflow";
 import { processUploadedDocuments } from "../agent/pipelines/process-uploaded-documents";
 import { runGeneratingPipeline, runRevisionPipeline } from "../agent/pipelines/generation";
 import { Spans } from "@shipwright/observability";
@@ -58,5 +64,12 @@ export const JobHandlersLayer = Layer.mergeAll(
   ),
   SessionRevise.toLayer(({ sessionId }) =>
     withJobSpan("queue/session.revise", sessionId, runRevisionPipeline(sessionId)),
+  ),
+  SessionDocumentAdded.toLayer(({ sessionId, documentId }) =>
+    withJobSpan(
+      "queue/session.document_added",
+      sessionId,
+      runDocumentAddedWorkflow(sessionId, documentId),
+    ),
   ),
 );

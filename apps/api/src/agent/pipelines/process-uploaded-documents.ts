@@ -9,6 +9,7 @@ import { DocumentRepository } from "@shipwright/db/repositories/document-reposit
 import { ChunkRepository } from "@shipwright/db/repositories/chunk-repository";
 import { AgentSessionAggregate } from "../agent-session-aggregate";
 import { publishForCurrentState } from "../session-process-manager";
+import { SessionDocumentAdded } from "@shipwright/queue";
 import { ConfirmUploadRequest } from "@shipwright/shared/schemas/api";
 import type { AgentSessionId } from "@shipwright/shared/domain/ids";
 import { ChunkIndex } from "@shipwright/shared/domain/value-objects";
@@ -154,6 +155,43 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
     { concurrency: 2 },
   );
 
+  // SHIP-179/180/181 — a session already `complete` receiving this batch
+  // means a document is being ADDED, not the initial upload flow (which
+  // this function otherwise assumes: fresh session, no prior output).
+  // Checked against the live actor (via the aggregate, not a direct
+  // getOrRestoreActor call, so every actor read stays behind that one
+  // seam) — same source of truth requireSessionAcceptsDocuments
+  // validated against before this job was even enqueued. Defaults to
+  // "not complete" (the far more common case) if the check itself fails —
+  // same resilience the markDocumentsReady/publishForCurrentState tail
+  // below already relies on (Effect.ignore), not a new risk.
+  const aggregate = yield* AgentSessionAggregate;
+  const sessionIsComplete = yield* aggregate
+    .isSessionComplete(sessionId)
+    .pipe(Effect.catch(() => Effect.succeed(false)));
+
+  if (sessionIsComplete) {
+    // Don't touch session.status (stays "complete" — the existing output
+    // remains valid while the addition processes in the background) and
+    // don't fire DOCUMENTS_READY (`complete` doesn't handle that event, it
+    // would be silently dropped by the machine). Instead hand off to
+    // SessionDocumentAdded, which fires DOCUMENT_ADDED itself once ready —
+    // see run-session-workflow.ts's runDocumentAddedWorkflow.
+    yield* Effect.forEach(
+      uploads,
+      (upload) => SessionDocumentAdded.enqueue({ sessionId, documentId: upload.documentId }),
+      { concurrency: "unbounded" },
+    ).pipe(
+      Effect.tapError((err) =>
+        Effect.logWarning("[processUploadedDocuments] could not enqueue SessionDocumentAdded", err).pipe(
+          Effect.annotateLogs({ sessionId }),
+        ),
+      ),
+      Effect.ignore,
+    );
+    return;
+  }
+
   const docs = yield* documentDb.getDocumentsBySessionId(sessionId);
 
   const allError = docs.every((doc) => doc.status === "error");
@@ -172,7 +210,6 @@ export const processUploadedDocuments = Effect.fn("agent/process-uploaded-docume
   // transitions to summarizing here and publishForCurrentState publishes
   // the workflow job that confirmAnalysis would have published.
   yield* Effect.gen(function* () {
-    const aggregate = yield* AgentSessionAggregate;
     const stateAfter = yield* aggregate.markDocumentsReady(sessionId);
     yield* publishForCurrentState(sessionId, stateAfter);
   }).pipe(
