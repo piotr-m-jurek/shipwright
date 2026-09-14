@@ -19,7 +19,6 @@
     "fmt": "oxfmt src"
   },
   "dependencies": {
-    "@effect/ai-openai": "4.0.0-rc.112",
     "@effect/platform-bun": "4.0.0-rc.112",
     "@effect/sql-pg": "4.0.0-rc.112",
     "@shipwright/ai": "workspace:*",

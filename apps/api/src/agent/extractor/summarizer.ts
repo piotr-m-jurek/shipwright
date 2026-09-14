@@ -240,7 +240,7 @@ export const runReducePass = Effect.fn("agent/runReducePass")(function* (
         { role: "user", content: userContent },
       ]),
     }),
-    aiModels.use("haiku"),
+    aiModels.use("llama3.1:8b"),
     Effect.mapError((cause) => new TextGenerationError({ cause })),
   );
 

@@ -15,7 +15,7 @@ type Interface = {
   };
   ai: {
     teiUrl: string;
-    anthropicApiKey: Redacted.Redacted<string>;
+    ollamaUrl: string;
   };
   observability: Option.Option<{
     otlpEndpoint: string;
@@ -60,7 +60,9 @@ export class ConfigService extends Context.Service<ConfigService, Interface>()(
 
       const ai: Interface["ai"] = {
         teiUrl: yield* Config.string("TEI_URL"),
-        anthropicApiKey: yield* Config.redacted("ANTHROPIC_API_KEY"),
+        ollamaUrl: yield* Config.string("OLLAMA_URL").pipe(
+          Config.withDefault("http://localhost:11434/v1"),
+        ),
       };
 
       const auth: Interface["auth"] = {

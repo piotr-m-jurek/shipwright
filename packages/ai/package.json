@@ -10,6 +10,6 @@
   },
   "dependencies": {
     "@shipwright/config": "workspace:*",
-    "@effect/ai-anthropic": "4.0.0-rc.112"
+    "@effect/ai-openai": "4.0.0-rc.112"
   }
 }

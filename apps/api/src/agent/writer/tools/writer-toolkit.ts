@@ -284,7 +284,7 @@ Respond with JSON:
               { role: "system", content: systemPrompt },
               { role: "user", content: userContent },
             ]),
-          }).pipe(aiModels.use("haiku"), Effect.orDie);
+          }).pipe(aiModels.use("llama3.1:8b"), Effect.orDie);
 
           const modelId = response.content.find((p) => p.type === "response-metadata")?.modelId;
           yield* Effect.annotateCurrentSpan(

@@ -58,7 +58,7 @@ export const runChallenger = Effect.fn("agent/run-challenger")(function* (
         { role: "user", content: summaries.map(prepareDocument).join("\n\n") },
       ]),
     }),
-    aiModels.use("haiku"),
+    aiModels.use("llama3.1:8b"),
     Effect.mapError((cause) => new TextGenerationError({ cause })),
   );
 

@@ -126,7 +126,7 @@ export const runBriefWriter = Effect.fn("agent/runBriefWriter")(
         },
       ],
       sessionId,
-    }).pipe(aiModels.use("sonnet"), Effect.mapError((cause) => new BriefWriterError({ cause })));
+    }).pipe(aiModels.use("qwen2.5:14b-instruct"), Effect.mapError((cause) => new BriefWriterError({ cause })));
 
     yield* Effect.annotateCurrentSpan(Spans.output({ chars: result.text.length }));
     yield* Effect.annotateCurrentSpan(

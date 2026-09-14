@@ -58,7 +58,7 @@ export const runQuestionGenerator = Effect.fn("agent/runQuestionGenerator")(
           { role: "user", content: formatInput(gapReport, summaries) },
         ]),
       }),
-      aiModels.use("haiku"),
+      aiModels.use("llama3.1:8b"),
       Effect.mapError((cause) => new TextGenerationError({ cause })),
     );
 

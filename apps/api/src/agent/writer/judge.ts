@@ -49,7 +49,7 @@ const runFaithfulnessJudge = Effect.fn("agent/judge/faithfulness")(function* (op
         content: `=== SOURCE SUMMARIES ===\n${opts.sourceContext}\n\n=== PROJECT BRIEF TO EVALUATE ===\n${opts.output}`,
       },
     ]),
-  }).pipe(aiModels.use("haiku"));
+  }).pipe(aiModels.use("llama3.1:8b"));
 
   yield* Effect.logInfo("[judge/faithfulness] score computed").pipe(
     Effect.annotateLogs({
@@ -99,7 +99,7 @@ const runCompletenessJudge = Effect.fn("agent/judge/completeness")(function* (op
         content: `=== SOURCE SUMMARIES AND RESOLVED DECISIONS ===\n${opts.sourceContext}\n\n=== IMPLEMENTATION PRD TO EVALUATE ===\n${opts.output}`,
       },
     ]),
-  }).pipe(aiModels.use("haiku"));
+  }).pipe(aiModels.use("llama3.1:8b"));
 
   yield* Effect.logInfo("[judge/completeness] score computed").pipe(
     Effect.annotateLogs({

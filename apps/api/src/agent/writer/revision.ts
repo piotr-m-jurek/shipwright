@@ -186,7 +186,7 @@ export const runRevisionBriefWriter = Effect.fn("agent/runRevisionBriefWriter")(
           }),
         ),
       ),
-      aiModels.use("sonnet"),
+      aiModels.use("qwen2.5:14b-instruct"),
       Effect.mapError((cause) => new RevisionWriterError({ cause })),
     );
   },
@@ -289,7 +289,7 @@ export const runRevisionPrdWriter = Effect.fn("agent/runRevisionPrdWriter")(
           }),
         ),
       ),
-      aiModels.use("sonnet"),
+      aiModels.use("qwen2.5:14b-instruct"),
       Effect.mapError((cause) => new RevisionWriterError({ cause })),
     );
   },

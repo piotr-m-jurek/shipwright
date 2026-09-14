@@ -394,7 +394,7 @@ const runFaithfulnessJudge = Effect.fn("eval/part-b")(function* (userContent: st
       { role: "system", content: FaithfulnessJudgeSystemPrompt },
       { role: "user", content: userContent },
     ]),
-  }).pipe(aiModels.use("sonnet"));
+  }).pipe(aiModels.use("qwen2.5:14b-instruct"));
 
   return { traceId: span.traceId, value: response.value };
 }, Effect.provide(AiModels.layer));
@@ -492,7 +492,7 @@ const runCompletenessJudge = Effect.fn("eval/part-c")(function* (userContent: st
       { role: "system", content: CompletenessJudgeSystemPrompt },
       { role: "user", content: userContent },
     ]),
-  }).pipe(aiModels.use("sonnet"));
+  }).pipe(aiModels.use("qwen2.5:14b-instruct"));
 
   return { traceId: span.traceId, value: response.value };
 }, Effect.provide(AiModels.layer));

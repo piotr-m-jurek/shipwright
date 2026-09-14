@@ -148,7 +148,7 @@ export const runPrdWriter = Effect.fn("agent/runPrdWriter")(
         },
       ],
       sessionId,
-    }).pipe(aiModels.use("sonnet"), Effect.mapError((cause) => new PrdWriterError({ cause })));
+    }).pipe(aiModels.use("qwen2.5:14b-instruct"), Effect.mapError((cause) => new PrdWriterError({ cause })));
 
     yield* Effect.annotateCurrentSpan(Spans.output({ chars: result.text.length }));
     yield* Effect.annotateCurrentSpan(
