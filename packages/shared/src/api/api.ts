@@ -64,8 +64,10 @@ export class SessionStorageApi extends HttpApiGroup.make("storage")
       error: [MissingUploads, ConfirmUploadError],
     }),
 
+    // type validated at the schema level (literal union), matching
+    // getOutputDiff's convention — not by hand in the handler.
     HttpApiEndpoint.get("getOutputDownloadUrl", "/sessions/:sessionId/output/:type/download-url", {
-      params: { sessionId: AgentSessionId, type: Schema.String },
+      params: { sessionId: AgentSessionId, type: Schema.Literals(OUTPUT_TYPE_VALUES) },
       success: OutputDownloadUrlResponse,
       error: [OutputNotFoundError, ServiceUnavailableError],
     }),

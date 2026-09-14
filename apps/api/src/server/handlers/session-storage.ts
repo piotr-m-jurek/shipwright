@@ -105,11 +105,6 @@ export const SessionStorage = HttpApiBuilder.group(Api, "storage", (handlers) =>
           Effect.catchTag("AgentSessionNotFound", () => new OutputNotFoundError()),
         );
 
-        // Validate type param
-        if (type !== "project_brief" && type !== "implementation_prd") {
-          return yield* new OutputNotFoundError();
-        }
-
         const s3Key = yield* outputDb.getLatestOutputByType({ sessionId, type }).pipe(
           toServiceUnavailable,
           Effect.flatMap((opt) =>
