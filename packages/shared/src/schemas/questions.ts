@@ -22,4 +22,11 @@ export interface SessionQuestionsSnapshot {
     readonly sourceDocuments: ReadonlyArray<string>;
     readonly orderIndex: number;
   }>;
+  /** When the session last transitioned — i.e. when the current `status` was entered. */
+  readonly updatedAt: string;
+  /** Per-document summarization progress, while `status` is "summarizing". Null otherwise. */
+  readonly progress: {
+    readonly documentsSummarized: number;
+    readonly documentsTotal: number;
+  } | null;
 }

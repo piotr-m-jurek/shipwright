@@ -14,6 +14,7 @@ import { Sse } from "effect/unstable/encoding";
 import { AuthService } from "@shipwright/auth/auth-service";
 import { extractSessionToken, sessionCookieHeader } from "@shipwright/shared/api/session-cookie";
 import { AgentSessionRepository } from "@shipwright/db/repositories/agent-session-repository";
+import { AgentSessionSnapshotReader } from "@shipwright/db/repositories/agent-session-snapshot-reader";
 import { ClarificationRepository } from "@shipwright/db/repositories/clarification-repository";
 import { getOrRestoreActor } from "../../agent/session-actor";
 import type { AgentSessionId, UserId } from "@shipwright/shared/domain/ids";
@@ -23,7 +24,7 @@ import type { SessionQuestionsSnapshot } from "@shipwright/shared/schemas/questi
 // Services type
 // ---------------------------------------------------------------------------
 
-type QuestionsServices = AgentSessionRepository | ClarificationRepository;
+type QuestionsServices = AgentSessionRepository | AgentSessionSnapshotReader | ClarificationRepository;
 
 // ---------------------------------------------------------------------------
 // Auth helper (same as debug SSE)
@@ -51,17 +52,38 @@ const buildQuestionsPayload = (
   sessionId: AgentSessionId,
 ): Effect.Effect<SessionQuestionsSnapshot, never, QuestionsServices> =>
   Effect.gen(function* () {
-    const agentSessionDb = yield* AgentSessionRepository;
+    // getUnsafe (not the ownership-checked `get`) is safe here — the route
+    // handler below already runs getAgentSessionByIdForUser earlier in the
+    // same request, which is exactly getUnsafe's documented precondition
+    // (see agent-session-snapshot-reader.ts's doc comment; buildDebugPayload
+    // in session-debug-sse.ts is the same sanctioned pattern). Needed for
+    // xstateSnapshot.documents, which plain AgentSessionRepository reads
+    // deliberately exclude.
+    const snapshotReader = yield* AgentSessionSnapshotReader;
     const clarificationDb = yield* ClarificationRepository;
 
-    const session = yield* agentSessionDb
-      .getAgentSessionById({ sessionId })
+    const session = yield* snapshotReader
+      .getUnsafe({ sessionId })
       .pipe(Effect.orDie, Effect.flatMap(Effect.fromOption), Effect.orDie);
 
     const questions =
       session.status === "awaiting_answers"
         ? yield* clarificationDb.getQuestionsBySessionId(sessionId).pipe(Effect.orDie)
         : [];
+
+    // xstateSnapshot's declared type (MachineContext | null) doesn't match
+    // what's actually persisted: the DB column holds the full XState actor
+    // snapshot ({context, value, status, children, historyValue}), not
+    // MachineContext flattened — confirmed against real data, and
+    // restoreAgentActor's own code already treats it this way
+    // (`snapshot as { context?: unknown }`, machine.ts). session-debug-sse.ts
+    // and session-compute.ts's getSessionDebug read the same field without
+    // this `.context` unwrap — a real, separate pre-existing bug, filed as
+    // SHIP-192, not fixed here.
+    const rawSnapshot = session.xstateSnapshot as unknown as {
+      context?: { documents?: ReadonlyArray<{ readonly status: string }> };
+    } | null;
+    const documents = rawSnapshot?.context?.documents;
 
     return {
       status: session.status,
@@ -74,6 +96,13 @@ const buildQuestionsPayload = (
         sourceDocuments: q.sourceDocuments,
         orderIndex: q.orderIndex,
       })),
+      updatedAt: session.updatedAt.toISOString(),
+      progress: documents
+        ? {
+            documentsSummarized: documents.filter((d) => d.status === "done").length,
+            documentsTotal: documents.length,
+          }
+        : null,
     } satisfies SessionQuestionsSnapshot;
   });
 

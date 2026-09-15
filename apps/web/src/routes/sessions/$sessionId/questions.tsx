@@ -127,8 +127,31 @@ function useSessionStream(sessionId: AgentSessionId) {
 // Progress stepper
 // ---------------------------------------------------------------------------
 
-function PipelineProgress({ status }: { status: string }) {
+/** Ticks every second while `updatedAt` is set, for a live "Xs" elapsed display. */
+function useElapsedSeconds(updatedAt: string | null): number {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!updatedAt) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [updatedAt]);
+
+  if (!updatedAt) return 0;
+  return Math.max(0, Math.floor((now - new Date(updatedAt).getTime()) / 1000));
+}
+
+function PipelineProgress({
+  status,
+  progress,
+  updatedAt,
+}: {
+  status: string;
+  progress: { documentsSummarized: number; documentsTotal: number } | null;
+  updatedAt: string;
+}) {
   const currentIdx = stepIndexForStatus(status);
+  const elapsedSeconds = useElapsedSeconds(updatedAt);
 
   return (
     <div className="w-full max-w-sm space-y-4">
@@ -166,7 +189,16 @@ function PipelineProgress({ status }: { status: string }) {
                 >
                   {step.label}
                 </p>
-                {isActive && <p className="text-xs text-muted-foreground">{step.description}…</p>}
+                {isActive && (
+                  <p className="text-xs text-muted-foreground">
+                    {step.description}
+                    {step.status === "summarizing" && progress
+                      ? ` (${progress.documentsSummarized} of ${progress.documentsTotal} documents)`
+                      : "…"}
+                    {" · "}
+                    <span className="opacity-70">{elapsedSeconds}s</span>
+                  </p>
+                )}
               </div>
             </li>
           );
@@ -276,7 +308,7 @@ function QuestionsPage({ sessionId }: { sessionId: AgentSessionId }) {
     );
   }
 
-  const { status, errorReason, questions } = snapshot;
+  const { status, errorReason, questions, progress, updatedAt } = snapshot;
 
   if (status === "complete") {
     return <Navigate to={"/sessions/$sessionId/output"} params={{ sessionId }} />;
@@ -305,7 +337,7 @@ function QuestionsPage({ sessionId }: { sessionId: AgentSessionId }) {
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-6">
       <p className="font-mono text-sm font-medium tracking-tight">shipwright</p>
-      <PipelineProgress status={status} />
+      <PipelineProgress status={status} progress={progress} updatedAt={updatedAt} />
     </div>
   );
 }
